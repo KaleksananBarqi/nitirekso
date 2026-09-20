@@ -3,7 +3,11 @@
     "version": "1.3.0",
     "private": true,
     "description": "nitirekso — Niti Transaksi, Rekso Evaluasi. Trading journal otomatis read-only untuk MEXC & Bitunix Futures",
-    "author": "nitirekso",
+    "author": {
+        "name": "nitirekso",
+        "email": "kaleksanan.bam@gmail.com"
+    },
+    "desktopName": "nitirekso.desktop",
     "license": "MIT",
     "homepage": "https://kaleksananbarqi.github.io/nitirekso/",
     "repository": {

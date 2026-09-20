@@ -105,6 +105,8 @@ nsis:
 
 linux:
   icon: build/icon.png
+  maintainer: nitirekso <kaleksanan.bam@gmail.com>
+  syncDesktopName: true
   target:
     - target: AppImage
       arch:
