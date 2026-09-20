@@ -3,6 +3,30 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.3.0] - 2026-09-20
+
+### 🚀 Rebranding Menyeluruh & Ekosistem nitirekso
+- **Identitas Baru nitirekso (ꦤꦶꦠꦶꦫꦼꦏ꧀ꦱ)**:
+  - *"Niti Transaksi, Rekso Evaluasi"* — pembaruan filosofi nama, logo resmi, dan aset ikon aplikasi desktop (`build/icon.ico` & `build/icon.png`).
+  - Pembaruan remote URL dan referensi repositori ke `KaleksananBarqi/nitirekso`.
+
+### 🖼️ Showcase Galeri Interaktif & Tangkapan Layar
+- **Section Showcase Interaktif di Landing Page**:
+  - Penambahan galeri showcase `#showcase` di `docs/index.html` dengan tab switcher instan (Trade Log, Jurnal & SOP, Kartu PnL Flex, Studio Kustomisasi).
+  - Tampilan mockup frame jendela desktop gelap dengan lampu kontrol macOS dan info bar fitur interaktif.
+- **Tangkapan Layar Resolusi Tinggi di README**:
+  - Tabel preview 2x2 komprehensif menampilkan fungsionalitas Trade Log, Jurnal Evaluasi, Kartu Pamer PnL Flex, dan Studio Kustomisasi.
+- **Perbaikan Git Tracking Aset Dokumentasi**:
+  - Whitelist folder `docs/assets/screenshots/` di `.gitignore` dan normalisasi berkas screenshot ke nama kebab-case.
+
+### ⚙️ Automasi CI/CD & Rilis GitHub
+- **Workflow Rilis Otomatis (`.github/workflows/release.yml`)**:
+  - Trigger otomatis saat push tag versi (`v*`) dan trigger manual (`workflow_dispatch`).
+  - Quality Gate: verifikasi typecheck TypeScript otomatis sebelum build.
+  - Packaging installer mandiri Windows NSIS (`nitirekso-Setup-<version>.exe`) dan blockmap di runner `windows-latest`.
+  - Ekstraksi catatan rilis otomatis dari `CHANGELOG.md` menggunakan skrip `scripts/extract-release-notes.cjs`.
+  - Publikasi rilis idempotent dengan flag `--clobber`.
+
 ---
 
 ## [1.2.1] - 2026-09-20

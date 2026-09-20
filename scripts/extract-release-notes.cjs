@@ -37,7 +37,7 @@ function extractReleaseNotes() {
   const match = content.match(regex)
 
   if (match && match[1]) {
-    const notes = match[1].trim()
+    const notes = match[1].trim().replace(/\n\s*---\s*$/, '').trim()
     fs.writeFileSync(outputFile, notes, 'utf8')
     console.log(`[extract-release-notes] Berhasil mengekstrak ${notes.length} karakter catatan untuk versi ${cleanVersion} ke ${outputFile}`)
   } else {
