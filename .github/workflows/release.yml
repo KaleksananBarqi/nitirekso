@@ -126,14 +126,12 @@ jobs:
               gh release create "$TAG" "${assets[@]}" \
                 --repo "${{ github.repository }}" \
                 --title "Release $TAG" \
-                --notes-file "$NOTES_FILE" \
-                --clobber
+                --notes-file "$NOTES_FILE"
             else
               gh release create "$TAG" "${assets[@]}" \
                 --repo "${{ github.repository }}" \
                 --title "Release $TAG" \
-                --generate-notes \
-                --clobber
+                --generate-notes
             fi
           fi
 
