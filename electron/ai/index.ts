@@ -69,6 +69,10 @@ export function deleteAiConfig(): void {
 // Analisa journal
 // -----------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Analisa journal
+// -----------------------------------------------------------------------
+
 export async function analyzeJournal(filter?: TradeFilterPayload): Promise<JournalAnalysisResult> {
     const apiKey = loadAiApiKey()
     if (!apiKey) {
@@ -84,9 +88,18 @@ export async function analyzeJournal(filter?: TradeFilterPayload): Promise<Journ
         throw new Error('Tidak ada trade untuk dianalisis.')
     }
 
-    const prompt = buildPrompt(trades)
-    const response = await callOpenAI(apiKey, model, baseUrl, prompt)
-    return parseResponse(response)
+    logger.info(`[ai] Memulai analisis journal (${trades.length} trade) dengan model '${model}' di ${baseUrl}`)
+
+    try {
+        const prompt = buildPrompt(trades)
+        const response = await callOpenAI(apiKey, model, baseUrl, prompt)
+        const result = parseResponse(response)
+        logger.info('[ai] Analisis journal berhasil dihasilkan.')
+        return result
+    } catch (err) {
+        logger.error('[ai] Gagal menganalisis journal:', err)
+        throw err
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -150,8 +163,99 @@ Format respons WAJIB JSON:
 }
 
 // ---------------------------------------------------------------------------
+// Robust JSON Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Ekstrak blok JSON valid dari string respons HTTP yang mungkin memiliki trailing non-whitespace,
+ * event stream (SSE), atau format chunked ganda dari proxy lokal.
+ */
+function parseApiResponse(rawText: string): { choices: { message: { content: string } }[] } {
+    try {
+        return JSON.parse(rawText)
+    } catch {
+        // Mencari objek JSON valid pertama dengan penyeimbangan kurung kurawal
+        const firstBrace = rawText.indexOf('{')
+        if (firstBrace !== -1) {
+            let depth = 0
+            let inString = false
+            let escape = false
+            for (let i = firstBrace; i < rawText.length; i++) {
+                const char = rawText[i]
+                if (escape) {
+                    escape = false
+                    continue
+                }
+                if (char === '\\') {
+                    escape = true
+                    continue
+                }
+                if (char === '"') {
+                    inString = !inString
+                    continue
+                }
+                if (!inString) {
+                    if (char === '{') depth++
+                    else if (char === '}') {
+                        depth--
+                        if (depth === 0) {
+                            const jsonSub = rawText.slice(firstBrace, i + 1)
+                            try {
+                                return JSON.parse(jsonSub)
+                            } catch {
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback jika berupa stream SSE (data: {...})
+        const lines = rawText.split(/\r?\n/)
+        for (const line of lines) {
+            const trimmed = line.trim()
+            if (trimmed.startsWith('data:') && !trimmed.includes('[DONE]')) {
+                const dataPart = trimmed.slice(5).trim()
+                try {
+                    const parsed = JSON.parse(dataPart)
+                    if (parsed.choices) return parsed
+                } catch {
+                    // Coba baris berikutnya
+                }
+            }
+        }
+
+        throw new Error(`Gagal membaca respons API AI (format JSON tidak valid): ${rawText.slice(0, 200)}...`)
+    }
+}
+
+/**
+ * Ekstrak JSON murni dari konten model, membersihkan markdown code fencing (```json ... ```)
+ * atau teks pengantar/penutup.
+ */
+function extractJsonFromContent(content: string): string {
+    let text = content.trim()
+
+    // Hapus code fence markdown jika ada
+    const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+    if (codeBlockMatch && codeBlockMatch[1]) {
+        text = codeBlockMatch[1].trim()
+    }
+
+    // Ambil substring antara { pertama dan } terakhir
+    const firstBrace = text.indexOf('{')
+    const lastBrace = text.lastIndexOf('}')
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        return text.slice(firstBrace, lastBrace + 1)
+    }
+
+    return text
+}
+
+// ---------------------------------------------------------------------------
 // OpenAI API call
-// -----------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 async function callOpenAI(apiKey: string, model: string, baseUrl: string, prompt: string): Promise<string> {
     const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`
@@ -185,9 +289,8 @@ async function callOpenAI(apiKey: string, model: string, baseUrl: string, prompt
         throw new Error(`API error ${response.status}: ${errorText}`)
     }
 
-    const data = await response.json() as {
-        choices: { message: { content: string } }[]
-    }
+    const rawText = await response.text()
+    const data = parseApiResponse(rawText)
 
     if (!data.choices || data.choices.length === 0) {
         throw new Error('Respons API tidak memiliki choices.')
@@ -202,13 +305,14 @@ async function callOpenAI(apiKey: string, model: string, baseUrl: string, prompt
 
 // ---------------------------------------------------------------------------
 // Parse response
-// -----------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 function parseResponse(content: string): JournalAnalysisResult {
+    const cleanJson = extractJsonFromContent(content)
     try {
-        const parsed = JSON.parse(content) as JournalAnalysisResult
+        const parsed = JSON.parse(cleanJson) as JournalAnalysisResult
         if (!parsed.summary || !Array.isArray(parsed.weaknesses) || !Array.isArray(parsed.suggestions)) {
-            throw new Error('Struktur JSON tidak sesuai.')
+            throw new Error('Struktur JSON tidak sesuai format yang diharapkan.')
         }
         return {
             summary: parsed.summary,
@@ -217,11 +321,12 @@ function parseResponse(content: string): JournalAnalysisResult {
             metrics: parsed.metrics
         }
     } catch {
-        // Fallback: bila model tidak mengembalikan JSON valid, bungkus content mentah.
+        // Fallback jika parsing tetap gagal, bungkus konten mentah dengan aman
+        logger.warn('[ai] Gagal mem-parse JSON hasil model, menggunakan format fallback.')
         return {
             summary: content.slice(0, 500),
-            weaknesses: ['Respons AI tidak terstruktur dengan benar.'],
-            suggestions: ['Coba model lain atau ulangi analisis.']
+            weaknesses: ['Respons AI tidak terstruktur dengan format JSON baku.'],
+            suggestions: ['Coba ulangi analisa atau gunakan model lain.']
         }
     }
 }

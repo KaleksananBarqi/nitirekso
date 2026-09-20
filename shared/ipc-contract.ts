@@ -339,6 +339,8 @@ export interface PreloadApi {
     clearLogs(): Promise<MutationResult<void>>
     openLogFolder(): Promise<MutationResult<void>>
     logError(message: string, details?: unknown): Promise<void>
+    logWarn(message: string, details?: unknown): Promise<void>
+    logInfo(message: string, details?: unknown): Promise<void>
 }
 
 // Re-export tipe domain yang dipakai renderer, supaya renderer cukup

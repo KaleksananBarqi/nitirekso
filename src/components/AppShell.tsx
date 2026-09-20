@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { cn } from '../lib/utils'
 
+import logoUrl from '../assets/logo.svg'
+
 /**
  * Kerangka aplikasi: sidebar navigasi + area konten.
  *
@@ -45,9 +47,22 @@ export function AppShell({
     return (
         <div className="flex h-full w-full overflow-hidden bg-background">
             <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-card">
-                <div className="border-b border-border px-4 py-4">
-                    <h1 className="text-sm font-semibold leading-tight">Trading Journal</h1>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">MEXC & Bitunix · read-only</p>
+                <div className="border-b border-border px-3.5 py-3">
+                    <div className="flex items-center gap-2.5">
+                        <img
+                            src={logoUrl}
+                            alt="nitirekso Logo"
+                            className="h-8 w-8 rounded-lg shrink-0 object-contain shadow-sm"
+                        />
+                        <div className="min-w-0">
+                            <h1 className="text-sm font-bold tracking-tight text-foreground leading-tight truncate">
+                                nitirekso
+                            </h1>
+                            <p className="text-[10px] font-medium text-primary leading-tight mt-0.5 truncate">
+                                Niti Transaksi, Rekso Evaluasi
+                            </p>
+                        </div>
+                    </div>
                 </div>
 
                 <nav className="flex-1 overflow-y-auto p-2">

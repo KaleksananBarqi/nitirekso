@@ -5,9 +5,9 @@
 #
 # Jalankan: npm run dist
 
-appId: com.tradingjournal.otomatis
-productName: Aplikasi Trading Journal Otomatis
-copyright: Copyright © 2026
+appId: com.nitirekso.app
+productName: nitirekso
+copyright: Copyright © 2026 nitirekso
 
 directories:
   output: release
@@ -89,10 +89,10 @@ nsis:
   # terasa seperti pemasangan paksa.
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Trading Journal
+  shortcutName: nitirekso
   # Nama file installer yang jelas, tanpa karakter aneh yang menyulitkan
   # saat diunduh atau dikirim.
-  artifactName: TradingJournal-Setup-${version}.${ext}
+  artifactName: nitirekso-Setup-${version}.${ext}
   # Uninstaller menghapus folder aplikasi. DATA USER TIDAK DIHAPUS — DB ada di
   # %APPDATA% dan berisi jurnal manual yang tidak bisa dihasilkan ulang.
   deleteAppDataOnUninstall: false
@@ -101,7 +101,7 @@ linux:
   target:
     - AppImage
   category: Finance
-  synopsis: Trading journal read-only untuk MEXC & Bitunix Futures
+  synopsis: nitirekso — Niti Transaksi, Rekso Evaluasi. Trading journal read-only untuk MEXC & Bitunix Futures
 
 mac:
   target:

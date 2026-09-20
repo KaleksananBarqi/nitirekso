@@ -43,12 +43,16 @@ import { DEFAULT_CHECKLIST_TEMPLATE, type TradeDetail } from '../../shared/domai
  */
 
 /** Bungkus handler supaya error jadi MutationResult, bukan crash. */
-function safe<T>(fn: () => T): MutationResult<T> {
+function safe<T>(fn: () => T, actionName?: string): MutationResult<T> {
     try {
-        return { ok: true, data: fn() }
+        const data = fn()
+        if (actionName) {
+            logger.info(`[ipc] ${actionName} sukses.`)
+        }
+        return { ok: true, data }
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        console.error('[ipc] error:', message)
+        logger.error(`[ipc] ${actionName ?? 'operasi'} error:`, message)
         return { ok: false, error: message }
     }
 }
@@ -69,28 +73,44 @@ export function registerIpcHandlers(): void {
 
     ipcMain.handle(
         IPC_CHANNELS.tradeGet,
-        (_event, id: number): MutationResult<TradeDetail | null> => safe(() => getTrade(getDb(), id))
+        (_event, id: number): MutationResult<TradeDetail | null> => safe(() => {
+            if (typeof id !== 'number') throw new Error('ID trade tidak valid (harus angka).')
+            return getTrade(getDb(), id)
+        })
     )
 
     ipcMain.handle(
         IPC_CHANNELS.tradeCreate,
         (_event, payload: TradeSavePayload): MutationResult<number> =>
-            safe(() => createTrade(getDb(), payload))
+            safe(() => {
+                if (!payload || typeof payload !== 'object' || !payload.trade) {
+                    throw new Error('Payload trade tidak valid.')
+                }
+                const newId = createTrade(getDb(), payload)
+                logger.info(`[trade] Trade baru dibuat: ID ${newId} (${payload.trade.symbol} ${payload.trade.direction})`)
+                return newId
+            }, 'createTrade')
     )
 
     ipcMain.handle(
         IPC_CHANNELS.tradeUpdate,
         (_event, id: number, payload: TradeSavePayload): MutationResult<void> =>
             safe(() => {
+                if (typeof id !== 'number') throw new Error('ID trade tidak valid (harus angka).')
+                if (!payload || typeof payload !== 'object' || !payload.trade) {
+                    throw new Error('Payload trade tidak valid.')
+                }
                 const updated = updateTrade(getDb(), id, payload)
                 if (!updated) throw new Error(`Trade dengan id ${id} tidak ditemukan`)
-            })
+                logger.info(`[trade] Trade diperbarui: ID ${id} (${payload.trade.symbol})`)
+            }, 'updateTrade')
     )
 
     ipcMain.handle(
         IPC_CHANNELS.tradeDelete,
         (_event, id: number): MutationResult<void> =>
             safe(() => {
+                if (typeof id !== 'number') throw new Error('ID trade tidak valid (harus angka).')
                 const db = getDb()
                 const detail = getTrade(db, id)
                 if (!detail) throw new Error(`Trade dengan id ${id} tidak ditemukan`)
@@ -102,7 +122,8 @@ export function registerIpcHandlers(): void {
                 // trade dihapus karena relasi jurnal ikut ter-cascade.
                 const screenshotPath = detail.journal?.screenshotPath
                 if (screenshotPath) deleteScreenshot(screenshotPath)
-            })
+                logger.info(`[trade] Trade dihapus: ID ${id} (${detail.trade.symbol})`)
+            }, 'deleteTrade')
     )
 
     ipcMain.handle(IPC_CHANNELS.tradeMeta, (): MutationResult<TradeMeta> =>
@@ -152,30 +173,31 @@ export function registerIpcHandlers(): void {
         IPC_CHANNELS.settingsSet,
         (_event, payload: SettingsPayload): MutationResult<void> =>
             safe(() => {
+                if (!payload || typeof payload !== 'object') throw new Error('Payload pengaturan tidak valid.')
                 const db = getDb()
                 // Iterasi eksplisit, bukan Object.entries langsung, supaya hanya kunci
                 // yang dikenal yang bisa ditulis. Mencegah renderer menulis settings
                 // sembarangan ke DB.
-                if (payload.theme !== undefined) setSetting(db, SETTING_KEYS.theme, payload.theme)
-                if (payload.colorblindSafe !== undefined)
+                if (payload.theme !== undefined && typeof payload.theme === 'string') setSetting(db, SETTING_KEYS.theme, payload.theme)
+                if (payload.colorblindSafe !== undefined && typeof payload.colorblindSafe === 'boolean')
                     setSetting(db, SETTING_KEYS.colorblindSafe, payload.colorblindSafe)
-                if (payload.autoSyncEnabled !== undefined)
+                if (payload.autoSyncEnabled !== undefined && typeof payload.autoSyncEnabled === 'boolean')
                     setSetting(db, SETTING_KEYS.autoSyncEnabled, payload.autoSyncEnabled)
-                if (payload.autoSyncIntervalMin !== undefined)
+                if (payload.autoSyncIntervalMin !== undefined && typeof payload.autoSyncIntervalMin === 'number')
                     setSetting(db, SETTING_KEYS.autoSyncIntervalMin, payload.autoSyncIntervalMin)
-                if (payload.checklistTemplate !== undefined)
+                if (payload.checklistTemplate !== undefined && Array.isArray(payload.checklistTemplate))
                     setSetting(db, SETTING_KEYS.checklistTemplate, payload.checklistTemplate)
-                if (payload.hidePnl !== undefined)
+                if (payload.hidePnl !== undefined && typeof payload.hidePnl === 'boolean')
                     setSetting(db, SETTING_KEYS.hidePnl, payload.hidePnl)
-                if (payload.aiModel !== undefined)
+                if (payload.aiModel !== undefined && typeof payload.aiModel === 'string')
                     setSetting(db, SETTING_KEYS.aiModel, payload.aiModel)
-                if (payload.aiBaseUrl !== undefined)
+                if (payload.aiBaseUrl !== undefined && typeof payload.aiBaseUrl === 'string')
                     setSetting(db, SETTING_KEYS.aiBaseUrl, payload.aiBaseUrl)
-                if (payload.gdriveClientId !== undefined)
+                if (payload.gdriveClientId !== undefined && typeof payload.gdriveClientId === 'string')
                     setSetting(db, SETTING_KEYS.gdriveClientId, payload.gdriveClientId)
-                if (payload.gdriveLocalFolder !== undefined)
+                if (payload.gdriveLocalFolder !== undefined && typeof payload.gdriveLocalFolder === 'string')
                     setSetting(db, SETTING_KEYS.gdriveLocalFolder, payload.gdriveLocalFolder)
-                if (payload.gdriveSyncMode !== undefined)
+                if (payload.gdriveSyncMode !== undefined && typeof payload.gdriveSyncMode === 'string')
                     setSetting(db, SETTING_KEYS.gdriveSyncMode, payload.gdriveSyncMode)
             })
     )
@@ -191,10 +213,11 @@ export function registerIpcHandlers(): void {
                 const trades = listTrades(db, filter ?? {})
                 const { exportJournal } = await import('../export/index')
                 const filePath = await exportJournal(format, trades)
+                logger.info(`[ipc] Ekspor journal (${format}) berhasil: ${filePath} (${trades.length} trade)`)
                 return { ok: true, data: filePath }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
-                console.error('[ipc] export error:', message)
+                logger.error('[ipc] export error:', message)
                 return { ok: false, error: message }
             }
         }
@@ -209,7 +232,7 @@ export function registerIpcHandlers(): void {
     )
 
     ipcMain.handle(IPC_CHANNELS.logsClear, (): MutationResult<void> =>
-        safe(() => logger.clearLogs())
+        safe(() => logger.clearLogs(), 'clearLogs')
     )
 
     ipcMain.handle(IPC_CHANNELS.logsOpenFolder, async (): Promise<MutationResult<void>> => {
@@ -218,14 +241,21 @@ export function registerIpcHandlers(): void {
             return { ok: true }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
+            logger.error('[ipc] openLogFolder error:', message)
             return { ok: false, error: message }
         }
     })
 
     ipcMain.handle(
         IPC_CHANNELS.logWrite,
-        (_event, { message, details }: { message: string; details?: unknown }): void => {
-            logger.error(`[Renderer] ${message}`, details)
+        (_event, { message, details, level }: { message: string; details?: unknown; level?: 'INFO' | 'WARN' | 'ERROR' }): void => {
+            if (level === 'WARN') {
+                logger.warn(`[Renderer] ${message}`, details)
+            } else if (level === 'INFO') {
+                logger.info(`[Renderer] ${message}`, details)
+            } else {
+                logger.error(`[Renderer] ${message}`, details)
+            }
         }
     )
 
@@ -240,10 +270,11 @@ export function registerIpcHandlers(): void {
         try {
             const { runBackup } = await import('../backup/index')
             const result = await runBackup()
+            logger.info('[ipc] Backup Google Drive selesai:', result)
             return { ok: true, data: result }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
-            console.error('[ipc] backup error:', message)
+            logger.error('[ipc] backup error:', message)
             return { ok: false, error: message }
         }
     })
@@ -252,9 +283,11 @@ export function registerIpcHandlers(): void {
         try {
             const { disconnectBackup } = await import('../backup/index')
             disconnectBackup()
+            logger.info('[ipc] Backup Google Drive diputuskan.')
             return { ok: true }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
+            logger.error('[ipc] backupDisconnect error:', message)
             return { ok: false, error: message }
         }
     })
@@ -265,9 +298,11 @@ export function registerIpcHandlers(): void {
             try {
                 const { startOAuthFlow } = await import('../backup/index')
                 await startOAuthFlow(clientId)
+                logger.info('[ipc] OAuth Google Drive dimulai.')
                 return { ok: true }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
+                logger.error('[ipc] backupStartOAuth error:', message)
                 return { ok: false, error: message }
             }
         }
@@ -279,9 +314,11 @@ export function registerIpcHandlers(): void {
             try {
                 const { selectLocalFolder } = await import('../backup/index')
                 const folder = await selectLocalFolder()
+                logger.info(`[ipc] Folder backup lokal dipilih: ${folder}`)
                 return { ok: true, data: folder }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
+                logger.error('[ipc] backupSelectFolder error:', message)
                 return { ok: false, error: message }
             }
         }
@@ -304,6 +341,7 @@ export function registerIpcHandlers(): void {
                 return { ok: true }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
+                logger.error('[ipc] aiConfigSave error:', message)
                 return { ok: false, error: message }
             }
         }
@@ -316,6 +354,7 @@ export function registerIpcHandlers(): void {
             return { ok: true }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
+            logger.error('[ipc] aiConfigDelete error:', message)
             return { ok: false, error: message }
         }
     })
@@ -329,7 +368,7 @@ export function registerIpcHandlers(): void {
                 return { ok: true, data: result }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
-                console.error('[ipc] AI analyze error:', message)
+                logger.error('[ipc] AI analyze error:', message)
                 return { ok: false, error: message }
             }
         }

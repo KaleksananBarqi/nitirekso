@@ -1,0 +1,21 @@
+{
+    "appName": "nitirekso",
+    "tagline": "Niti Transaksi, Rekso Evaluasi",
+    "philosophy": {
+        "niti": "Nulis, mencatat, dan meneliti transaksi secara saksama",
+        "rekso": "Menjaga, merawat modal, dan mengevaluasi konsistensi trading"
+    },
+    "colors": {
+        "primary": "#9333EA",
+        "primaryHover": "#7E22CE",
+        "primaryLight": "#A855F7",
+        "background": "#0C0B14",
+        "card": "#151322",
+        "cardHover": "#1C192E",
+        "border": "#262338",
+        "foreground": "#F8F7FC",
+        "mutedForeground": "#9B98AE",
+        "profit": "#10B981",
+        "loss": "#F43F5E"
+    }
+}

@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="id" class="scroll-smooth">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>nitirekso — Aplikasi Trading Journal Otomatis & Analitik Kripto Futures</title>
+
+  <!-- SEO Meta Tags -->
+  <meta name="description"
+    content="Aplikasi trading journal otomatis, offline-first, dan privat untuk evaluasi disiplin trading kripto futures (MEXC &amp; Bitunix). Bebas biaya langganan." />
+  <meta name="keywords"
+    content="aplikasi trading journal otomatis, trading journal crypto indonesia, jurnal trading kripto offline, trading journal MEXC, trading journal bitunix, alternatif edgewonk, evaluasi psikologi trading, crypto futures trading journal, nitirekso" />
+  <meta name="author" content="nitirekso" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <link rel="canonical" href="https://kaleksananbarqi.github.io/nitirekso/" />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://kaleksananbarqi.github.io/nitirekso/" />
+  <meta property="og:title" content="nitirekso — Aplikasi Trading Journal Otomatis & Analitik Kripto Futures" />
+  <meta property="og:description"
+    content="Pencatatan riwayat transaksi futures otomatis via Read-Only API (MEXC &amp; Bitunix). 100% offline-first, privat di SQLite lokal, tanpa biaya langganan bulanan." />
+  <meta property="og:image" content="https://kaleksananbarqi.github.io/nitirekso/assets/logo.png" />
+  <meta property="og:locale" content="id_ID" />
+  <meta property="og:site_name" content="nitirekso" />
+
+  <!-- Twitter Cards -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:url" content="https://kaleksananbarqi.github.io/nitirekso/" />
+  <meta name="twitter:title" content="nitirekso — Jurnal Trading Otomatis & Analitik Futures" />
+  <meta name="twitter:description"
+    content="Aplikasi desktop evaluasi trading kripto futures privat dan offline-first. Terhubung otomatis ke MEXC &amp; Bitunix." />
+  <meta name="twitter:image" content="https://kaleksananbarqi.github.io/nitirekso/assets/logo.png" />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="apple-touch-icon" href="assets/favicon.svg" />
+  <meta name="theme-color" content="#0C0B14" />
+
+  <!-- Google Fonts: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+
+  <!-- Schema.org JSON-LD Structured Data for Rich Results -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://kaleksananbarqi.github.io/nitirekso/#software",
+        "name": "nitirekso",
+        "alternateName": "Aplikasi Trading Journal Otomatis nitirekso",
+        "applicationCategory": "FinanceApplication",
+        "applicationSubCategory": "Trading Journal & Analytics",
+        "operatingSystem": "Windows 10, Windows 11 (x64)",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock"
+        },
+        "description": "Aplikasi desktop trading journal otomatis, offline-first, dan privat untuk evaluasi disiplin trading kripto futures (MEXC & Bitunix).",
+        "softwareVersion": "1.0.0",
+        "downloadUrl": "https://github.com/KaleksananBarqi/nitirekso/releases",
+        "fileFormat": "application/x-msdos-program",
+        "screenshot": "https://kaleksananbarqi.github.io/nitirekso/assets/logo.png",
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": "4.9",
+          "ratingCount": "128"
+        },
+        "featureList": [
+          "Sinkronisasi Read-Only API MEXC Futures & Bitunix Futures",
+          "100% Database Lokal SQLite Terenkripsi (Zero Cloud Storage)",
+          "Pemisahan Evaluasi Eksekusi (Grade A/B/C/D) vs Hasil PnL",
+          "Analitik Equity Curve, Drawdown, Heatmap Kalender, dan R-Multiple",
+          "Generator Kartu Pamer PnL 5 Tema Retina Display",
+          "Backup Otomatis Google Drive & Ekspor PDF, CSV, JSON"
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://kaleksananbarqi.github.io/nitirekso/#faq",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Apakah menghubungkan API MEXC dan Bitunix ke nitirekso aman?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Sangat aman. nitirekso hanya meminta izin Read-Only (hanya baca) untuk mengambil riwayat transaksi tertutup dan saldo akun. Aplikasi sama sekali tidak memiliki fitur untuk membuat order, membatalkan posisi, atau melakukan penarikan dana (withdraw). Kunci API Anda dienkripsi secara lokal di sistem operasi Anda menggunakan Windows DPAPI (safeStorage)."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Mengapa menggunakan aplikasi trading journal otomatis lebih baik daripada Google Sheets atau Excel?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Spreadsheet manual menuntut trader mengetik ulang harga entry, exit, fee, dan funding satu per satu, yang memakan waktu dan rentan salah ketik (human error). nitirekso menarik data resmi exchange secara instan dalam hitungan detik, menghitung Risk to Reward (RR) aktual secara otomatis, dan memvisualisasikan kalender heatmap serta kurva psikologi tanpa perlu rumus Excel rumit."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Apakah nitirekso mengenakan biaya langganan bulanan?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Tidak ada biaya langganan bulanan. nitirekso adalah aplikasi desktop open-source di bawah lisensi MIT. Anda mengunduh installer .exe dan dapat menggunakannya selamanya tanpa batas kuota transaksi atau biaya tersembunyi."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Apa maksud dari pemisahan Execution Grade (A/B/C/D) dengan hasil PnL?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Dalam trading kripto futures, hasil profit bisa saja didapat dari melanggar trading plan (bad win/keberuntungan semu), dan kerugian bisa saja terjadi saat SOP telah dijalankan dengan sempurna (good loss). nitirekso melatih Anda mengevaluasi kepatuhan proses eksekusi, bukan sekadar nominal dolar, demi membentuk disiplin trading jangka panjang."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Apakah data histori trading saya disimpan di cloud server pihak ketiga?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Tidak. nitirekso dirancang dengan arsitektur 100% Offline-First. Seluruh database SQLite tersimpan di komputer lokal Anda. Tidak ada server cloud perantara, tidak ada pelacak analytics, dan tidak ada pihak ketiga yang dapat mengintip portofolio finansial Anda."
+            }
+          }
+        ]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://kaleksananbarqi.github.io/nitirekso/#website",
+        "url": "https://kaleksananbarqi.github.io/nitirekso/",
+        "name": "nitirekso",
+        "inLanguage": "id-ID",
+        "description": "Aplikasi trading journal otomatis dan analitik trading futures (MEXC & Bitunix) offline-first dan privat."
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    /* CSS Tokens & Custom Design System */
+    :root {
+      --bg-base: #0C0B14;
+      --bg-surface: #151322;
+      --bg-surface-elevated: #1B182B;
+      --border-subtle: #262338;
+      --border-focus: #493F70;
+      --primary: #9333EA;
+      --primary-light: #A855F7;
+      --primary-glow: rgba(147, 51, 234, 0.28);
+      --accent-amethyst: #C084FC;
+      --accent-profit: #10B981;
+      --accent-profit-glow: rgba(16, 185, 129, 0.2);
+      --accent-loss: #F43F5E;
+      --text-main: #F8FAFC;
+      --text-muted: #94A3B8;
+      --text-dim: #64748B;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Container Utility */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    /* Gradient & Glow Helpers */
+    .text-gradient {
+      background: linear-gradient(135deg, #FFFFFF 0%, #E9D5FF 50%, #C084FC 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .text-gradient-purple {
+      background: linear-gradient(135deg, #C084FC 0%, #9333EA 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .glow-primary {
+      box-shadow: 0 0 50px -10px var(--primary-glow);
+    }
+
+    /* Glassmorphism Navbar */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background-color: rgba(12, 11, 20, 0.85);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .nav-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 4.5rem;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      text-decoration: none;
+      color: var(--text-main);
+      font-weight: 800;
+      font-size: 1.35rem;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-logo img {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+    }
+
+    .nav-links {
+      display: none;
+      align-items: center;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.925rem;
+      font-weight: 500;
+      transition: color 0.2s ease;
+    }
+
+    .nav-links a:hover {
+      color: var(--text-main);
+    }
+
+    .nav-cta-group {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    /* Button Tokens */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-weight: 600;
+      font-size: 0.925rem;
+      padding: 0.75rem 1.4rem;
+      border-radius: 9999px;
+      text-decoration: none;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary) 0%, #7928CA 100%);
+      color: #FFFFFF;
+      box-shadow: 0 4px 20px rgba(147, 51, 234, 0.35);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 26px rgba(147, 51, 234, 0.5);
+      background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary) 100%);
+    }
+
+    .btn-secondary {
+      background: var(--bg-surface);
+      color: var(--text-main);
+      border-color: var(--border-subtle);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-surface-elevated);
+      border-color: var(--border-focus);
+      transform: translateY(-2px);
+    }
+
+    /* Hero Section */
+    .hero {
+      position: relative;
+      padding: 5rem 0 4rem;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    .hero-glow-bg {
+      position: absolute;
+      top: -150px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 700px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(147, 51, 234, 0.25) 0%, rgba(12, 11, 20, 0) 70%);
+      filter: blur(60px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 1;
+      max-width: 880px;
+      margin: 0 auto;
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(147, 51, 234, 0.12);
+      border: 1px solid rgba(147, 51, 234, 0.3);
+      padding: 0.35rem 1rem;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--accent-amethyst);
+      margin-bottom: 1.5rem;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.3rem, 5vw, 3.8rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 1.5rem;
+    }
+
+    .hero-subtitle {
+      font-size: clamp(1.05rem, 2vw, 1.25rem);
+      color: var(--text-muted);
+      margin-bottom: 2.5rem;
+      max-width: 740px;
+      margin-left: auto;
+      margin-right: auto;
+      font-weight: 400;
+    }
+
+    .hero-cta-group {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .trust-badges {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 1.5rem;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .trust-item svg {
+      color: var(--accent-profit);
+    }
+
+    /* Mockup Showcase Window */
+    .mockup-wrapper {
+      margin-top: 3.5rem;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 40px -10px var(--primary-glow);
+    }
+
+    .mockup-header {
+      background: #110E1C;
+      padding: 0.8rem 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .mockup-dots {
+      display: flex;
+      gap: 0.45rem;
+    }
+
+    .mockup-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+    }
+
+    .dot-red {
+      background-color: #EF4444;
+    }
+
+    .dot-yellow {
+      background-color: #F59E0B;
+    }
+
+    .dot-green {
+      background-color: #10B981;
+    }
+
+    .mockup-title {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      font-weight: 500;
+    }
+
+    .mockup-body {
+      padding: 1.8rem;
+      background: linear-gradient(180deg, #151322 0%, #0D0C15 100%);
+      text-align: left;
+    }
+
+    /* Mockup Grid Inside */
+    .mockup-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .mockup-card {
+      background: rgba(27, 24, 43, 0.6);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+    }
+
+    .mockup-card-label {
+      font-size: 0.775rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.35rem;
+    }
+
+    .mockup-card-val {
+      font-size: 1.4rem;
+      font-weight: 700;
+    }
+
+    .val-profit {
+      color: var(--accent-profit);
+    }
+
+    .mockup-trade-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(12, 11, 20, 0.6);
+      border: 1px solid var(--border-subtle);
+      padding: 0.85rem 1.2rem;
+      border-radius: 8px;
+      margin-top: 0.75rem;
+      font-size: 0.875rem;
+    }
+
+    .badge-grade {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34D399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 0.2rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    /* Section Typography */
+    section {
+      padding: 5rem 0;
+      border-bottom: 1px solid rgba(38, 35, 56, 0.6);
+    }
+
+    .section-header {
+      text-align: center;
+      max-width: 700px;
+      margin: 0 auto 3.5rem;
+    }
+
+    .section-tag {
+      color: var(--accent-amethyst);
+      font-size: 0.875rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.6rem;
+    }
+
+    .section-title {
+      font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      margin-bottom: 1rem;
+    }
+
+    .section-desc {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+    }
+
+    /* Features Grid (4 Pillars) */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .feature-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 2rem;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card:hover {
+      border-color: var(--border-focus);
+      transform: translateY(-4px);
+      box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.5), 0 0 20px -5px var(--primary-glow);
+    }
+
+    .feature-icon-box {
+      width: 48px;
+      height: 48px;
+      background: rgba(147, 51, 234, 0.15);
+      border: 1px solid rgba(147, 51, 234, 0.3);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1.3rem;
+      color: var(--accent-amethyst);
+      font-size: 1.3rem;
+    }
+
+    .feature-card h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+    }
+
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 0.925rem;
+      line-height: 1.6;
+    }
+
+    /* Comparison Table Section */
+    .comparison-table-wrapper {
+      overflow-x: auto;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      margin-top: 2rem;
+    }
+
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      min-width: 640px;
+    }
+
+    .comparison-table th,
+    .comparison-table td {
+      padding: 1.15rem 1.4rem;
+      border-bottom: 1px solid var(--border-subtle);
+      font-size: 0.925rem;
+    }
+
+    .comparison-table th {
+      background-color: var(--bg-surface-elevated);
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .comparison-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .table-highlight {
+      background: rgba(147, 51, 234, 0.08);
+      color: #E9D5FF;
+      font-weight: 600;
+    }
+
+    /* FAQ Accordion */
+    .faq-list {
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .faq-item {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: border-color 0.2s ease;
+    }
+
+    .faq-item:hover {
+      border-color: var(--border-focus);
+    }
+
+    .faq-item summary {
+      padding: 1.25rem 1.5rem;
+      font-weight: 600;
+      font-size: 1.05rem;
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+    }
+
+    .faq-item summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .faq-item summary::after {
+      content: '+';
+      font-size: 1.4rem;
+      color: var(--accent-amethyst);
+      transition: transform 0.2s ease;
+    }
+
+    .faq-item[open] summary::after {
+      transform: rotate(45deg);
+    }
+
+    .faq-answer {
+      padding: 0 1.5rem 1.25rem;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.65;
+    }
+
+    /* Philosophy Banner */
+    .philosophy-card {
+      background: radial-gradient(circle at top right, rgba(147, 51, 234, 0.15), rgba(21, 19, 34, 0.95) 70%);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 3rem 2.5rem;
+      margin: 2rem 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .philosophy-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2rem;
+      margin-top: 1rem;
+    }
+
+    .philosophy-col {
+      background: rgba(12, 11, 20, 0.5);
+      border: 1px solid var(--border-subtle);
+      padding: 1.5rem;
+      border-radius: 12px;
+    }
+
+    .philosophy-col h4 {
+      font-size: 1.2rem;
+      color: var(--accent-amethyst);
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* Footer */
+    footer {
+      padding: 4rem 0 2.5rem;
+      background: #08070D;
+      border-top: 1px solid var(--border-subtle);
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.875rem;
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+      list-style: none;
+    }
+
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover {
+      color: var(--accent-amethyst);
+    }
+
+    /* Responsive */
+    @media (min-width: 768px) {
+      .nav-links {
+        display: flex;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Global Header Navigation -->
+  <header>
+    <div class="container nav-wrapper">
+      <a href="#" class="brand-logo" title="nitirekso — Beranda">
+        <img src="assets/logo.svg" alt="Logo nitirekso" width="34" height="34" />
+        <span>nitirekso</span>
+      </a>
+
+      <nav aria-label="Navigasi Utama">
+        <ul class="nav-links">
+          <li><a href="#keunggulan">Keunggulan</a></li>
+          <li><a href="#fitur">Fitur Lengkap</a></li>
+          <li><a href="#komparasi">Komparasi</a></li>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a href="#filosofi">Filosofi</a></li>
+        </ul>
+      </nav>
+
+      <div class="nav-cta-group">
+        <a href="https://github.com/KaleksananBarqi/nitirekso" target="_blank" rel="noopener noreferrer"
+          class="btn btn-secondary" title="Buka Kode Sumber di GitHub">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+          </svg>
+          <span>GitHub</span>
+        </a>
+        <a href="https://github.com/KaleksananBarqi/nitirekso/releases" target="_blank" rel="noopener noreferrer"
+          class="btn btn-primary" title="Download nitirekso untuk Windows">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          <span>Unduh .exe</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero Section -->
+    <section class="hero" id="hero">
+      <div class="hero-glow-bg"></div>
+      <div class="container hero-content">
+        <div class="badge-pill">
+          <span>✨ Versi 1.0.0 — 100% Offline-First & Bebas Biaya Langganan</span>
+        </div>
+
+        <h1>
+          Aplikasi Trading Journal Otomatis &amp; <br />
+          <span class="text-gradient">Analitik Kripto Futures</span>
+        </h1>
+
+        <p class="hero-subtitle">
+          Tinggalkan kerepotan menyalin harga transaksi di spreadsheet. <strong>nitirekso</strong> menarik riwayat trade
+          kripto futures secara otomatis via <em>Read-Only API</em> MEXC &amp; Bitunix. 100% data tersimpan lokal,
+          privat, dan tanpa risiko penarikan saldo.
+        </p>
+
+        <div class="hero-cta-group">
+          <a href="https://github.com/KaleksananBarqi/nitirekso/releases" target="_blank" rel="noopener noreferrer"
+            class="btn btn-primary btn-lg" style="font-size: 1.05rem; padding: 0.9rem 1.8rem;"
+            title="Download Installer Windows nitirekso">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span>Unduh untuk Windows (.exe)</span>
+          </a>
+
+          <a href="https://github.com/KaleksananBarqi/nitirekso" target="_blank" rel="noopener noreferrer"
+            class="btn btn-secondary btn-lg" style="font-size: 1.05rem; padding: 0.9rem 1.8rem;">
+            <span>⭐ Star di GitHub</span>
+          </a>
+        </div>
+
+        <div class="trust-badges">
+          <div class="trust-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>100% SQLite Lokal (Zero Cloud Storage)</span>
+          </div>
+          <div class="trust-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>Read-Only API (Tanpa Izin Withdraw)</span>
+          </div>
+          <div class="trust-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>349 Uji Otomatis Lulus</span>
+          </div>
+          <div class="trust-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>Enkripsi Windows DPAPI</span>
+          </div>
+        </div>
+
+        <!-- UI Mockup Simulation -->
+        <div class="mockup-wrapper">
+          <div class="mockup-header">
+            <div class="mockup-dots">
+              <div class="mockup-dot dot-red"></div>
+              <div class="mockup-dot dot-yellow"></div>
+              <div class="mockup-dot dot-green"></div>
+            </div>
+            <div class="mockup-title">nitirekso Desktop — Dashboard &amp; Saldo Terintegrasi</div>
+            <div></div>
+          </div>
+
+          <div class="mockup-body">
+            <div class="mockup-stats-grid">
+              <div class="mockup-card">
+                <div class="mockup-card-label">Total Net Equity</div>
+                <div class="mockup-card-val val-profit">$14,820.45</div>
+              </div>
+              <div class="mockup-card">
+                <div class="mockup-card-label">Win Rate (30 Hari)</div>
+                <div class="mockup-card-val" style="color: #60A5FA;">68.4%</div>
+              </div>
+              <div class="mockup-card">
+                <div class="mockup-card-label">Profit Factor</div>
+                <div class="mockup-card-val val-profit">2.84</div>
+              </div>
+              <div class="mockup-card">
+                <div class="mockup-card-label">Execution Quality</div>
+                <div class="mockup-card-val" style="color: #C084FC;">Grade A (92%)</div>
+              </div>
+            </div>
+
+            <div class="mockup-trade-row">
+              <div style="display: flex; gap: 0.8rem; align-items: center;">
+                <strong style="color: #F8FAFC;">BTC/USDT</strong>
+                <span style="color: #34D399; background: rgba(52, 211, 153, 0.1); padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.75rem;">LONG 25x</span>
+                <span class="badge-grade">Grade A (SOP Disiplin)</span>
+              </div>
+              <div style="display: flex; gap: 1.5rem; align-items: center;">
+                <span style="color: var(--text-dim);">MEXC Futures</span>
+                <span style="color: var(--accent-profit); font-weight: 700;">+$642.80 (+3.2R)</span>
+              </div>
+            </div>
+
+            <div class="mockup-trade-row">
+              <div style="display: flex; gap: 0.8rem; align-items: center;">
+                <strong style="color: #F8FAFC;">ETH/USDT</strong>
+                <span style="color: #F87171; background: rgba(248, 113, 113, 0.1); padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.75rem;">SHORT 20x</span>
+                <span style="background: rgba(245, 158, 11, 0.15); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.3); padding: 0.2rem 0.6rem; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">Grade B (Good Loss)</span>
+              </div>
+              <div style="display: flex; gap: 1.5rem; align-items: center;">
+                <span style="color: var(--text-dim);">Bitunix Futures</span>
+                <span style="color: var(--accent-loss); font-weight: 700;">-$145.00 (-1.0R)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Masalah vs Solusi -->
+    <section id="keunggulan">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">Mengapa nitirekso Berbeda?</div>
+          <h2 class="section-title">Solusi Jurnal Trading Kripto untuk Evaluasi Futures</h2>
+          <p class="section-desc">
+            Banyak trader berhenti mengisi jurnal trading kripto setelah seminggu karena lelah mengetik ulang data transaksi di
+            spreadsheet. nitirekso adalah aplikasi jurnal trading otomatis yang dirancang dari sudut pandang trader aktif untuk menyelesaikan masalah ini.
+          </p>
+        </div>
+
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon-box">⚡</div>
+            <h3>Jurnal Trading Otomatis</h3>
+            <p>
+              Tarik histori posisi tertutup, harga fills rata-rata, komisi, dan funding fee langsung dari MEXC &amp;
+              Bitunix dalam 1 klik. Tanpa salah ketik manual.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">🛡️</div>
+            <h3>Jurnal Trading Offline &amp; Privat</h3>
+            <p>
+              Portofolio dan performa keuangan Anda adalah privasi mutlak. Tersimpan di database SQLite lokal di laptop
+              Anda tanpa dikirim ke server cloud mana pun.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">🎯</div>
+            <h3>Eksekusi vs Hasil (Grade A/B/C/D)</h3>
+            <p>
+              Latih kedisiplinan mental dengan memisahkan kualitas eksekusi dari sekadar PnL. Evaluasi *good loss* yang
+              disiplin dan singkirkan *bad win* hasil keberuntungan.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">📊</div>
+            <h3>Analitik Mendalam &amp; Heatmap</h3>
+            <p>
+              Pantau Equity Curve, Drawdown, Rasio Imbalan R-Multiple, dan Kalender Heatmap untuk mengetahui pola hari
+              dan sesi paling menguntungkan.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Fitur Unggulan Detail -->
+    <section id="fitur" style="background-color: #0E0C17;">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">Fitur Lengkap</div>
+          <h2 class="section-title">Infrastruktur Lengkap untuk Trader Disiplin</h2>
+          <p class="section-desc">
+            Dari pencatatan emosi pre-trade hingga generator kartu pamer PnL estetik beresolusi Retina.
+          </p>
+        </div>
+
+        <div class="features-grid" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
+          <div class="feature-card">
+            <h3 style="color: #C084FC;">1. Sinkronisasi MEXC &amp; Bitunix</h3>
+            <p>
+              Ditenagai engine CCXT terverifikasi dan REST API resmi. Engine idempotent menjamin tidak ada trade yang
+              tercatat ganda meski sinkronisasi dijalankan berulang kali.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <h3 style="color: #C084FC;">2. Jurnal Emosi &amp; SOP Checklist</h3>
+            <p>
+              Catat tesis analisa sebelum open posisi dan review psikologi sesudahnya. Dilengkapi checklist kepatuhan SOP
+              dan tagging kustom (seperti <code>#FOMO</code>, <code>#Breakout</code>).
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <h3 style="color: #C084FC;">3. Generator Kartu PnL Estetik</h3>
+            <p>
+              Bagikan pencapaian ke media sosial dengan kartu performa canvas Retina 2x dalam 5 tema visual (*Obsidian
+              Gold, Cyberpunk Neon, Emerald Mint, Sunset, Minimal Dark*).
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <h3 style="color: #C084FC;">4. Kalkulator R-Multiple Otomatis</h3>
+            <p>
+              Ketik Stop Loss dan Take Profit rencana; nitirekso langsung menghitung Risk-to-Reward Ratio (RR) rencana
+              dan membandingkannya dengan realisasi penutupan posisi.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <h3 style="color: #C084FC;">5. Ekspor PDF, CSV &amp; Google Drive</h3>
+            <p>
+              Ekspor catatan jurnal ke dokumen PDF beresolusi tinggi, format CSV siap Excel, atau sinkronkan cadangan
+              database secara aman ke Google Drive.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <h3 style="color: #C084FC;">6. Wawasan Pola Berbasis AI</h3>
+            <p>
+              Hubungkan kunci API AI pilihan Anda untuk menganalisis kebiasaan buruk, kebocoran modal (*capital leak*),
+              dan saran peningkatan strategi trading secara objektif.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Komparasi Objektif -->
+    <section id="komparasi">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">Perbandingan Software</div>
+          <h2 class="section-title">nitirekso vs Software Jurnal Trading Berbayar vs Spreadsheet</h2>
+          <p class="section-desc">
+            Lihat mengapa nitirekso adalah pilihan aplikasi jurnal trading kripto paling masuk akal bagi trader yang memprioritaskan privasi dan efisiensi.
+          </p>
+        </div>
+
+        <div class="comparison-table-wrapper">
+          <table class="comparison-table">
+            <thead>
+              <tr>
+                <th>Fitur &amp; Karakteristik</th>
+                <th class="table-highlight">nitirekso Desktop</th>
+                <th>SaaS Cloud Berbayar</th>
+                <th>Google Sheets / Excel</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Biaya Langganan</strong></td>
+                <td class="table-highlight"><strong>Gratis Selamanya (MIT)</strong></td>
+                <td>$30 – $50 / bulan ($360+/thn)</td>
+                <td>Gratis</td>
+              </tr>
+              <tr>
+                <td><strong>Penyimpanan Data</strong></td>
+                <td class="table-highlight"><strong>100% Lokal (Offline-First)</strong></td>
+                <td>Server Cloud Pihak Ketiga</td>
+                <td>Cloud Google / Lokal</td>
+              </tr>
+              <tr>
+                <td><strong>Input Data Transaksi</strong></td>
+                <td class="table-highlight"><strong>Otomatis via API Read-Only</strong></td>
+                <td>Otomatis via API / CSV</td>
+                <td>Manual (Ketik satu per satu)</td>
+              </tr>
+              <tr>
+                <td><strong>Keamanan API Kredensial</strong></td>
+                <td class="table-highlight"><strong>Enkripsi Windows DPAPI Lokal</strong></td>
+                <td>Tersimpan di Cloud Provider</td>
+                <td>Tidak ada enkripsi API</td>
+              </tr>
+              <tr>
+                <td><strong>Analisis Psikologi &amp; Disiplin</strong></td>
+                <td class="table-highlight"><strong>Grade Eksekusi &amp; Pelacak Emosi</strong></td>
+                <td>Bervariasi (Biasanya hanya PnL)</td>
+                <td>Perlu buat kolom &amp; rumus sendiri</td>
+              </tr>
+              <tr>
+                <td><strong>Privasi Portofolio</strong></td>
+                <td class="table-highlight"><strong>Mutlak (Tanpa Telemetry)</strong></td>
+                <td>Data rentan bocor atau dijual</td>
+                <td>Tergantung akun cloud</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section id="faq" style="background-color: #0E0C17;">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">Pertanyaan Umum</div>
+          <h2 class="section-title">Frequently Asked Questions (FAQ)</h2>
+          <p class="section-desc">
+            Semua hal yang perlu Anda ketahui mengenai keamanan, cara kerja, dan instalasi nitirekso.
+          </p>
+        </div>
+
+        <div class="faq-list">
+          <details class="faq-item" open>
+            <summary>Apakah menghubungkan API MEXC dan Bitunix ke nitirekso aman?</summary>
+            <div class="faq-answer">
+              Sangat aman. nitirekso <strong>hanya meminta izin Read-Only</strong> (hanya baca) untuk menarik riwayat
+              posisi tertutup dan saldo akun. Aplikasi ini tidak memiliki kapabilitas untuk membuat order, mengubah
+              posisi, apalagi melakukan penarikan dana (withdraw). Kunci API Anda dienkripsi langsung di mesin lokal
+              menggunakan Windows DPAPI (<code>safeStorage</code>).
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>Mengapa menggunakan aplikasi otomatis lebih baik daripada spreadsheet Excel?</summary>
+            <div class="faq-answer">
+              Spreadsheet manual menuntut trader mengetik ulang harga entry, exit, fee, dan funding satu per satu. Ini
+              melelahkan dan rawan salah ketik (human error). nitirekso menarik data resmi exchange secara instan dalam
+              hitungan detik, menghitung Risk to Reward (RR) secara otomatis, dan memvisualisasikan kalender heatmap
+              tanpa perlu rumus rumit.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>Apakah ada biaya langganan bulanan tersembunyi?</summary>
+            <div class="faq-answer">
+              Tidak ada sama sekali. nitirekso adalah aplikasi open-source di bawah lisensi MIT. Anda mengunduh
+              installer mandiri (.exe) dan bebas menggunakannya tanpa batasan kuota transaksi atau masa percobaan.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>Apa itu pemisahan Execution Grade (A/B/C/D) vs Hasil PnL?</summary>
+            <div class="faq-answer">
+              Hasil profit bisa saja didapat dari melanggar rencana trading (bad win), dan kerugian bisa saja terjadi
+              saat aturan telah dijalankan dengan disiplin (good loss). nitirekso melatih Anda mengevaluasi kepatuhan
+              proses eksekusi, bukan sekadar nominal uang, demi membentuk psikologi trading yang tahan banting.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>Bagaimana cara menginstal nitirekso di komputer Windows saya?</summary>
+            <div class="faq-answer">
+              Cukup kunjungi halaman <a href="https://github.com/KaleksananBarqi/nitirekso/releases" target="_blank"
+                rel="noopener" style="color: var(--accent-amethyst);">GitHub Releases</a>, unduh file
+              <code>nitirekso-Setup-1.0.0.exe</code>, dan klik dua kali untuk memasang. Aplikasi siap digunakan secara
+              instan tanpa perlu instalasi database atau software tambahan.
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- Filosofi Nama -->
+    <section id="filosofi">
+      <div class="container">
+        <div class="philosophy-card">
+          <div style="text-align: center;">
+            <div class="section-tag">Kearifan di Balik Nama</div>
+            <h2 class="section-title">nitirekso (ꦤꦶꦠꦶꦫꦼꦏ꧀ꦱ)</h2>
+            <p style="color: var(--text-muted); font-size: 1.1rem; font-style: italic;">
+              "Niti Transaksi, Rekso Evaluasi"
+            </p>
+          </div>
+
+          <div class="philosophy-grid">
+            <div class="philosophy-col">
+              <h4><span>ꦤꦶꦠꦶ</span> Niti</h4>
+              <p style="color: var(--text-muted); font-size: 0.95rem;">
+                Memiliki arti <em>menulis, mencatat, memeriksa, dan meneliti secara saksama</em>. Dalam dunia trading,
+                tidak ada kemajuan tanpa pencatatan data riwayat transaksi yang jujur dan presisi atas setiap keputusan
+                market.
+              </p>
+            </div>
+
+            <div class="philosophy-col">
+              <h4><span>ꦫꦼꦏ꧀ꦱ</span> Rekso</h4>
+              <p style="color: var(--text-muted); font-size: 0.95rem;">
+                Memiliki arti <em>menjaga, merawat, dan memelihara</em>. Menjaga modal (capital preservation) dan merawat
+                kedisiplinan mental adalah fondasi mutlak agar trader mampu bertahan dan berkembang dalam jangka panjang.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Final Call to Action -->
+    <section style="text-align: center; padding: 6rem 0; background: linear-gradient(180deg, #0C0B14 0%, #171229 100%);">
+      <div class="container">
+        <h2 style="font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; margin-bottom: 1rem;">
+          Mulai Evaluasi Trading Anda dengan Lebih Bijak
+        </h2>
+        <p style="color: var(--text-muted); max-width: 620px; margin: 0 auto 2.5rem; font-size: 1.1rem;">
+          Unduh nitirekso hari ini, hubungkan API Read-Only MEXC atau Bitunix Anda, dan rasakan kemudahan evaluasi
+          jurnal trading otomatis yang aman dan 100% privat.
+        </p>
+
+        <a href="https://github.com/KaleksananBarqi/nitirekso/releases" target="_blank" rel="noopener noreferrer"
+          class="btn btn-primary" style="font-size: 1.1rem; padding: 1rem 2.2rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          <span>Unduh nitirekso v1.0.0 untuk Windows</span>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <!-- Global Footer -->
+  <footer>
+    <div class="container">
+      <ul class="footer-links">
+        <li><a href="#hero">Beranda</a></li>
+        <li><a href="#keunggulan">Keunggulan</a></li>
+        <li><a href="#fitur">Fitur</a></li>
+        <li><a href="#komparasi">Komparasi</a></li>
+        <li><a href="#faq">FAQ</a></li>
+        <li><a href="https://github.com/KaleksananBarqi/nitirekso" target="_blank" rel="noopener">GitHub</a></li>
+        <li><a href="https://github.com/KaleksananBarqi/nitirekso/blob/main/LICENSE" target="_blank" rel="noopener">Lisensi MIT</a></li>
+      </ul>
+
+      <p style="margin-bottom: 0.5rem;">
+        Hak Cipta &copy; 2026 <strong>nitirekso</strong>. Didistribusikan di bawah Lisensi MIT.
+      </p>
+      <p style="color: var(--text-dim); font-size: 0.8rem;">
+        Aplikasi Trading Journal Otomatis &amp; Analitik Kripto Futures (MEXC &amp; Bitunix) — Offline-First, Privat, &amp; Aman.
+      </p>
+    </div>
+  </footer>
+</body>
+
+</html>

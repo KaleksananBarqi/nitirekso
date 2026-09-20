@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
-import { existsSync, mkdirSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { runMigrations, type MigrationResult } from './migrate'
 
@@ -20,6 +20,30 @@ export function getDataDir(): string {
     if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true })
     }
+
+    // Migrasi data mundur: jika database lama ada di "Aplikasi Trading Journal Otomatis" atau "Nitirekso"
+    // dan direktori baru belum punya file database, salin otomatis agar riwayat trader aman.
+    try {
+        const appDataRoot = app.getPath('appData')
+        const candidates = [
+            join(appDataRoot, 'Aplikasi Trading Journal Otomatis', 'data', 'trading-journal.sqlite'),
+            join(appDataRoot, 'Nitirekso', 'data', 'trading-journal.sqlite')
+        ]
+        const newDbPath = join(dir, 'trading-journal.sqlite')
+        if (!existsSync(newDbPath)) {
+            for (const oldDbPath of candidates) {
+                if (existsSync(oldDbPath)) {
+                    copyFileSync(oldDbPath, newDbPath)
+                    if (existsSync(oldDbPath + '-wal')) copyFileSync(oldDbPath + '-wal', newDbPath + '-wal')
+                    if (existsSync(oldDbPath + '-shm')) copyFileSync(oldDbPath + '-shm', newDbPath + '-shm')
+                    break
+                }
+            }
+        }
+    } catch {
+        // Abaikan jika folder lama tidak ada / tidak dapat diakses
+    }
+
     return dir
 }
 

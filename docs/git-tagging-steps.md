@@ -8,7 +8,7 @@ File ini menjelaskan langkah‑per‑langkah cara menyiapkan versi baru proyek A
 
 - Pastikan **Git** ter‑install dan Anda sudah berada di dalam direktori proyek:
   ```bash
-  cd c:/Projek/Aplikasi-Trading-Journal-Otomatis
+  cd c:/Projek/nitirekso  # atau path folder proyek Anda
   ```
 - Pastikan remote `origin` sudah ter‑hubung ke repositori di GitHub:
   ```bash

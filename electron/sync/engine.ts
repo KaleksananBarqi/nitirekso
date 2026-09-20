@@ -12,6 +12,7 @@ import {
     type UpsertResult
 } from '../db/repositories/sync'
 import { upsertBalances } from '../db/repositories/balance'
+import { logger } from '../utils/logger'
 
 
 /**
@@ -164,7 +165,7 @@ export async function syncExchange(
         })
     } catch (error) {
         partialError = `Fills gagal: ${error instanceof Error ? error.message : String(error)}`
-        console.warn(`[sync:${exchange}]`, partialError)
+        logger.warn(`[sync:${exchange}] ${partialError}`)
     }
 
     // --- Tahap 3: funding ----------------------------------------------------
@@ -178,7 +179,7 @@ export async function syncExchange(
     } catch (error) {
         const message = `Funding gagal: ${error instanceof Error ? error.message : String(error)}`
         partialError = partialError ? `${partialError}; ${message}` : message
-        console.warn(`[sync:${exchange}]`, message)
+        logger.warn(`[sync:${exchange}] ${message}`)
     }
 
     // --- Tahap 4: rekonsiliasi ------------------------------------------------
@@ -197,12 +198,12 @@ export async function syncExchange(
         report({ stage: 'reconcile', message: 'Menautkan fill ke posisi…' })
         const linkResult = linkFillsToTrades(db, exchange)
         if (linkResult.linked > 0) {
-            console.log(`[sync:${exchange}] ${linkResult.linked} fill ditautkan ke posisi`)
+            logger.info(`[sync:${exchange}] ${linkResult.linked} fill ditautkan ke posisi`)
         }
     } catch (error) {
         const message = `Rekonsiliasi gagal: ${error instanceof Error ? error.message : String(error)}`
         partialError = partialError ? `${partialError}; ${message}` : message
-        console.warn(`[sync:${exchange}]`, message)
+        logger.warn(`[sync:${exchange}] ${message}`)
     }
 
     // --- Tahap 5: Saldo akun (ekstensi) --------------------------------------
@@ -211,7 +212,7 @@ export async function syncExchange(
             const balances = await adapter.fetchBalances({ signal: options.signal })
             upsertBalances(db, balances)
         } catch (error) {
-            console.warn(`[sync:${exchange}] Saldo gagal diperbarui:`, error)
+            logger.warn(`[sync:${exchange}] Saldo gagal diperbarui:`, error)
         }
     }
 

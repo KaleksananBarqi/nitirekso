@@ -170,7 +170,7 @@ interface RelatedData {
     tags: Map<number, TradeTag[]>
 }
 
-function loadRelated(db: Database.Database, tradeIds: number[]): RelatedData {
+function loadRelated(db: Database.Database, tradeIds: number[], lightweight = false): RelatedData {
     const journals = new Map<number, TradeJournal>()
     const risks = new Map<number, PlannedRisk>()
     const checklists = new Map<number, ChecklistItem[]>()
@@ -180,9 +180,11 @@ function loadRelated(db: Database.Database, tradeIds: number[]): RelatedData {
 
     const list = placeholders(tradeIds.length)
 
-    const journalRows = db
-        .prepare(`SELECT * FROM trade_journal WHERE trade_id IN (${list})`)
-        .all(...tradeIds) as JournalRow[]
+    const journalSql = lightweight
+        ? `SELECT trade_id, setup_tag, execution_grade, updated_at, NULL as pre_trade_thesis, NULL as post_trade_review, NULL as emotion_tag, NULL as screenshot_path FROM trade_journal WHERE trade_id IN (${list})`
+        : `SELECT * FROM trade_journal WHERE trade_id IN (${list})`
+
+    const journalRows = db.prepare(journalSql).all(...tradeIds) as JournalRow[]
     for (const row of journalRows) journals.set(row.trade_id, mapJournal(row))
 
     const riskRows = db
@@ -190,18 +192,20 @@ function loadRelated(db: Database.Database, tradeIds: number[]): RelatedData {
         .all(...tradeIds) as PlannedRiskRow[]
     for (const row of riskRows) risks.set(row.trade_id, mapPlannedRisk(row))
 
-    const checklistRows = db
-        .prepare(
-            `SELECT * FROM journal_checklist WHERE trade_id IN (${list}) ORDER BY trade_id, sort_order, id`
-        )
-        .all(...tradeIds) as ChecklistRow[]
-    for (const row of checklistRows) {
-        const existing = checklists.get(row.trade_id)
-        const item = mapChecklist(row)
-        if (existing) {
-            existing.push(item)
-        } else {
-            checklists.set(row.trade_id, [item])
+    if (!lightweight) {
+        const checklistRows = db
+            .prepare(
+                `SELECT * FROM journal_checklist WHERE trade_id IN (${list}) ORDER BY trade_id, sort_order, id`
+            )
+            .all(...tradeIds) as ChecklistRow[]
+        for (const row of checklistRows) {
+            const existing = checklists.get(row.trade_id)
+            const item = mapChecklist(row)
+            if (existing) {
+                existing.push(item)
+            } else {
+                checklists.set(row.trade_id, [item])
+            }
         }
     }
 
@@ -311,7 +315,8 @@ export function listTrades(db: Database.Database, filter: TradeFilter = {}): Tra
     const trades = rows.map(mapTrade)
     const related = loadRelated(
         db,
-        trades.map((t) => t.id)
+        trades.map((t) => t.id),
+        true // [PERFORMANCE] Gunakan mode lightweight (tanpa text besar & checklist)
     )
     return trades.map((trade) => assembleDetail(trade, related))
 }

@@ -71,7 +71,7 @@ function buildAdapters(): { adapters: ExchangeAdapter[]; skipped: SupportedExcha
     if (bitunixCreds) {
         adapters.push(
             new BitunixAdapter(bitunixCreds, {
-                onDebug: (message) => console.log(message)
+                onDebug: (message) => logger.info(`[Bitunix] ${message}`)
             })
         )
     } else {
@@ -91,7 +91,7 @@ export function registerSyncHandlers(getWindow: () => BrowserWindow | null): voi
             const secureAvailable = isSecureStorageAvailable()
 
             if (!secureAvailable) {
-                console.warn('[ipc:sync] safeStorage tidak tersedia di sistem ini')
+                logger.warn('[ipc:sync] safeStorage tidak tersedia di sistem ini')
             }
 
             return {
@@ -125,12 +125,12 @@ export function registerSyncHandlers(getWindow: () => BrowserWindow | null): voi
 
                 // PENTING: jangan pernah mencatat payload di log. Log yang mencatat
                 // kredensial adalah kebocoran yang sama buruknya dengan plaintext.
-                console.log(`[ipc:sync] kredensial ${payload.exchange} tersimpan (nilai tidak dicatat)`)
+                logger.info(`[ipc:sync] kredensial ${payload.exchange} tersimpan (nilai aman tidak dicatat)`)
 
                 return { ok: true }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
-                console.error('[ipc:sync] gagal menyimpan kredensial:', message)
+                logger.error('[ipc:sync] gagal menyimpan kredensial:', message)
                 return { ok: false, error: message }
             }
         }
@@ -140,11 +140,15 @@ export function registerSyncHandlers(getWindow: () => BrowserWindow | null): voi
         IPC_CHANNELS.credentialDelete,
         (_event, exchange: SyncableExchange): MutationResult<void> => {
             try {
+                if (exchange !== 'mexc' && exchange !== 'bitunix') {
+                    throw new Error(`Exchange tidak valid: ${String(exchange)}`)
+                }
                 deleteCredentials(exchange)
-                console.log(`[ipc:sync] kredensial ${exchange} dihapus`)
+                logger.info(`[ipc:sync] kredensial ${exchange} dihapus`)
                 return { ok: true }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
+                logger.error(`[ipc:sync] gagal menghapus kredensial ${exchange}:`, message)
                 return { ok: false, error: message }
             }
         }

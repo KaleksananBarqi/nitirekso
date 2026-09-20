@@ -1,0 +1,5 @@
+# robots.txt untuk nitirekso (GitHub Pages)
+User-agent: *
+Allow: /
+
+Sitemap: https://kaleksananbarqi.github.io/nitirekso/sitemap.xml

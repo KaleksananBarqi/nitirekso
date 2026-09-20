@@ -1,287 +1,200 @@
-# Aplikasi Trading Journal Otomatis
+# nitirekso (ꦤꦶꦠꦶꦫꦼꦏ꧀ꦱ) — Aplikasi Trading Journal Otomatis & Analitik Kripto Futures
 
-Aplikasi desktop lokal (single user) untuk menarik histori futures secara **read-only** dari
-**MEXC** dan **Bitunix**, menyimpannya di SQLite lokal, lalu menyajikan analitik trading dan
-jurnal manual.
+[![Website](https://img.shields.io/badge/Website-Landing%20Page-9333ea?style=flat-square)](https://kaleksananbarqi.github.io/nitirekso/)
+[![Platform](https://img.shields.io/badge/Platform-Electron%20%7C%20Windows%20Desktop-7928ca?style=flat-square)](https://github.com/KaleksananBarqi/nitirekso)
+[![React](https://img.shields.io/badge/Frontend-React%2019%20%2B%20Tailwind%20v4-blue?style=flat-square)](https://react.dev/)
+[![Database](https://img.shields.io/badge/Database-SQLite%20(Local%20WAL)-10b981?style=flat-square)](https://sqlite.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-f59e0b.svg?style=flat-square)](LICENSE)
+[![Tests](https://img.shields.io/badge/Verifikasi-349%2F349%20Passed-emerald?style=flat-square)](plans/SESSION.md)
 
-Bukan web app, bukan SaaS, bukan trading bot. **Tidak ada kemampuan eksekusi order.**
-
----
-
-## Ringkasan Cepat
-
-| Aspek | Nilai |
-|---|---|
-| Versi | 1.2.0 |
-| Platform | Electron + React 19 + TypeScript + Vite 7 |
-| Database | SQLite lokal (`better-sqlite3`, prebuilt N-API) |
-| Styling | Tailwind v4 (plugin Vite, bukan PostCSS) |
-| Chart | `lightweight-charts` v5 (equity/drawdown) + SVG sendiri (heatmap, histogram, scatter) |
-| Exchange | MEXC via `ccxt` (certified) · Bitunix via REST resmi (manual) |
-| AI | OpenAI-compatible Chat Completions API (fitur opsional) |
-| Backup | Google Drive via OAuth 2.0 PKCE (satu arah) |
-| Ekspor | CSV (UTF-8 BOM), JSON, PDF (Chromium offscreen) |
-| Kredensial | `safeStorage` bawaan Electron — DPAPI / Keychain / libsecret |
-| Installer | `electron-builder` → NSIS `.exe` |
+> **"Niti Transaksi, Rekso Evaluasi"**
+> 
+> *Aplikasi Trading Journal Otomatis, Offline-First, dan 100% Privat untuk Evaluasi Disiplin Trading Kripto Futures (MEXC & Bitunix).*
 
 ---
 
-## Menjalankan
+## 📖 Filosofi Nama: nitirekso
+
+Nama **nitirekso** berakar dari kearifan bahasa Jawa:
+* **Niti (ꦤꦶꦠꦶ)**: Memiliki arti *menulis, mencatat, memeriksa, dan meneliti secara saksama*. Dalam trading, tidak ada perbaikan tanpa pencatatan data yang jujur dan presisi atas setiap eksekusi.
+* **Rekso (ꦫꦼꦏ꧀ꦱ)**: Memiliki arti *menjaga, merawat, dan memelihara*. Dalam trading, menjaga modal (*capital preservation*) dan merawat kedisiplinan mental adalah kunci bertahan dalam jangka panjang.
+
+**nitirekso** hadir untuk membantu trader mencatat histori transaksi tanpa repot mengetik ulang (*read-only sync*), mengevaluasi kualitas eksekusi secara objektif, serta merawat psikologi dari bahaya *revenge trading* dan FOMO di semua kondisi market.
+
+---
+
+## 🖼️ Tangkapan Layar (Preview Aplikasi)
+
+> *Tangkapan layar resolusi tinggi dapat diletakkan di folder `docs/assets/screenshots/`.*
+
+| Dashboard & Saldo Real-Time | Trade Log & Filter Mendalam |
+|:---:|:---:|
+| ![Dashboard nitirekso](docs/assets/screenshots/dashboard.png) | ![Trade Log nitirekso](docs/assets/screenshots/trade-log.png) |
+
+| Analitik Kinerja & Kalender Heatmap | Jurnal Manual & Catatan Emosi |
+|:---:|:---:|
+| ![Analytics nitirekso](docs/assets/screenshots/analytics.png) | ![Journal Entry nitirekso](docs/assets/screenshots/journal-entry.png) |
+
+---
+
+## 🚀 Mengapa Memilih nitirekso? (Keunggulan Utama)
+
+1. **100% Privat & Offline-First (Local Database)**  
+   Data jurnal finansial dan trading Anda tersimpan di mesin lokal dalam database SQLite terenkripsi. Tidak ada database server pihak ketiga, tidak ada cloud telemetry, dan tidak ada pelacak analytics yang membaca portofolio Anda.
+2. **Koneksi API Read-Only Tanpa Risiko**  
+   Hanya memerlukan izin baca (*read-only*). Aplikasi tidak memiliki kapabilitas mengeksekusi order, membatalkan order, ataupun melakukan penarikan dana (*withdrawal*). Kredensial diamankan menggunakan `safeStorage` bawaan sistem operasi (Windows DPAPI).
+3. **Eksekusi vs Hasil (Execution Grade A/B/C/D)**  
+   nitirekso memisahkan *grade eksekusi* dari *profit/loss*. Eksekusi sesuai rencana trading bisa saja berakhir rugi (*good loss*); sebaliknya, melanggar aturan bisa saja menghasilkan cuan beruntung (*bad win*). nitirekso melatih Anda mengevaluasi proses, bukan sekadar hasil.
+4. **Generator Kartu Pamer PnL Estetik (Canvas Native)**  
+   Buat kartu pamer performa berkualitas tinggi (Retina 2x) dalam 5 pilihan tema visual (*Cyberpunk Neon, Obsidian Gold, Emerald Mint, Sunset Synth, Minimal Dark*) dan 3 aspek rasio (`1:1`, `9:16`, `16:9`) untuk media sosial.
+5. **Wawasan Pola Trading Berbasis AI**  
+   Integrasi opsional dengan model AI (kompatibel OpenAI Chat Completions) untuk mendeteksi kelemahan psikologis, kebocoran modal, dan saran perbaikan dari catatan jurnal Anda.
+
+---
+
+## 📊 Rangkuman Fitur Lengkap
+
+### 1. Sinkronisasi Otomatis & Saldo Akun (MEXC & Bitunix)
+- **MEXC Futures**: Penarikan posisi tertutup, histori fills, funding fee, dan saldo ekuitas akun real-time via CCXT certified engine.
+- **Bitunix Futures**: Integrasi REST resmi untuk posisi tertutup, order historis, dan saldo margin futures.
+- **Idempotent Engine**: Sinkronisasi berulang aman 100%, tidak menciptakan entri duplikat.
+- **Widget Saldo Live**: Menampilkan Total Equity, Free Margin, Floating PnL, dan rincian saldo per exchange langsung di Dashboard.
+
+### 2. Jurnal Transaksi & Evaluasi Psikologi
+- Catatan tesis pre-trade dan review post-trade.
+- Sistem tagging fleksibel multi-nilai (misal: `#Breakout`, `#FOMO`, `#NewsTrade`).
+- Pelacak emosi trader sebelum dan sesudah eksekusi.
+- Checklist disiplin SOP trading.
+- Lampiran screenshot chart (disimpan secara lokal dan aman dari path traversal).
+- Perhitungan otomatis Risk-to-Reward Rencana (`plannedRr`) dari Entry, Stop Loss, dan Take Profit.
+
+### 3. Analitik Trading & Visualisasi Data
+- **Equity & Drawdown Curve**: Memakai `lightweight-charts` v5 yang responsif dan interaktif.
+- **Heatmap Kalender PnL**: Mengetahui hari paling menguntungkan dan hari rawan rugi.
+- **Metrik Utama Finansial**: Net PnL, Win Rate %, Profit Factor, Expectancy, Average Win/Loss Ratio.
+- **Histogram Distribusi R-Multiple**: Memetakan rasio risiko-imbalan aktual dari setiap trade yang ditutup.
+- **Filter Global Lintas Halaman**: Filter berdasarkan exchange, simbol koin, setup tag, tanggal, dan rentang PnL.
+
+### 4. Ekspor & Backup Mandiri
+- **Ekspor Jurnal**: Format **CSV** (UTF-8 BOM siap Excel), **JSON**, dan cetak dokumen **PDF** beresolusi tinggi via offscreen Chromium renderer.
+- **Backup Google Drive Dual-Mode**:
+  - *Mode 1 (Folder Lokal)*: 1-Klik sinkron ke folder Google Drive desktop tanpa ribet setup API.
+  - *Mode 2 (OAuth PKCE Direct)*: Sinkronisasi cadangan langsung ke cloud via OAuth aman.
+
+---
+
+## 🛠️ Panduan Menjalankan & Pengembangan
+
+### Prasyarat
+- Node.js versi 18+ (LTS disarankan)
+- NPM versi 9+
+
+> **Bebas Kompilasi C++:** Proyek ini **tidak membutuhkan Visual Studio C++ Build Tools**. Modul `better-sqlite3@13` menggunakan prebuilt **N-API** binary yang kompatibel dengan Electron.
+
+### Langkah Instalasi
+```bash
+# Clone repository
+git clone https://github.com/KaleksananBarqi/nitirekso.git
+cd nitirekso
+
+# Pasang dependensi
+npm install
+
+# Buka aplikasi dalam mode development
+npm run dev
+```
+
+### Membuat Installer Desktop (.exe)
+```bash
+# Menghasilkan installer mandiri di folder release/
+npm run dist
+```
+Hasil installer berformat `release/nitirekso-Setup-<versi>.exe` yang dapat langsung dipasang tanpa perlu terminal, Docker, atau database server eksternal.
+
+---
+
+## 🧪 Rangkaian Uji & Verifikasi Otomatis
+
+nitirekso dilengkapi **349 pengujian otomatis** untuk menjamin kestabilan mutlak data finansial:
 
 ```bash
-npm install          # tidak ada compile native — lihat catatan di bawah
-npm run dev          # buka aplikasi dalam mode development
+npm run verify              # Rangkaian lengkap (Typecheck + Semua Fase)
+npm run verify:fase1        # 45 checks — Database SQLite & isolasi jurnal manual
+npm run verify:fase2        # 66 checks — Mapper MEXC & idempotensi sinkronisasi
+npm run verify:fase3        # 63 checks — Request signing Bitunix & isolasi multi-exchange
+npm run verify:metrics      # 93 checks — Kalkulasi metrik trading terverifikasi
+npm run verify:packaged     # 31 checks — Integritas installer & native addons
+npm run verify:acceptance   # 51 checks — Kriteria penerimaan acceptance criteria
 ```
 
-### Membuat installer
+---
 
-```bash
-npm run dist         # menghasilkan release/TradingJournal-Setup-<versi>.exe
+## 🔒 Standar Keamanan & Privasi
+
+- **Penyimpanan Kredensial**: Menggunakan modul `safeStorage` bawaan Electron yang memanfaatkan enkripsi tingkat OS (Windows DPAPI). Kredensial API tidak pernah disimpan dalam bentuk plaintext.
+- **Alur Data Satu Arah**: Kredensial hanya mengalir dari Renderer ke Main Process. Tampilan UI tidak pernah dapat membaca kembali kunci API rahasia Anda.
+- **Content Security Policy (CSP)**: `connect-src 'none'` pada renderer memastikan tidak ada skrip jahat yang dapat membocorkan data trading Anda ke internet.
+- **Mode Sembunyikan PnL (Hide P&L)**: Satu klik tombol mata untuk menyembunyikan nominal dolar saat Anda ingin berbagi layar (*screen sharing*) atau merekam video.
+
+---
+
+## 📁 Struktur Direktori
+
+```text
+nitirekso/
+├── build/                 # Resource icon aplikasi & installer (.ico, .png)
+├── electron/              # Main Process Electron (Node.js runtime)
+│   ├── ai/                # Integrasi OpenAI API untuk evaluasi trading
+│   ├── backup/            # Mesin backup lokal & Google Drive
+│   ├── credentials/       # Pengelolaan kredensial via OS safeStorage
+│   ├── db/                # Koneksi SQLite, skema, dan migrasi database
+│   ├── exchanges/         # Adapter API exchange (MEXC & Bitunix)
+│   ├── ipc/               # Komunikasi antar-proses IPC bertipe aman
+│   ├── screenshots/       # Pengelolaan file gambar screenshot lokal
+│   └── sync/              # Mesin sinkronisasi data riwayat transaksi
+├── src/                   # Renderer Process (React 19 + Tailwind CSS v4)
+│   ├── assets/            # Logo SVG & Favicon resmi nitirekso
+│   ├── components/        # Komponen UI, modal pamer PnL, dan visualisasi chart
+│   ├── hooks/             # Custom hooks (useTheme, useTrades, useHidePnl)
+│   ├── routes/            # Halaman Dashboard, TradeLog, Journal, Analytics, Settings
+│   └── styles/            # Token CSS HSL (Royal Amethyst & Deep Obsidian)
+├── shared/                # Kontrak tipe domain & antarmuka data
+├── docs/                  # Panduan tagging Git & dokumentasi
+└── plans/                 # Rencana arsitektur, data model, dan log fase proyek
 ```
 
-Installer bisa diklik dua kali — tidak perlu command line, Docker, atau database server.
+---
 
-> **Catatan penting soal `npm install`:** proyek ini **tidak memerlukan Visual Studio C++ build
-> tools**. `better-sqlite3@13` mengirim prebuilt **N-API** binary yang ABI-stabil, sehingga tidak
-> perlu di-rebuild per versi Electron. Karena itu `electron-builder.yml` menyetel `npmRebuild: false`.
-> Kalau membuat dari nol, npm 11 memblokir install script secara default — jalankan
-> `npm approve-scripts better-sqlite3 esbuild` (per paket, bukan `--all`).
+## ❓ Tanya Jawab Umum (FAQ)
+
+### 1. Apakah menghubungkan API MEXC dan Bitunix ke nitirekso aman?
+**Sangat aman.** nitirekso hanya meminta izin *Read-Only* (hanya baca) untuk menyinkronkan data riwayat posisi tertutup, funding fee, dan saldo ekuitas. Aplikasi tidak memiliki kapabilitas untuk membuat order, mengubah posisi, ataupun mengeksekusi penarikan dana (*withdrawal*). Kunci API Anda dienkripsi secara lokal di sistem operasi menggunakan Windows DPAPI (`safeStorage`).
+
+### 2. Mengapa memilih software jurnal otomatis offline dibanding Google Sheets atau Excel?
+Spreadsheet manual menuntut trader mengetik ulang harga entry, exit, komisi, dan funding fee satu per satu setelah sesi trading yang melelahkan. Hal ini rawan salah ketik (*human error*) dan sering ditinggalkan setelah beberapa hari. nitirekso menarik data resmi exchange secara instan dalam 1 klik, menghitung Risk to Reward (RR) secara otomatis, dan memvisualisasikan kalender heatmap tanpa perlu rumus Excel rumit.
+
+### 3. Apakah nitirekso menyimpan data histori trading saya di cloud?
+**Tidak.** nitirekso mengusung arsitektur *100% Offline-First*. Seluruh database SQLite tersimpan secara lokal di komputer Anda (`%APPDATA%/nitirekso`). Tidak ada server cloud perantara, tidak ada pelacak analytics, dan tidak ada pihak ketiga yang dapat mengintip portofolio Anda.
+
+### 4. Apa arti pemisahan Execution Grade (A/B/C/D) dengan hasil PnL?
+Dalam trading kripto futures, profit bisa saja terjadi akibat melanggar rencana trading (*bad win* / faktor hoki), sementara kerugian wajar bisa terjadi meskipun SOP telah dipatuhi (*good loss*). nitirekso melatih Anda menilai kepatuhan terhadap proses eksekusi, bukan sekadar nominal dolar, demi menjaga psikologi trading yang tahan banting.
+
+### 5. Di mana saya bisa mengunduh installer nitirekso?
+Anda dapat mengunduh installer mandiri `.exe` versi terbaru langsung dari halaman [GitHub Releases](https://github.com/KaleksananBarqi/nitirekso/releases) atau mengunjungi [Landing Page Resmi](https://kaleksananbarqi.github.io/nitirekso/).
 
 ---
 
-## Verifikasi
+## 🌐 Repositori Resmi
 
-Proyek ini punya 349 pemeriksaan otomatis. Semuanya bisa dijalankan ulang:
-
-```bash
-npm run verify              # seluruh rangkaian (typecheck + semua fase)
-npm run verify:fase1        # 45 pemeriksaan — skema, CRUD, isolasi jurnal
-npm run verify:fase2        # 66 pemeriksaan — mapper MEXC, idempotensi sync
-npm run verify:fase3        # 63 pemeriksaan — signing Bitunix, dua exchange berdampingan
-npm run verify:metrics      # 93 pemeriksaan — metrik dengan nilai dihitung tangan
-npm run verify:packaged     # 31 pemeriksaan — isi installer & native addon
-npm run verify:acceptance   # 51 pemeriksaan — 7 acceptance criteria brief §11
-npm run smoke               # native addon di dalam Electron
-```
-
-Hasil terakhir: **semua lulus**. Lihat [`plans/SESSION.md`](plans/SESSION.md:1) untuk status per fase.
+Repositori resmi proyek telah disinkronkan ke:
+* **GitHub**: [https://github.com/KaleksananBarqi/nitirekso](https://github.com/KaleksananBarqi/nitirekso)
+* **Remote Git**:
+  ```bash
+  git remote set-url origin https://github.com/KaleksananBarqi/nitirekso.git
+  ```
 
 ---
 
-## Fitur
+## 📜 Lisensi
 
-### Sinkronisasi Saldo & Riwayat (read-only)
-- **MEXC** — posisi tertutup, fills, funding fee, dan **saldo akun futures real-time** via CCXT swap balance. Backfill penuh saat sync pertama, incremental setelahnya.
-- **Bitunix** — posisi tertutup, order historis, dan **saldo akun futures real-time** via REST `/api/v1/futures/account`. Funding fee **tidak tersedia** (lihat Keterbatasan).
-- **Widget Saldo di Dashboard** — menampilkan Total Ekuitas Akun, Free Margin, Floating PnL, chip rincian per exchange, serta tombol perbarui saldo instan.
-- Idempotent: sync berulang **tidak** menciptakan duplikat.
-- Tombol Sync Now tersedia di sidebar (dari halaman mana pun) dan di Settings.
-- Auto-sync **default OFF** — tidak pernah memanggil API tanpa Anda minta.
-
-### Jurnal manual
-- `setup_tag`, tesis pre-trade, review post-trade, tag emosi, checklist aturan, screenshot path.
-- **`execution_grade` (A/B/C/D) terpisah dari profit/loss.** Eksekusi bagus bisa rugi; eksekusi
-  buruk bisa untung. Menggabungkannya akan membuat Anda salah belajar dari data sendiri.
-- Jurnal **tidak pernah** disentuh sync engine — catatan subjektif Anda aman dari tertimpa.
-
-### Generator Kartu Pamer PnL + Tesis Tiap Trade
-- Buat kartu pamer performa estetik beresolusi tinggi (Retina 2x) berbasis HTML5 Canvas native.
-- **5 Pilihan Tema Visual**: *Cyberpunk Neon*, *Obsidian Gold*, *Emerald Mint*, *Sunset Synth*, dan *Minimal Dark*.
-- **3 Aspek Rasio**: `1:1` (Square untuk Instagram/Telegram Feed), `9:16` (Story/TikTok/Reels), dan `16:9` (Twitter/X Header).
-- **Tesis & Review Live**: Catatan tesis pre-trade dan review post-trade otomatis diambil dan dapat disunting langsung di preview modal.
-- **Logo Exchange Opsional**: Bisa memasang logo MEXC, Bitunix, Binance, Bybit, atau mode polos tanpa logo.
-- **Ekspor 1-Klik**: Salin gambar langsung ke clipboard (bisa langsung Ctrl+V di chat/medsos) atau unduh file PNG.
-- Tombol **✨ Pamer** tersedia langsung di tabel Trade Log, daftar Journal Entry, dan card Trade Terakhir di Dashboard.
-
-### Generator Kartu Pamer Full Analytics
-- Kartu visual komprehensif merangkum seluruh metrik kunci: Net PnL, Win Rate %, Visual Win/Loss Bar, Profit Factor, Expectancy, Total Trades, dan Max Drawdown.
-- **Mini Kurva Equity Glowing**: Visualisasi grafik pertumbuhan modal neon dengan area gradient.
-- **Mode Privasi**: Sembunyikan nominal dolar ($) untuk pamer rasio, win rate, dan ROI persentase tanpa mengekspos modal riil Anda.
-- Tombol pintas **📊 Pamer Analytics** disematkan di header halaman Dashboard dan Analytics.
-
-### Screenshot
-- Unggah screenshot langsung ke trade dari Trade Editor.
-- File disimpan di folder terkelola `userData/data/screenshots` dengan nama generik.
-- Validasi ekstensi (PNG/JPG/WebP/GIF) dan magic bytes — file bukan gambar ditolak.
-- Batas ukuran 4 MB. Path traversal dicegah: nama file generik, bukan input user.
-- Screenshot ikut ter-backup ke Google Drive saat backup dijalankan.
-
-### RR Rencana Otomatis
-- `plannedRr` dihitung otomatis dari entry, SL, dan TP saat Anda mengisi ketiganya.
-- Long: `reward = |target - entry|`, Short: `reward = |entry - target|`.
-- Jika SL kosong atau sama dengan entry, RR tetap `null` — bukan nol buatan.
-- RR Rencana ditampilkan terpisah dari R-Multiple Realisasi.
-
-### Tag Kustom Banyak Nilai
-- Satu trade bisa memiliki banyak tag bebas (mis. `BTC_Scalp`, `SalahEksekusi`).
-- `setup_tag` lama tetap dipertahankan untuk kompatibilitas data lama.
-- Autocomplete dari tag yang pernah dipakai.
-- Filter multi-tag memakai semantik **SEMUA tag harus ada** agar hasil lebih presisi.
-- Tag ditampilkan sebagai chip di daftar trade, detail jurnal, dan hasil ekspor.
-
-### Analitik
-- Equity curve, kurva drawdown (underwater), kalender heatmap harian.
-- Win rate, profit factor, expectancy sebagai headline metrics.
-- Histogram R-multiple, **dengan cakupan eksplisit** (berapa trade punya R valid).
-- Breakdown per setup, symbol, sesi, hari, grade, arah, exchange.
-- Scatter grade vs P&L — sengaja **tanpa** garis tren atau skor korelasi.
-- Filter global yang berlaku untuk semua chart sekaligus.
-
-### Ekspor Journal
-- **CSV** dengan UTF-8 BOM agar Excel membaca encoding dengan benar. Escaping RFC 4180.
-- **JSON** pretty-print 2 spasi, UTF-8.
-- **PDF** dirender dari HTML via Chromium offscreen `BrowserWindow.printToPDF()`.
-- File disimpan lewat `dialog.showSaveDialog()` — tidak ada penulisan diam-diam.
-- Filter aktif diterapkan ke hasil ekspor.
-
-### Backup Google Drive (Dual-Mode)
-- **Mode 1 (Folder Lokal Google Drive — Rekomendasi/1-Klik)**:
-  - Cukup pilih folder Google Drive di komputer Anda (misal `G:\My Drive\TradingBackup`).
-  - Snapshot JSON semua trade dan lampiran screenshot otomatis disalin ke folder tersebut, dan disinkronkan langsung ke cloud oleh aplikasi Google Drive for Desktop. **Tanpa perlu konfigurasi API key atau GCP Client ID sama sekali.**
-- **Mode 2 (Cloud OAuth Direct)**:
-  - Form input Google OAuth Client ID terintegrasi langsung di UI Settings tanpa perlu mengedit file `.env` manual.
-  - Alur login OAuth 2.0 PKCE dengan loopback redirect (`http://localhost:PORT`).
-  - Token disimpan aman via `safeStorage` OS.
-- Backup **satu arah**: aman dari risiko tertimpa data finansial.
-
-### Wawasan AI (opsional)
-- Analisa otomatis pola kelemahan dan saran perbaikan dari data journal.
-- Memakai OpenAI Chat Completions API (kompatibel dengan provider OpenAI-compatible).
-- API key disimpan via `safeStorage`. Model dan base URL dikonfigurasi di Settings.
-- Prompt terstruktur dalam Bahasa Indonesia, meminta output JSON stabil.
-- Hasil: ringkasan, pola kelemahan, saran perbaikan, dan metrik.
-- **Bukan nasihat keuangan.** Tidak ada saran order atau sinyal entry.
-
-### Tampilan
-- Dark mode default, dengan opsi light dan ikuti sistem.
-- **Mode colorblind-safe** — hijau/merah menjadi biru/oranye.
-- **Hide P&L** — sembunyikan semua angka P&L dengan satu toggle (privasi saat screen share).
-- Font monospace untuk angka dan tabel, sans-serif untuk teks naratif.
-
----
-
-## Keputusan Teknis yang Perlu Diketahui
-
-### 1. `ccxt` hanya untuk MEXC
-Bitunix tidak didukung ccxt (dari 104 exchange). Bitunix memakai implementasi manual ke REST resmi,
-sesuai brief §4.2 yang melarang library unofficial tidak terawat.
-
-### 2. Mapper MEXC membaca response MENTAH, bukan hasil normalisasi ccxt
-Diverifikasi langsung ke source ccxt 4.5.78. Ada tiga masalah pada normalisasi posisi **tertutup**:
-
-| Field | Masalah |
-|---|---|
-| `contracts` | ccxt membaca `holdVol`, yang bernilai `'0'` untuk posisi tertutup. Volume sebenarnya di `closeVol` |
-| `marginType` | ccxt membaca `margin_mode` yang **tidak ada** di response MEXC (namanya `openType`), sehingga selalu salah jadi `cross` |
-| `exitPrice` | tidak ada di struktur standar ccxt |
-
-ccxt tetap dipakai untuk yang sulit — HMAC signing, rate limiting, routing endpoint. Tapi **field
-data** dibaca dari `position.info`. Jangan "merapikan" ini tanpa memverifikasi ulang ke ccxt terbaru.
-
-### 3. Signing Bitunix BUKAN HMAC
-Brief menyebut "HMAC-SHA256 double-hash". Itu **keliru**. Yang benar adalah SHA256 berantai:
-
-```
-digest = SHA256(nonce + timestamp + apiKey + queryParams + body)
-sign   = SHA256(digest + secretKey)
-```
-
-Tidak ada HMAC sama sekali. Diverifikasi dari SDK resmi Bitunix dan dokumentasi resmi.
-
-### 4. `npmRebuild: false` di electron-builder
-Default-nya electron-builder menjalankan `@electron/rebuild`, yang **membuat packaging gagal total**
-tanpa Visual Studio. Rebuild itu tidak diperlukan karena prebuilt N-API sudah ABI-stabil.
-
-### 5. PDF tanpa dependency eksternal
-PDF dibuat dari HTML via `BrowserWindow.offscreen` + `printToPDF()` — Electron sudah punya Chromium,
-tidak perlu library PDF tambahan.
-
-### 6. Backup Google Drive: satu arah
-Tidak ada download/restore otomatis. Alasan: restore otomatis bisa menimpa data lokal tanpa
-konfirmasi user, yang berbahaya untuk data finansial.
-
----
-
-## Keterbatasan yang Diketahui
-
-| Keterbatasan | Sebab | Dampak |
-|---|---|---|
-| **Funding fee Bitunix = 0** | Bitunix tidak menyediakan endpoint riwayat biaya funding per akun. Yang ada hanya riwayat *rate* publik | Kolom funding fee trade Bitunix bernilai 0. Aplikasi **tidak mengira-ngira** dari rate, karena itu akan menghasilkan angka karangan |
-| **Nama field Bitunix belum tersempitkan** | Dokumentasi tidak menampilkan contoh response lengkap | Mapper membaca beberapa kandidat nama field. Setelah sync akun nyata, periksa `raw_payload` lalu sempitkan |
-| **Belum diuji di mesin bersih** | Butuh VM tanpa Node/Python | Installer terbentuk & isinya terverifikasi, tapi instalasi di mesin bersih belum dijalankan |
-| **Belum sync akun nyata** | Butuh API key read-only dari user | Idempotensi terbukti dengan data deterministik, bukan dengan API live |
-| **Tanpa code signing** | Build personal tanpa sertifikat | Windows SmartScreen akan menampilkan peringatan saat installer dibuka |
-| **AI hanya analisa teks** | Implementasi awal | Screenshot tidak dikirim sebagai input vision. Hanya data terstruktur dan teks jurnal |
-| **Google Drive Client ID perlu diset** | Tidak ada default hardcoded | Set `GDRIVE_CLIENT_ID` environment variable sebelum bisa menghubungkan Drive |
-
----
-
-## Keamanan
-
-- Kredensial disimpan lewat `safeStorage` — **tidak pernah** di file plaintext, database, atau `.env`.
-- Kredensial mengalir **satu arah**: renderer → main. Renderer tidak pernah menerimanya kembali;
-  yang dibaca hanya status + petunjuk kunci (mis. `a1b2…f9`).
-- API key AI dan token Google Drive juga disimpan via `safeStorage` — pola yang sama.
-- Kalau `safeStorage` tidak tersedia, penyimpanan **ditolak** — tidak ada fallback plaintext.
-- CSP melarang renderer menghubungi apa pun (`connect-src 'none'`). Tidak ada telemetry.
-- Semua panggilan network (exchange, OpenAI, Google Drive) dilakukan dari main process.
-- Screenshot divalidasi: ekstensi, magic bytes, batas ukuran, dan nama generik anti path traversal.
-
-### Membuat API key yang benar
-Saat mengisi API key di Settings, **hanya aktifkan izin baca**. Jangan aktifkan izin trading atau
-withdraw. Aplikasi tidak akan memanggil endpoint yang bisa membuat, mengubah, atau membatalkan order —
-sekalipun Anda memberinya izin tersebut.
-
----
-
-## Struktur Proyek
-
-```
-electron/            main process — akses Node penuh
-  main.ts            entry, window, single-instance lock
-  preload.ts         contextBridge — surface IPC sempit & bertipe
-  credentials/       safeStorage wrapper (exchange + AI + Google Drive)
-  db/                koneksi, migrasi, repositories
-  exchanges/         adapter per exchange (mexc/, bitunix/) + kontrak types.ts
-  sync/              sync engine — exchange-agnostic
-  ipc/               handlers
-  ai/                OpenAI-compatible API integration
-  backup/            Google Drive OAuth PKCE + backup engine
-  export/            CSV, JSON, PDF formatters
-  screenshots/       manajemen file screenshot lokal
-
-src/                 renderer — TANPA akses Node
-  routes/            Dashboard, TradeLog, JournalEntry, TradeEditor, Analytics, Settings, ErrorLog
-  components/        UI primitives + charts + AiInsightsPanel + BackupPanel
-  hooks/             useTheme, useHidePnl, useTrades
-  lib/analytics/     metrik & dimensi (fungsi murni, teruji)
-
-shared/              tipe & kontrak IPC (dipakai kedua sisi)
-
-plans/               dokumen perencanaan & keputusan
-scripts/             verifikasi & launcher
-```
-
-**Batas keras:** `src/` tidak boleh meng-import dari `electron/`. Semua lewat IPC di `preload.ts`.
-
----
-
-## Dokumentasi
-
-| Dokumen | Isi |
-|---|---|
-| [`plans/01-ARCHITECTURE.md`](plans/01-ARCHITECTURE.md:1) | Keputusan terkunci, struktur, kontrak adapter, batas sesi |
-| [`plans/02-DATA-MODEL.md`](plans/02-DATA-MODEL.md:1) | Skema SQLite, PRAGMA wajib, aturan migrasi |
-| [`plans/03-PHASES.md`](plans/03-PHASES.md:1) | Fase 0–5 dengan kriteria verifikasi & temuan |
-| [`plans/04-FEATURES.md`](plans/04-FEATURES.md:1) | Rencana implementasi enam fitur tambahan |
-| [`plans/05-FEATURES-PLAN.md`](plans/05-FEATURES-PLAN.md:1) | Detail langkah implementasi fitur |
-| [`plans/SESSION.md`](plans/SESSION.md:1) | Status per fase |
-| [`docs/git-tagging-steps.md`](docs/git-tagging-steps.md:1) | Langkah tagging rilis Git |
-
----
-
-## Lisensi
-
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-
-MIT License
+Didistribusikan di bawah lisensi **MIT License**. Hak cipta © 2026 **nitirekso**. Bebas digunakan dan dikembangkan untuk keperluan personal maupun edukasi trading.

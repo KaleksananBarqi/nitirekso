@@ -75,49 +75,49 @@
 }
 
 .dark {
-    /* --- Semantik dasar (mode gelap) ---
-     Default aplikasi. Latar gelap kontras tinggi untuk sesi panjang (brief §7). */
-    --background: hsl(222 47% 7%);
-    --foreground: hsl(210 40% 96%);
+    /* --- Semantik dasar nitirekso (mode gelap) ---
+     Tema Royal Amethyst & Deep Obsidian: kontras tinggi, elegan, nyaman untuk trading sesi panjang. */
+    --background: hsl(250 24% 6%);
+    --foreground: hsl(240 20% 98%);
 
-    --card: hsl(222 40% 10%);
-    --card-foreground: hsl(210 40% 96%);
+    --card: hsl(250 20% 11%);
+    --card-foreground: hsl(240 20% 98%);
 
-    --popover: hsl(222 40% 10%);
-    --popover-foreground: hsl(210 40% 96%);
+    --popover: hsl(250 20% 11%);
+    --popover-foreground: hsl(240 20% 98%);
 
-    --primary: hsl(217 91% 60%);
-    --primary-foreground: hsl(222 47% 11%);
+    --primary: hsl(268 85% 64%);
+    --primary-foreground: hsl(0 0% 100%);
 
-    --secondary: hsl(217 33% 17%);
-    --secondary-foreground: hsl(210 40% 96%);
+    --secondary: hsl(250 18% 16%);
+    --secondary-foreground: hsl(240 20% 96%);
 
-    --muted: hsl(217 33% 17%);
-    --muted-foreground: hsl(215 20% 65%);
+    --muted: hsl(250 18% 16%);
+    --muted-foreground: hsl(245 15% 65%);
 
-    --accent: hsl(217 33% 17%);
-    --accent-foreground: hsl(210 40% 96%);
+    --accent: hsl(250 18% 16%);
+    --accent-foreground: hsl(240 20% 96%);
 
-    --destructive: hsl(0 63% 45%);
-    --destructive-foreground: hsl(210 40% 98%);
+    --destructive: hsl(350 89% 60%);
+    --destructive-foreground: hsl(0 0% 100%);
 
-    --border: hsl(217 33% 20%);
-    --input: hsl(217 33% 22%);
-    --ring: hsl(217 91% 60%);
+    --border: hsl(250 14% 18%);
+    --input: hsl(250 14% 20%);
+    --ring: hsl(268 85% 64%);
 
     /* --- Warna trading (mode gelap) --- */
-    --profit: hsl(142 69% 45%);
-    --profit-foreground: hsl(222 47% 7%);
-    --loss: hsl(0 72% 58%);
-    --loss-foreground: hsl(222 47% 7%);
-    --flat: hsl(215 20% 65%);
+    --profit: hsl(152 69% 45%);
+    --profit-foreground: hsl(250 24% 6%);
+    --loss: hsl(350 89% 60%);
+    --loss-foreground: hsl(250 24% 6%);
+    --flat: hsl(245 15% 65%);
 
     /* --- Chart (mode gelap) --- */
-    --chart-1: hsl(217 91% 60%);
-    --chart-2: hsl(173 58% 45%);
-    --chart-3: hsl(27 87% 60%);
-    --chart-4: hsl(280 65% 65%);
-    --chart-5: hsl(340 75% 62%);
+    --chart-1: hsl(268 85% 64%);
+    --chart-2: hsl(152 69% 45%);
+    --chart-3: hsl(35 92% 58%);
+    --chart-4: hsl(200 90% 55%);
+    --chart-5: hsl(330 85% 60%);
 
     color-scheme: dark;
 }

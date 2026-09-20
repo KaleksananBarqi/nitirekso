@@ -164,7 +164,13 @@ const api: PreloadApi = {
         ipcRenderer.invoke(IPC_CHANNELS.logsOpenFolder),
 
     logError: (message: string, details?: unknown): Promise<void> =>
-        ipcRenderer.invoke(IPC_CHANNELS.logWrite, { message, details })
+        ipcRenderer.invoke(IPC_CHANNELS.logWrite, { message, details, level: 'ERROR' }),
+
+    logWarn: (message: string, details?: unknown): Promise<void> =>
+        ipcRenderer.invoke(IPC_CHANNELS.logWrite, { message, details, level: 'WARN' }),
+
+    logInfo: (message: string, details?: unknown): Promise<void> =>
+        ipcRenderer.invoke(IPC_CHANNELS.logWrite, { message, details, level: 'INFO' })
 }
 
 contextBridge.exposeInMainWorld('api', api)

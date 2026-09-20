@@ -36,11 +36,14 @@ export default function App(): React.JSX.Element {
     const { trades, meta, loading, error, reload } = useTrades()
     const { hidePnl, setHidePnl } = useHidePnl()
 
-    // Ambil path DB untuk ditampilkan di Settings & pasang listener error global.
+    // Ambil path DB, pasang listener error global, dan jalankan sinkron otomatis saat buka app.
     useEffect(() => {
         window.api
             .getAppHealth()
-            .then((health) => setDbPath(health.dbPath))
+            .then((health) => {
+                setDbPath(health.dbPath)
+                void window.api.logInfo(`[App] Aplikasi Trading Journal dibuka. DB: ${health.dbPath}`)
+            })
             .catch(() => setDbPath('tidak diketahui'))
 
         const handleGlobalError = (event: ErrorEvent) => {
@@ -53,11 +56,40 @@ export default function App(): React.JSX.Element {
         window.addEventListener('error', handleGlobalError)
         window.addEventListener('unhandledrejection', handleUnhandledRejection)
 
+        // --- Sinkron Otomatis Saat Pertama Kali Buka App ---
+        let isMounted = true
+        const triggerStartupSync = async () => {
+            try {
+                const statuses = await window.api.getCredentialStatuses()
+                const hasConfigured = statuses.some((s) => s.configured)
+                if (!hasConfigured) {
+                    void window.api.logInfo('[App] Melewati auto-sync startup: belum ada exchange yang dikonfigurasi.')
+                    return
+                }
+
+                void window.api.logInfo('[App] Memulai sinkronisasi otomatis saat pembukaan aplikasi...')
+                const res = await window.api.runSync()
+                if (isMounted) {
+                    if (res.ok) {
+                        void window.api.logInfo('[App] Sinkronisasi otomatis startup selesai dengan sukses.')
+                    } else {
+                        void window.api.logWarn(`[App] Sinkronisasi otomatis startup selesai dengan catatan: ${res.error ?? 'tidak diketahui'}`)
+                    }
+                    await reload()
+                }
+            } catch (err) {
+                void window.api.logWarn('[App] Gagal menjalankan sinkronisasi otomatis startup:', err)
+            }
+        }
+
+        void triggerStartupSync()
+
         return () => {
+            isMounted = false
             window.removeEventListener('error', handleGlobalError)
             window.removeEventListener('unhandledrejection', handleUnhandledRejection)
         }
-    }, [])
+    }, [reload])
 
     const isEditing = creating || editing !== null
 

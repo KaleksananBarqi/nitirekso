@@ -12,7 +12,7 @@ import { logger } from './utils/logger'
  * Belum ada integrasi exchange (itu Fase 2+).
  */
 
-const APP_NAME = 'Aplikasi Trading Journal Otomatis'
+const APP_NAME = 'nitirekso'
 logger.initGlobalErrorHandlers()
 logger.info(`Memulai ${APP_NAME}... File Log: ${logger.getLogPath()}`)
 
@@ -35,16 +35,15 @@ function createWindow(): void {
         minWidth: 1024,
         minHeight: 640,
         title: APP_NAME,
-        // Latar gelap sejak awal supaya tidak ada kedipan putih saat load,
-        // mengingat app ini dark-mode-first (brief §7).
-        backgroundColor: '#0f141c',
+        // Latar gelap deep obsidian sejak awal supaya tidak ada kedipan putih saat load
+        backgroundColor: '#0c0b14',
         show: false,
         webPreferences: {
             preload: join(__dirname, '../preload/index.js'),
             // Renderer tidak punya akses Node sama sekali.
             contextIsolation: true,
             nodeIntegration: false,
-            sandbox: false
+            sandbox: true
         }
     })
 

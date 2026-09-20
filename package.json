@@ -1,10 +1,18 @@
 {
-    "name": "aplikasi-trading-journal-otomatis",
+    "name": "nitirekso",
     "version": "1.2.1",
     "private": true,
-    "description": "Trading journal otomatis read-only untuk MEXC & Bitunix Futures (desktop lokal, single user)",
-    "author": "",
+    "description": "nitirekso — Niti Transaksi, Rekso Evaluasi. Trading journal otomatis read-only untuk MEXC & Bitunix Futures",
+    "author": "nitirekso",
     "license": "MIT",
+    "homepage": "https://kaleksananbarqi.github.io/nitirekso/",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/KaleksananBarqi/nitirekso.git"
+    },
+    "bugs": {
+        "url": "https://github.com/KaleksananBarqi/nitirekso/issues"
+    },
     "main": "out/main/index.js",
     "scripts": {
         "dev": "electron-vite dev",
