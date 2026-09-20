@@ -209,73 +209,56 @@ export class BitunixAdapter implements ExchangeAdapter {
     }
 
     /**
-     * Ambil saldo akun futures Bitunix (USDT).
-     * Endpoint resmi: /api/v1/futures/account
+     * Ambil saldo akun futures Bitunix (USDT & USDC).
+     * Endpoint resmi: GET /api/v1/futures/account?marginCoin=USDT
      */
     async fetchBalances(options: FetchOptions = {}): Promise<AccountBalance[]> {
         return withRetry(
             async () => {
                 if (options.signal?.aborted) throw new Error('Dibatalkan')
 
-                let data: unknown
-                try {
-                    data = await this.client.get<unknown>(
-                        '/api/v1/futures/account',
-                        {},
-                        options.signal
-                    )
-                } catch {
-                    // Fallback alternatif endpoint akun futures
+                const coins = ['USDT', 'USDC']
+                const result: AccountBalance[] = []
+                const now = Date.now()
+
+                for (const coin of coins) {
                     try {
-                        data = await this.client.get<unknown>(
-                            '/api/v1/futures/account/get_account',
-                            {},
+                        const data = await this.client.get<Record<string, unknown>>(
+                            '/api/v1/futures/account',
+                            { marginCoin: coin },
                             options.signal
                         )
-                    } catch {
-                        data = null
-                    }
-                }
 
-                const now = Date.now()
-                const result: AccountBalance[] = []
+                        if (data && typeof data === 'object') {
+                            const asset = String(data['marginCoin'] ?? coin)
+                            const available = Number(data['available'] ?? data['availableBalance'] ?? data['free'] ?? 0)
+                            const frozen = Number(data['frozen'] ?? 0)
+                            const margin = Number(data['margin'] ?? data['positionMargin'] ?? 0)
+                            const crossUpl = Number(data['crossUnrealizedPNL'] ?? 0)
+                            const isoUpl = Number(data['isolationUnrealizedPNL'] ?? 0)
+                            const unrealizedPnl = crossUpl + isoUpl + Number(data['unrealizedProfitLoss'] ?? 0)
 
-                if (data && typeof data === 'object') {
-                    const obj = data as Record<string, unknown>
-                    // Kasus 1: data adalah objek akun tunggal (USDT)
-                    const total = Number(obj.marginBalance ?? obj.equity ?? obj.totalBalance ?? obj.balance ?? 0)
-                    const available = Number(obj.availableBalance ?? obj.free ?? obj.available ?? total)
-                    const unrealizedPnl = Number(obj.unrealizedProfitLoss ?? obj.unrealizedPnl ?? obj.upl ?? 0)
-                    const asset = String(obj.asset ?? obj.currency ?? 'USDT')
+                            // Total equity = saldo tersedia + margin tertahan order + margin posisi aktif + floating PnL
+                            let total = Number(data['total'] ?? data['equity'] ?? data['totalBalance'] ?? 0)
+                            if (total === 0 && (available > 0 || frozen > 0 || margin > 0)) {
+                                total = available + frozen + margin + unrealizedPnl
+                            }
 
-                    if (Number.isFinite(total)) {
-                        result.push({
-                            exchange: 'bitunix',
-                            asset,
-                            total,
-                            available,
-                            unrealizedPnl,
-                            updatedAt: now
-                        })
-                    }
-
-                    // Kasus 2: data memiliki list aset di dalamnya
-                    const list = extractList(data)
-                    for (const item of list) {
-                        const itemAsset = String(item.asset ?? item.currency ?? item.coin ?? 'USDT')
-                        const itemTotal = Number(item.marginBalance ?? item.equity ?? item.totalBalance ?? item.balance ?? 0)
-                        const itemAvailable = Number(item.availableBalance ?? item.free ?? item.available ?? itemTotal)
-                        const itemUnrealized = Number(item.unrealizedProfitLoss ?? item.unrealizedPnl ?? 0)
-
-                        if (!result.some((r) => r.asset === itemAsset)) {
-                            result.push({
-                                exchange: 'bitunix',
-                                asset: itemAsset,
-                                total: itemTotal,
-                                available: itemAvailable,
-                                unrealizedPnl: itemUnrealized,
-                                updatedAt: now
-                            })
+                            if (Number.isFinite(total) && (total > 0 || asset === 'USDT')) {
+                                result.push({
+                                    exchange: 'bitunix',
+                                    asset,
+                                    total,
+                                    available,
+                                    unrealizedPnl,
+                                    updatedAt: now
+                                })
+                            }
+                        }
+                    } catch (err) {
+                        // Jangan gagalkan seluruh koin jika USDC belum dibuat/didukung
+                        if (coin === 'USDT') {
+                            throw err
                         }
                     }
                 }

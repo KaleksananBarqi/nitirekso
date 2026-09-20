@@ -128,7 +128,7 @@ function ShareAnalyticsModalContent({ trades, onClose }: { trades: TradeDetail[]
     // Data Identitas & Branding dari Settings
     const avatarUrl = savedSettings.avatarUrl
     const traderHandle = savedSettings.traderHandle
-    const brandTitle = savedSettings.brandTitle || 'SHARENYA'
+    const brandTitle = savedSettings.brandTitle || 'NITIREKSO'
     const brandSubtitle = 'ANALYTICS'
     const customBgUrl = savedSettings.customBgUrl
     const bgDimming = savedSettings.bgDimming

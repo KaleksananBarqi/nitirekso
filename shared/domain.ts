@@ -222,14 +222,75 @@ export function computeRMultiple(
 }
 
 /**
+ * Informasi kalkulasi jarak Stop Loss terhadap Entry.
+ */
+export interface SlDistanceInfo {
+    distance: number
+    percent: number
+    isValidDirection: boolean
+    isTooTight: boolean
+}
+
+/**
+ * Hitung jarak dan persentase Stop Loss terhadap Entry.
+ */
+export function computeSlDistanceInfo(
+    direction: 'long' | 'short',
+    entryPrice: number | null,
+    plannedStop: number | null,
+    minPercentThreshold = 0.1
+): SlDistanceInfo | null {
+    if (entryPrice === null || plannedStop === null || entryPrice <= 0) return null
+    const distance = Math.abs(entryPrice - plannedStop)
+    const percent = (distance / entryPrice) * 100
+    const isValidDirection = direction === 'long' ? plannedStop < entryPrice : plannedStop > entryPrice
+    const isTooTight = percent < minPercentThreshold
+    return {
+        distance,
+        percent,
+        isValidDirection,
+        isTooTight
+    }
+}
+
+/**
+ * Informasi kalkulasi jarak Target (Take Profit) terhadap Entry.
+ */
+export interface TpDistanceInfo {
+    distance: number
+    percent: number
+    isValidDirection: boolean
+}
+
+/**
+ * Hitung jarak dan persentase Target Profit terhadap Entry.
+ */
+export function computeTpDistanceInfo(
+    direction: 'long' | 'short',
+    entryPrice: number | null,
+    plannedTarget: number | null
+): TpDistanceInfo | null {
+    if (entryPrice === null || plannedTarget === null || entryPrice <= 0) return null
+    const distance = Math.abs(plannedTarget - entryPrice)
+    const percent = (distance / entryPrice) * 100
+    const isValidDirection = direction === 'long' ? plannedTarget > entryPrice : plannedTarget < entryPrice
+    return {
+        distance,
+        percent,
+        isValidDirection
+    }
+}
+
+/**
  * Hitung RR rencana dari entry, SL, dan TP.
  *
  * Aturan (plans/05-FEATURES-PLAN.md fitur 2):
- * - Long: rewardPerUnit = abs(plannedTarget - entryPrice)
- * - Short: rewardPerUnit = abs(entryPrice - plannedTarget)
- * - riskPerUnit = abs(entryPrice - plannedStop)
- * - plannedRr = rewardPerUnit / riskPerUnit jika risk > 0
- * - plannedRr = null jika SL kosong/sama dengan entry
+ * - Long: valid bila plannedStop < entryPrice dan plannedTarget > entryPrice
+ * - Short: valid bila plannedStop > entryPrice dan plannedTarget < entryPrice
+ * - Jika orientasi harga terbalik atau SL sama dengan entry, kembalikan null
+ * - riskPerUnit = |entryPrice - plannedStop|
+ * - rewardPerUnit = |plannedTarget - entryPrice|
+ * - plannedRr = rewardPerUnit / riskPerUnit
  *
  * @param direction 'long' | 'short'
  * @param entryPrice Harga entry
@@ -244,14 +305,21 @@ export function computePlannedRR(
     plannedTarget: number | null
 ): number | null {
     if (plannedStop === null || plannedStop === entryPrice) return null
-    if (plannedTarget === null) return null
+    if (plannedTarget === null || plannedTarget === entryPrice) return null
+
+    // Validasi arah trading
+    if (direction === 'long') {
+        if (plannedStop >= entryPrice) return null
+        if (plannedTarget <= entryPrice) return null
+    } else {
+        if (plannedStop <= entryPrice) return null
+        if (plannedTarget >= entryPrice) return null
+    }
 
     const riskPerUnit = Math.abs(entryPrice - plannedStop)
     if (riskPerUnit === 0) return null
 
-    const rewardPerUnit = direction === 'long'
-        ? Math.abs(plannedTarget - entryPrice)
-        : Math.abs(entryPrice - plannedTarget)
-
+    const rewardPerUnit = Math.abs(plannedTarget - entryPrice)
     return rewardPerUnit / riskPerUnit
 }
+

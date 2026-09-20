@@ -6,13 +6,17 @@ out/
 dist/
 release/
 
-# Data lokal aplikasi — DB SQLite & screenshot TIDAK boleh masuk repo
+# Data lokal aplikasi — DB SQLite & screenshot runtime TIDAK boleh masuk repo
 data/
-screenshots/
+/screenshots/
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
+
+# Pastikan aset gambar dokumentasi selalu ter-track
+!docs/assets/screenshots/
+!docs/assets/screenshots/**
 
 # Kredensial & konfigurasi lokal
 .env

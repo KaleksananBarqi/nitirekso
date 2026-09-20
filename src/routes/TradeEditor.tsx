@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
     computePlannedRR,
     computeRMultiple,
+    computeSlDistanceInfo,
+    computeTpDistanceInfo,
     DEFAULT_EMOTION_TAGS,
     normalizeTagName,
     parseTags,
@@ -168,10 +170,25 @@ export function TradeEditor({
     const [error, setError] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
-    // Muat ulang form saat trade yang diedit berubah.
+    // Muat ulang form saat trade yang diedit berubah, ditambah defensive fetch detail penuh.
     useEffect(() => {
-        setForm(detail ? toFormState(detail) : emptyForm(Date.now(), checklistTemplate))
+        if (!detail) {
+            setForm(emptyForm(Date.now(), checklistTemplate))
+            setError(null)
+            return
+        }
+        setForm(toFormState(detail))
         setError(null)
+
+        let isCurrent = true
+        void window.api.getTrade(detail.trade.id).then((fullTrade) => {
+            if (isCurrent && fullTrade) {
+                setForm(toFormState(fullTrade))
+            }
+        })
+        return () => {
+            isCurrent = false
+        }
     }, [detail, checklistTemplate])
 
     // Fitur 1: Muat preview screenshot saat form punya screenshotPath.
@@ -209,6 +226,16 @@ export function TradeEditor({
             return { ...prev, ...updates }
         })
     }
+
+    // Kalkulasi jarak dan validitas arah Stop Loss
+    const slDistanceInfo = useMemo(() => {
+        return computeSlDistanceInfo(form.direction, form.entryPrice, form.plannedStop)
+    }, [form.direction, form.entryPrice, form.plannedStop])
+
+    // Kalkulasi jarak dan validitas arah Target Profit
+    const tpDistanceInfo = useMemo(() => {
+        return computeTpDistanceInfo(form.direction, form.entryPrice, form.plannedTarget)
+    }, [form.direction, form.entryPrice, form.plannedTarget])
 
     // Fitur 2: RR rencana dihitung otomatis dari direction/entry/SL/TP.
     const plannedRrPreview = useMemo((): number | null => {
@@ -514,14 +541,35 @@ export function TradeEditor({
                             <Field
                                 label="Stop Loss Direncanakan"
                                 hint={
-                                    form.entryPrice !== null && form.size !== null
-                                        ? 'Akan menghitung nominal risiko otomatis'
-                                        : 'Lengkapi entry & size untuk auto-hitung'
+                                    slDistanceInfo
+                                        ? slDistanceInfo.isTooTight
+                                            ? `⚠️ Terlalu rapat: ${slDistanceInfo.distance.toLocaleString()} pts (${slDistanceInfo.percent.toFixed(2)}%). Rawan noise & R terdistorsi.`
+                                            : `Jarak: ${slDistanceInfo.distance.toLocaleString()} pts (${slDistanceInfo.percent.toFixed(2)}%)`
+                                        : form.entryPrice !== null && form.size !== null
+                                            ? 'Akan menghitung nominal risiko otomatis'
+                                            : 'Lengkapi entry & size untuk auto-hitung'
+                                }
+                                error={
+                                    slDistanceInfo && !slDistanceInfo.isValidDirection
+                                        ? `Arah salah: SL harus ${form.direction === 'long' ? '< entry' : '> entry'}`
+                                        : undefined
                                 }
                             >
                                 <NumberInput value={form.plannedStop} onValueChange={handlePlannedStopChange} />
                             </Field>
-                            <Field label="Target Direncanakan">
+                            <Field
+                                label="Target Direncanakan"
+                                hint={
+                                    tpDistanceInfo
+                                        ? `Jarak: ${tpDistanceInfo.distance.toLocaleString()} pts (${tpDistanceInfo.percent.toFixed(2)}%)`
+                                        : 'Target profit yang direncanakan'
+                                }
+                                error={
+                                    tpDistanceInfo && !tpDistanceInfo.isValidDirection
+                                        ? `Arah salah: TP harus ${form.direction === 'long' ? '> entry' : '< entry'}`
+                                        : undefined
+                                }
+                            >
                                 <NumberInput
                                     value={form.plannedTarget}
                                     onValueChange={(v) => update('plannedTarget', v)}
@@ -541,10 +589,18 @@ export function TradeEditor({
                             </Field>
                             <Field
                                 label="RR Rencana"
-                                hint="Risk:Reward — dihitung dari entry/SL/TP"
+                                hint={
+                                    plannedRrPreview !== null
+                                        ? plannedRrPreview > 15
+                                            ? 'R:R tinggi karena jarak SL sangat rapat'
+                                            : 'Risk:Reward — dihitung dari entry/SL/TP'
+                                        : form.plannedStop !== null && form.plannedTarget !== null
+                                            ? 'Tidak valid (orientasi harga berlawanan)'
+                                            : 'Isi SL & TP untuk auto-hitung'
+                                }
                             >
                                 <div className="flex h-9 items-center rounded-md border border-border bg-muted/40 px-3">
-                                    <span className="tabular text-sm">
+                                    <span className="tabular text-sm font-medium">
                                         {plannedRrPreview === null ? '—' : `1:${plannedRrPreview.toFixed(2)}`}
                                     </span>
                                 </div>
@@ -558,7 +614,7 @@ export function TradeEditor({
                                 }
                             >
                                 <div className="flex h-9 items-center rounded-md border border-border bg-muted/40 px-3">
-                                    <span className="tabular text-sm">{formatR(rPreview)}</span>
+                                    <span className="tabular text-sm font-medium">{formatR(rPreview)}</span>
                                 </div>
                             </Field>
                         </div>

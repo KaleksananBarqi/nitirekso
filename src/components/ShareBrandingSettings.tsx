@@ -4,12 +4,27 @@ import {
     BG_TEMPLATES,
     loadShareSettings,
     saveShareSettings,
+    loadCustomBgList,
+    addCustomBgItem,
+    updateCustomBgItemName,
+    deleteCustomBgItem,
+    getAllShareTemplates,
+    deleteCustomShareTemplate,
+    getActiveTemplateId,
+    setActiveTemplateId,
     type ShareSettings,
-    type ExchangeName
+    type ExchangeName,
+    type ShareCardTemplate,
+    type CustomBgItem
 } from '../lib/shareSettings'
 
 export function ShareBrandingSettings(): React.JSX.Element {
     const [settings, setSettings] = useState<ShareSettings>(loadShareSettings)
+    const [customBgList, setCustomBgList] = useState<CustomBgItem[]>(loadCustomBgList)
+    const [editingBgId, setEditingBgId] = useState<string | null>(null)
+    const [editingBgName, setEditingBgName] = useState<string>('')
+    const [templates, setTemplates] = useState<ShareCardTemplate[]>(getAllShareTemplates)
+    const [activeTemplateId, setActiveTemplateIdState] = useState<string>(getActiveTemplateId)
     const [activeExchangeTab, setActiveExchangeTab] = useState<ExchangeName>('mexc')
     const [avatarFileError, setAvatarFileError] = useState<string | null>(null)
     const [bgFileError, setBgFileError] = useState<string | null>(null)
@@ -30,6 +45,50 @@ export function ShareBrandingSettings(): React.JSX.Element {
             saveShareSettings(partial)
             return next
         })
+    }
+
+    const handleSetDefaultTemplate = (templateId: string) => {
+        setActiveTemplateId(templateId)
+        setActiveTemplateIdState(templateId)
+    }
+
+    const handleDeleteTemplate = (templateId: string, name: string) => {
+        if (window.confirm(`Hapus template "${name}"?`)) {
+            deleteCustomShareTemplate(templateId)
+            setTemplates(getAllShareTemplates())
+            setActiveTemplateIdState(getActiveTemplateId())
+        }
+    }
+
+    const handleAddCustomBg = (dataUrl: string, fileName?: string) => {
+        const cleanName = fileName ? fileName.replace(/\.[^/.]+$/, '').slice(0, 18) : `Wallpaper ${customBgList.length + 1}`
+        const created = addCustomBgItem({ name: cleanName, dataUrl })
+        const updated = loadCustomBgList()
+        setCustomBgList(updated)
+        updateSettings({ isCustomBg: true, customBgId: created.id, customBgUrl: created.dataUrl })
+    }
+
+    const handleDeleteCustomBg = (id: string, name: string) => {
+        if (window.confirm(`Hapus gambar background "${name}" dari galeri?`)) {
+            deleteCustomBgItem(id)
+            const updated = loadCustomBgList()
+            setCustomBgList(updated)
+            if (settings.customBgId === id) {
+                if (updated.length > 0) {
+                    updateSettings({ customBgId: updated[0]!.id, customBgUrl: updated[0]!.dataUrl })
+                } else {
+                    updateSettings({ isCustomBg: false, customBgId: null, customBgUrl: null })
+                }
+            }
+        }
+    }
+
+    const handleSaveBgName = (id: string) => {
+        if (!editingBgName.trim()) return
+        updateCustomBgItemName(id, editingBgName.trim())
+        setCustomBgList(loadCustomBgList())
+        setEditingBgId(null)
+        setEditingBgName('')
     }
 
     // Helper upload gambar
@@ -74,12 +133,12 @@ export function ShareBrandingSettings(): React.JSX.Element {
                         1. Kustomisasi Judul Brand
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Field label="Nama Brand Utama" hint="Contoh: SHARENYA, CRYPTO JOURNAL, VIP TRADER">
+                        <Field label="Nama Brand Utama" hint="Contoh: NITIREKSO, CRYPTO JOURNAL, VIP TRADER">
                             <input
                                 type="text"
                                 value={settings.brandTitle}
                                 onChange={(e) => updateSettings({ brandTitle: e.target.value.toUpperCase() })}
-                                placeholder="SHARENYA"
+                                placeholder="NITIREKSO"
                                 className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm font-bold tracking-wider shadow-xs focus:border-primary focus:outline-none"
                             />
                         </Field>
@@ -304,7 +363,7 @@ export function ShareBrandingSettings(): React.JSX.Element {
                                         <img src={settings.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                                     ) : (
                                         <span className="text-sm font-bold text-foreground/70">
-                                            {settings.traderHandle.replace('@', '').slice(0, 2).toUpperCase() || 'TR'}
+                                            {(settings.traderHandle || '@trader').replace('@', '').slice(0, 2).toUpperCase() || 'TR'}
                                         </span>
                                     )}
                                 </div>
@@ -339,7 +398,7 @@ export function ShareBrandingSettings(): React.JSX.Element {
                         <Field label="Handle / Nama Trader" hint="Ditampilkan di footer kartu share">
                             <input
                                 type="text"
-                                value={settings.traderHandle}
+                                value={settings.traderHandle || ''}
                                 onChange={(e) => updateSettings({ traderHandle: e.target.value })}
                                 placeholder="@username"
                                 className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus:border-primary focus:outline-none"
@@ -348,14 +407,16 @@ export function ShareBrandingSettings(): React.JSX.Element {
                     </div>
                 </div>
 
-                {/* ── BAGIAN 4: LATAR BELAKANG KARTU ── */}
-                <div className="flex flex-col gap-3 pt-2 border-t border-border/50">
+                {/* ── BAGIAN 4: LATAR BELAKANG KARTU & GALERI WALLPAPER ── */}
+                <div className="flex flex-col gap-4 pt-2 border-t border-border/50">
                     <div className="flex items-center justify-between flex-wrap gap-2">
                         <div>
                             <p className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                                4. Tema Background Default
+                                4. Tema Preset & Galeri Wallpaper Kustom
                             </p>
-                            <p className="text-[11px] text-muted-foreground">Pilih preset atau gunakan gambar latar kustom</p>
+                            <p className="text-[11px] text-muted-foreground">
+                                Pilih preset warna atau unggah wallpaper Anda sendiri. Setiap gambar dapat ditautkan ke template desain.
+                            </p>
                         </div>
 
                         {settings.isCustomBg && settings.customBgUrl && (
@@ -371,87 +432,218 @@ export function ShareBrandingSettings(): React.JSX.Element {
                                     onChange={(e) => updateSettings({ bgDimming: Number(e.target.value) })}
                                     className="w-20 h-1.5 accent-primary cursor-pointer"
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        updateSettings({ isCustomBg: false, customBgUrl: null })
-                                        if (bgInputRef.current) bgInputRef.current.value = ''
-                                    }}
-                                    className="text-[11px] text-destructive hover:underline ml-1 font-medium"
-                                >
-                                    Hapus BG
-                                </button>
                             </div>
                         )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                        {BG_TEMPLATES.map((t) => (
-                            <button
-                                key={t.id}
-                                type="button"
-                                onClick={() => updateSettings({ bgPresetId: t.id, isCustomBg: false })}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${!settings.isCustomBg && settings.bgPresetId === t.id
-                                    ? 'border-primary bg-primary/15 text-foreground font-semibold shadow-xs ring-1 ring-primary/40'
-                                    : 'border-border/70 bg-card text-muted-foreground hover:text-foreground'
-                                    }`}
-                            >
-                                <span
-                                    className="w-3.5 h-3.5 rounded-full flex-shrink-0"
-                                    style={{
-                                        background: t.isTransparent
-                                            ? 'linear-gradient(45deg, #38bdf8 0%, #a855f7 100%)'
-                                            : t.accentProfit,
-                                        boxShadow: (!settings.isCustomBg && settings.bgPresetId === t.id)
-                                            ? `0 0 8px ${t.accentProfit}`
-                                            : 'none'
-                                    }}
-                                />
-                                <span>{t.label}</span>
-                                {t.isTransparent && (
-                                    <span className="text-[9px] px-1 py-0.2 rounded bg-sky-500/20 text-sky-400 font-bold ml-0.5">
-                                        PNG Transparan
-                                    </span>
-                                )}
-                            </button>
-                        ))}
+                    {/* Sub-bagian 4.1: Preset Bawaan */}
+                    <div>
+                        <p className="text-[11px] font-semibold text-muted-foreground mb-2">Preset Warna Bawaan:</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {BG_TEMPLATES.map((t) => (
+                                <button
+                                    key={t.id}
+                                    type="button"
+                                    onClick={() => updateSettings({ bgPresetId: t.id, isCustomBg: false })}
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${!settings.isCustomBg && settings.bgPresetId === t.id
+                                        ? 'border-primary bg-primary/15 text-foreground font-semibold shadow-xs ring-1 ring-primary/40'
+                                        : 'border-border/70 bg-card text-muted-foreground hover:text-foreground'
+                                        }`}
+                                >
+                                    <span
+                                        className="w-3.5 h-3.5 rounded-full flex-shrink-0"
+                                        style={{
+                                            background: t.isTransparent
+                                                ? 'linear-gradient(45deg, #38bdf8 0%, #a855f7 100%)'
+                                                : t.accentProfit,
+                                            boxShadow: (!settings.isCustomBg && settings.bgPresetId === t.id)
+                                                ? `0 0 8px ${t.accentProfit}`
+                                                : 'none'
+                                        }}
+                                    />
+                                    <span>{t.label}</span>
+                                    {t.isTransparent && (
+                                        <span className="text-[9px] px-1 py-0.2 rounded bg-sky-500/20 text-sky-400 font-bold ml-0.5">
+                                            PNG Transparan
+                                        </span>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
 
-                        {/* Upload Custom BG */}
-                        <input
-                            ref={bgInputRef}
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) =>
-                                handleImageUpload(
-                                    e.target.files?.[0],
-                                    8,
-                                    setBgFileError,
-                                    (dataUrl) => updateSettings({ customBgUrl: dataUrl, isCustomBg: true })
-                                )
-                            }
-                            className="hidden"
-                        />
-                        <button
-                            type="button"
-                            onClick={() => bgInputRef.current?.click()}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${settings.isCustomBg && settings.customBgUrl
-                                ? 'border-primary bg-primary/20 text-foreground font-semibold shadow-xs'
-                                : 'border-dashed border-border bg-muted/20 text-muted-foreground hover:text-foreground hover:border-border/80'
-                                }`}
-                        >
-                            <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
-                                <rect x="3" y="3" width="14" height="14" rx="2" />
-                                <circle cx="7.5" cy="7.5" r="1.5" />
-                                <path d="M3 14l4-4 3 3 4-4 3 3" />
-                            </svg>
-                            <span>{settings.customBgUrl ? 'Ganti BG Kustom' : '+ Upload Background Kustom'}</span>
-                        </button>
+                    {/* Sub-bagian 4.2: Galeri Wallpaper Kustom */}
+                    <div>
+                        <div className="flex items-center justify-between mb-2">
+                            <p className="text-[11px] font-semibold text-muted-foreground">
+                                Galeri Wallpaper Kustom Anda ({customBgList.length}):
+                            </p>
+
+                            {/* Tombol Upload BG Baru */}
+                            <input
+                                ref={bgInputRef}
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0]
+                                    handleImageUpload(
+                                        file,
+                                        8,
+                                        setBgFileError,
+                                        (dataUrl) => handleAddCustomBg(dataUrl, file?.name)
+                                    )
+                                    if (bgInputRef.current) bgInputRef.current.value = ''
+                                }}
+                                className="hidden"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => bgInputRef.current?.click()}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-dashed border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 transition-all shadow-xs"
+                            >
+                                <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <rect x="3" y="3" width="14" height="14" rx="2" />
+                                    <circle cx="7.5" cy="7.5" r="1.5" />
+                                    <path d="M3 14l4-4 3 3 4-4 3 3" />
+                                </svg>
+                                <span>+ Upload Wallpaper Baru</span>
+                            </button>
+                        </div>
+
+                        {customBgList.length === 0 ? (
+                            <div className="p-4 rounded-xl border border-dashed border-border text-center bg-card/20">
+                                <p className="text-xs text-muted-foreground">Belum ada wallpaper kustom yang diunggah.</p>
+                                <p className="text-[11px] text-muted-foreground mt-1">Unggah gambar wallpaper favorit Anda untuk ditautkan ke kartu share.</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                {customBgList.map((bgItem) => {
+                                    const isSelected = settings.isCustomBg && settings.customBgId === bgItem.id
+                                    const isEditing = editingBgId === bgItem.id
+
+                                    return (
+                                        <div
+                                            key={bgItem.id}
+                                            className={`relative flex flex-col rounded-xl border overflow-hidden transition-all ${
+                                                isSelected
+                                                    ? 'border-primary ring-2 ring-primary/40 bg-card shadow-sm'
+                                                    : 'border-border/70 bg-card/50 hover:border-border'
+                                            }`}
+                                        >
+                                            {/* Thumbnail Image */}
+                                            <div
+                                                onClick={() => updateSettings({
+                                                    isCustomBg: true,
+                                                    customBgId: bgItem.id,
+                                                    customBgUrl: bgItem.dataUrl
+                                                })}
+                                                className="h-24 w-full bg-cover bg-center cursor-pointer relative group"
+                                                style={{ backgroundImage: `url(${bgItem.dataUrl})` }}
+                                            >
+                                                <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
+                                                {isSelected && (
+                                                    <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-primary text-primary-foreground text-[10px] font-bold shadow-xs">
+                                                        Aktif
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* Info & Aksi */}
+                                            <div className="p-2.5 flex items-center justify-between gap-2">
+                                                {isEditing ? (
+                                                    <div className="flex items-center gap-1 flex-1">
+                                                        <input
+                                                            type="text"
+                                                            value={editingBgName}
+                                                            onChange={(e) => setEditingBgName(e.target.value)}
+                                                            className="h-6 px-1.5 text-xs w-full rounded bg-background border border-border focus:border-primary focus:outline-none"
+                                                            autoFocus
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') handleSaveBgName(bgItem.id)
+                                                                if (e.key === 'Escape') setEditingBgId(null)
+                                                            }}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSaveBgName(bgItem.id)}
+                                                            className="text-[10px] px-1.5 py-1 bg-primary text-primary-foreground rounded font-bold"
+                                                        >
+                                                            OK
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex flex-col min-w-0 flex-1">
+                                                        <span
+                                                            onClick={() => {
+                                                                setEditingBgId(bgItem.id)
+                                                                setEditingBgName(bgItem.name)
+                                                            }}
+                                                            title="Klik untuk ganti nama"
+                                                            className="text-xs font-semibold text-foreground truncate cursor-pointer hover:underline"
+                                                        >
+                                                            {bgItem.name} ✎
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                <div className="flex items-center gap-1">
+                                                    {!isSelected && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => updateSettings({
+                                                                isCustomBg: true,
+                                                                customBgId: bgItem.id,
+                                                                customBgUrl: bgItem.dataUrl
+                                                            })}
+                                                            className="px-2 py-1 text-[10px] font-semibold rounded bg-muted hover:bg-muted/80 text-foreground transition-colors"
+                                                        >
+                                                            Pilih
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteCustomBg(bgItem.id, bgItem.name)}
+                                                        className="p-1 text-muted-foreground hover:text-destructive transition-colors rounded hover:bg-destructive/10"
+                                                        title="Hapus background ini"
+                                                    >
+                                                        <svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <path d="M4 6h12M8 6V4h4v2m-6 4v6m4-6v6m3-10v11a1 1 0 01-1 1H6a1 1 0 01-1-1V6" />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        )}
                     </div>
                     {bgFileError && <p className="text-[11px] text-destructive">{bgFileError}</p>}
                 </div>
 
-                {/* ── BAGIAN 5: PREFERENSI TEKS JURNAL ── */}
-                <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
+                {/* ── BAGIAN 5: PREFERENSI KONTEN KARTU SHARE ── */}
+                <div className="flex flex-col gap-3 pt-2 border-t border-border/50">
+                    <p className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                        5. Preferensi Konten Kartu Share
+                    </p>
+
+                    <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                        <input
+                            type="checkbox"
+                            checked={settings.showTradeTimes}
+                            onChange={(e) => updateSettings({ showTradeTimes: e.target.checked })}
+                            className="mt-0.5 h-4 w-4 rounded border-border text-primary accent-primary"
+                        />
+                        <div>
+                            <span className="text-xs font-semibold text-foreground">
+                                Catat Waktu Entry & Exit
+                            </span>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                                Menampilkan tanggal dan jam eksekusi posisi masuk dan posisi keluar tepat di bawah angka harga.
+                            </p>
+                        </div>
+                    </label>
+
                     <label className="flex items-start gap-2.5 cursor-pointer select-none">
                         <input
                             type="checkbox"
@@ -468,6 +660,86 @@ export function ShareBrandingSettings(): React.JSX.Element {
                             </p>
                         </div>
                     </label>
+                </div>
+
+                {/* ── BAGIAN 6: KELOLA TEMPLATE KARTU SHARE ── */}
+                <div className="flex flex-col gap-3 pt-2 border-t border-border/50">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                                6. Template Desain Tersimpan ({templates.length})
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                                Anda dapat menyimpan template desain tak terbatas langsung dari jendela modal Share PnL atau mengelolanya di sini.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-1">
+                        {templates.map((tpl) => {
+                            const isDefault = activeTemplateId === tpl.id
+                            return (
+                                <div
+                                    key={tpl.id}
+                                    className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                                        isDefault
+                                            ? 'border-primary bg-primary/10 shadow-xs'
+                                            : 'border-border/70 bg-card/60 hover:border-border'
+                                    }`}
+                                >
+                                    <div className="flex flex-col min-w-0 pr-2">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="text-xs font-bold text-foreground truncate">
+                                                {tpl.name}
+                                            </span>
+                                            {tpl.isBuiltin && (
+                                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-muted text-muted-foreground font-semibold">
+                                                    Preset
+                                                </span>
+                                            )}
+                                            {isDefault && (
+                                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-primary/20 text-primary font-bold">
+                                                    Default Aktif
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
+                                            <span>{tpl.showPnl ? 'USD Ditampilkan' : 'USD Tersembunyi'}</span>
+                                            <span>•</span>
+                                            <span>{tpl.showTradeTimes ? 'Ada Waktu' : 'Tanpa Waktu'}</span>
+                                            <span>•</span>
+                                            <span>{tpl.bgPresetId}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                        {!isDefault && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSetDefaultTemplate(tpl.id)}
+                                                className="px-2 py-1 text-[11px] font-semibold rounded bg-muted/60 hover:bg-muted text-foreground transition-colors"
+                                                title="Gunakan sebagai default saat membuka modal Share PnL"
+                                            >
+                                                Pilih
+                                            </button>
+                                        )}
+                                        {!tpl.isBuiltin && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteTemplate(tpl.id, tpl.name)}
+                                                className="p-1 text-muted-foreground hover:text-destructive transition-colors rounded hover:bg-destructive/10"
+                                                title="Hapus template kustom ini"
+                                            >
+                                                <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <path d="M4 6h12M8 6V4h4v2m-6 4v6m4-6v6m3-10v11a1 1 0 01-1 1H6a1 1 0 01-1-1V6" />
+                                                </svg>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
                 </div>
 
                 {/* ── PRATINJAU MINI LIVE PREVIEW ── */}
@@ -487,7 +759,7 @@ export function ShareBrandingSettings(): React.JSX.Element {
                         <div className="flex items-start justify-between mb-3">
                             <div className="flex items-center gap-2">
                                 <span className="text-xs font-bold text-white tracking-wider">
-                                    {settings.brandTitle || 'SHARENYA'}
+                                    {settings.brandTitle || 'NITIREKSO'}
                                 </span>
                                 <span
                                     className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
@@ -543,12 +815,12 @@ export function ShareBrandingSettings(): React.JSX.Element {
                                         className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
                                         style={{ background: `${currentTemplate.accentProfit}44` }}
                                     >
-                                        {settings.traderHandle.replace('@', '').slice(0, 2).toUpperCase() || 'TR'}
+                                        {(settings.traderHandle || '@trader').replace('@', '').slice(0, 2).toUpperCase() || 'TR'}
                                     </div>
                                 )}
-                                <span className="text-xs font-semibold text-white">{settings.traderHandle}</span>
+                                <span className="text-xs font-semibold text-white">{settings.traderHandle || '@trader'}</span>
                             </div>
-                            <span className="text-[10px] text-white/50">sharenya.app</span>
+                            <span className="text-[10px] text-white/50">nitirekso</span>
                         </div>
                     </div>
                 </div>

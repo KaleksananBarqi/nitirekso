@@ -24,6 +24,17 @@ logger.info(`Memulai ${APP_NAME}... File Log: ${logger.getLogPath()}`)
  * folder data yang sama — berbahaya untuk data jurnal finansial.
  */
 app.setName(APP_NAME)
+if (process.platform === 'win32') {
+    app.setAppUserModelId('com.nitirekso.app')
+}
+
+/** Path icon resmi Nitirekso untuk window titlebar dan taskbar. */
+function getAppIconPath(): string {
+    const iconFile = process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+    return app.isPackaged
+        ? join(process.resourcesPath, iconFile)
+        : join(__dirname, '../../build', iconFile)
+}
 
 /** Referensi jendela aktif, dipakai handler sync untuk mengirim progres. */
 let mainWindow: BrowserWindow | null = null
@@ -35,6 +46,7 @@ function createWindow(): void {
         minWidth: 1024,
         minHeight: 640,
         title: APP_NAME,
+        icon: getAppIconPath(),
         // Latar gelap deep obsidian sejak awal supaya tidak ada kedipan putih saat load
         backgroundColor: '#0c0b14',
         show: false,

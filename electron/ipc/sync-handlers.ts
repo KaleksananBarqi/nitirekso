@@ -254,6 +254,7 @@ export function registerSyncHandlers(getWindow: () => BrowserWindow | null): voi
 
             const db = getDb()
             const allFetched: AccountBalance[] = []
+            const errors: string[] = []
 
             for (const adapter of adapters) {
                 if (typeof adapter.fetchBalances === 'function') {
@@ -262,8 +263,17 @@ export function registerSyncHandlers(getWindow: () => BrowserWindow | null): voi
                         upsertBalances(db, balances)
                         allFetched.push(...balances)
                     } catch (err) {
+                        const msg = err instanceof Error ? err.message : String(err)
                         logger.error(`[ipc:sync] Gagal ambil saldo ${adapter.id}:`, err)
+                        errors.push(`${adapter.displayName}: ${msg}`)
                     }
+                }
+            }
+
+            if (allFetched.length === 0 && errors.length > 0) {
+                return {
+                    ok: false,
+                    error: `Gagal mengambil saldo: ${errors.join(' | ')}`
                 }
             }
 

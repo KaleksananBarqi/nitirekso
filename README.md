@@ -25,15 +25,15 @@ Nama **nitirekso** berakar dari kearifan bahasa Jawa:
 
 ## 🖼️ Tangkapan Layar (Preview Aplikasi)
 
-> *Tangkapan layar resolusi tinggi dapat diletakkan di folder `docs/assets/screenshots/`.*
-
-| Dashboard & Saldo Real-Time | Trade Log & Filter Mendalam |
+| 📋 Trade Log & Riwayat Sinkronisasi | 📝 Jurnal Transaksi & Evaluasi SOP |
 |:---:|:---:|
-| ![Dashboard nitirekso](docs/assets/screenshots/dashboard.png) | ![Trade Log nitirekso](docs/assets/screenshots/trade-log.png) |
+| [![Trade Log nitirekso](docs/assets/screenshots/dasbor.png)](docs/assets/screenshots/dasbor.png) | [![Journal Entry nitirekso](docs/assets/screenshots/jurnal.png)](docs/assets/screenshots/jurnal.png) |
+| *Daftar posisi tertutup otomatis dari exchange lengkap dengan durasi, tag setup, grade eksekusi, R-multiple, dan PnL.* | *Catat tesis analisa pre-trade, review psikologi post-trade, dan evaluasi kepatuhan SOP per transaksi.* |
 
-| Analitik Kinerja & Kalender Heatmap | Jurnal Manual & Catatan Emosi |
+| 🏆 Kartu Pamer PnL Flex (Viral Ready) | 🎨 Studio Kustomisasi Desain & Tema |
 |:---:|:---:|
-| ![Analytics nitirekso](docs/assets/screenshots/analytics.png) | ![Journal Entry nitirekso](docs/assets/screenshots/journal-entry.png) |
+| [![PnL Flex Share nitirekso](docs/assets/screenshots/pnl-flex-share.png)](docs/assets/screenshots/pnl-flex-share.png) | [![PnL Flex Customizer nitirekso](docs/assets/screenshots/pnl-flex-custom.png)](docs/assets/screenshots/pnl-flex-custom.png) |
+| *Kartu pamer performa rasio 1:1 tajam resolusi Retina 2x dengan avatar personal, watermark, dan catatan tesis.* | *Atur wallpaper kustom, tema warna visual, mode privasi (sembunyikan nominal USD), dan toggle teks.* |
 
 ---
 

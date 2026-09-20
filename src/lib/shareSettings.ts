@@ -101,9 +101,14 @@ export const SHARE_STORAGE_KEYS = {
     SHOW_REF: 'trading_journal_share_show_referral',
     BG_PRESET_ID: 'trading_journal_share_bg_preset_id',
     CUSTOM_BG: 'trading_journal_share_custom_bg',
+    CUSTOM_BG_ID: 'trading_journal_share_custom_bg_id',
+    CUSTOM_BG_LIST: 'trading_journal_share_custom_bg_list',
     IS_CUSTOM_BG: 'trading_journal_share_is_custom_bg',
     BG_DIMMING: 'trading_journal_share_bg_dimming',
-    FULL_TEXT: 'trading_journal_share_full_text'
+    FULL_TEXT: 'trading_journal_share_full_text',
+    CUSTOM_TEMPLATES: 'trading_journal_share_custom_templates',
+    ACTIVE_TEMPLATE_ID: 'trading_journal_share_active_template_id',
+    SHOW_TRADE_TIMES: 'trading_journal_share_show_trade_times'
 } as const
 
 export interface ShareSettings {
@@ -117,18 +122,321 @@ export interface ShareSettings {
     bitunixReferralCode: string
     showReferral: boolean
     bgPresetId: string
+    customBgId: string | null
     customBgUrl: string | null
     isCustomBg: boolean
     bgDimming: number
     showFullText: boolean
+    showTradeTimes: boolean
+}
+
+/** Item Gambar Wallpaper Kustom di Galeri Pengguna */
+export interface CustomBgItem {
+    id: string
+    name: string
+    dataUrl: string
+    createdAt: number
+}
+
+/** Struktur Template Desain Kartu Share PnL */
+export interface ShareCardTemplate {
+    id: string
+    name: string
+    isBuiltin?: boolean
+    // Background & Wallpaper
+    bgPresetId: string
+    customBgId?: string | null // ID background kustom yang ditautkan ke template ini
+    isCustomBg: boolean
+    bgDimming: number
+    // Visibility Toggles
+    showSide: boolean
+    showPnl: boolean          // Toggle profit USD
+    showRoi: boolean
+    showTradeTimes: boolean   // Toggle waktu entry & exit
+    showDuration: boolean
+    showProfile: boolean
+    showWatermark: boolean
+    showPlan: boolean
+    showSetup: boolean
+    showGrade: boolean
+    showEmotion: boolean
+    showReferral: boolean
+    showThesis: boolean
+    showReview: boolean
+    showFullText: boolean
+    createdAt?: number
+    updatedAt?: number
+}
+
+/** Template Bawaan (Built-in Presets) */
+export const BUILTIN_TEMPLATES: ShareCardTemplate[] = [
+    {
+        id: 'default-pro',
+        name: 'Standar Pro',
+        isBuiltin: true,
+        bgPresetId: 'dark-navy',
+        isCustomBg: false,
+        bgDimming: 75,
+        showSide: true,
+        showPnl: true,
+        showRoi: true,
+        showTradeTimes: true,
+        showDuration: true,
+        showProfile: true,
+        showWatermark: true,
+        showPlan: true,
+        showSetup: true,
+        showGrade: true,
+        showEmotion: true,
+        showReferral: true,
+        showThesis: true,
+        showReview: true,
+        showFullText: true
+    },
+    {
+        id: 'privacy-no-usd',
+        name: 'Privasi (Tanpa USD)',
+        isBuiltin: true,
+        bgPresetId: 'emerald',
+        isCustomBg: false,
+        bgDimming: 75,
+        showSide: true,
+        showPnl: false, // Sembunyikan profit USD untuk privasi
+        showRoi: true,
+        showTradeTimes: true,
+        showDuration: true,
+        showProfile: true,
+        showWatermark: true,
+        showPlan: true,
+        showSetup: true,
+        showGrade: true,
+        showEmotion: true,
+        showReferral: true,
+        showThesis: false,
+        showReview: false,
+        showFullText: false
+    },
+    {
+        id: 'thesis-review',
+        name: 'Edukasi & Thesis',
+        isBuiltin: true,
+        bgPresetId: 'sunset',
+        isCustomBg: false,
+        bgDimming: 75,
+        showSide: true,
+        showPnl: true,
+        showRoi: true,
+        showTradeTimes: true,
+        showDuration: true,
+        showProfile: true,
+        showWatermark: true,
+        showPlan: true,
+        showSetup: true,
+        showGrade: true,
+        showEmotion: true,
+        showReferral: true,
+        showThesis: true,
+        showReview: true,
+        showFullText: true
+    },
+    {
+        id: 'glass-sticker',
+        name: 'Transparan Sticker',
+        isBuiltin: true,
+        bgPresetId: 'glass-transparent',
+        isCustomBg: false,
+        bgDimming: 75,
+        showSide: true,
+        showPnl: true,
+        showRoi: true,
+        showTradeTimes: true,
+        showDuration: true,
+        showProfile: true,
+        showWatermark: true,
+        showPlan: false,
+        showSetup: true,
+        showGrade: true,
+        showEmotion: false,
+        showReferral: true,
+        showThesis: false,
+        showReview: false,
+        showFullText: false
+    }
+]
+
+/** Membaca seluruh template kustom yang disimpan oleh pengguna */
+export function loadCustomShareTemplates(): ShareCardTemplate[] {
+    try {
+        const raw = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_TEMPLATES)
+        if (!raw) return []
+        const parsed = JSON.parse(raw)
+        return Array.isArray(parsed) ? parsed : []
+    } catch {
+        return []
+    }
+}
+
+/** Menggabungkan template bawaan dengan template kustom pengguna */
+export function getAllShareTemplates(): ShareCardTemplate[] {
+    const custom = loadCustomShareTemplates()
+    return [...BUILTIN_TEMPLATES, ...custom]
+}
+
+/** Mencari template berdasarkan ID */
+export function getShareTemplateById(id: string): ShareCardTemplate | null {
+    const all = getAllShareTemplates()
+    return all.find((t) => t.id === id) || null
+}
+
+/** Menyimpan atau memperbarui template kustom */
+export function saveCustomShareTemplate(template: Omit<ShareCardTemplate, 'id'> & { id?: string }): ShareCardTemplate {
+    const custom = loadCustomShareTemplates()
+    const now = Date.now()
+    const templateId = template.id || `custom_${now}_${Math.random().toString(36).slice(2, 7)}`
+
+    const existingIndex = custom.findIndex((t) => t.id === templateId)
+    const newTemplate: ShareCardTemplate = {
+        ...template,
+        id: templateId,
+        isBuiltin: false,
+        updatedAt: now,
+        createdAt: existingIndex >= 0 ? (custom[existingIndex]?.createdAt || now) : now
+    }
+
+    let updatedList: ShareCardTemplate[]
+    if (existingIndex >= 0) {
+        updatedList = [...custom]
+        updatedList[existingIndex] = newTemplate
+    } else {
+        updatedList = [...custom, newTemplate]
+    }
+
+    localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_TEMPLATES, JSON.stringify(updatedList))
+    return newTemplate
+}
+
+/** Menghapus template kustom berdasarkan ID */
+export function deleteCustomShareTemplate(id: string): boolean {
+    const custom = loadCustomShareTemplates()
+    const filtered = custom.filter((t) => t.id !== id)
+    if (filtered.length === custom.length) return false
+    localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_TEMPLATES, JSON.stringify(filtered))
+    if (getActiveTemplateId() === id) {
+        setActiveTemplateId(BUILTIN_TEMPLATES[0]!.id)
+    }
+    return true
+}
+
+/** Membaca ID template aktif yang terpilih */
+export function getActiveTemplateId(): string {
+    return localStorage.getItem(SHARE_STORAGE_KEYS.ACTIVE_TEMPLATE_ID) || BUILTIN_TEMPLATES[0]!.id
+}
+
+/** Menyimpan ID template aktif */
+export function setActiveTemplateId(id: string): void {
+    localStorage.setItem(SHARE_STORAGE_KEYS.ACTIVE_TEMPLATE_ID, id)
+}
+
+/** Membaca seluruh gambar background kustom dari localStorage dengan auto-migrasi data lama */
+export function loadCustomBgList(): CustomBgItem[] {
+    try {
+        const raw = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST)
+        let list: CustomBgItem[] = raw ? JSON.parse(raw) : []
+        if (!Array.isArray(list)) list = []
+
+        // Migrasi data lama jika CUSTOM_BG ada tapi list belum terisi
+        const legacyBg = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
+        if (legacyBg && list.length === 0) {
+            const legacyItem: CustomBgItem = {
+                id: `bg_${Date.now()}_default`,
+                name: 'Wallpaper Kustom 1',
+                dataUrl: legacyBg,
+                createdAt: Date.now()
+            }
+            list = [legacyItem]
+            localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST, JSON.stringify(list))
+            localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID, legacyItem.id)
+        }
+
+        return list
+    } catch {
+        return []
+    }
+}
+
+/** Menyimpan seluruh daftar background kustom ke localStorage */
+export function saveCustomBgList(list: CustomBgItem[]): void {
+    localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST, JSON.stringify(list))
+}
+
+/** Menambahkan background kustom baru ke galeri */
+export function addCustomBgItem(item: { name: string; dataUrl: string }): CustomBgItem {
+    const list = loadCustomBgList()
+    const now = Date.now()
+    const newItem: CustomBgItem = {
+        id: `bg_${now}_${Math.random().toString(36).slice(2, 7)}`,
+        name: item.name.trim() || `Wallpaper ${list.length + 1}`,
+        dataUrl: item.dataUrl,
+        createdAt: now
+    }
+    const updated = [newItem, ...list]
+    saveCustomBgList(updated)
+    // Sinkronkan ke CUSTOM_BG dan CUSTOM_BG_ID untuk fallback
+    localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, newItem.dataUrl)
+    localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID, newItem.id)
+    return newItem
+}
+
+/** Mengubah nama label background kustom */
+export function updateCustomBgItemName(id: string, name: string): boolean {
+    const list = loadCustomBgList()
+    const target = list.find((b) => b.id === id)
+    if (!target) return false
+    target.name = name.trim() || target.name
+    saveCustomBgList(list)
+    return true
+}
+
+/** Menghapus background kustom dari galeri */
+export function deleteCustomBgItem(id: string): boolean {
+    const list = loadCustomBgList()
+    const filtered = list.filter((b) => b.id !== id)
+    if (filtered.length === list.length) return false
+    saveCustomBgList(filtered)
+    // Jika background yang dihapus adalah yang aktif, sesuaikan
+    const currentActiveBgId = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID)
+    if (currentActiveBgId === id) {
+        if (filtered.length > 0) {
+            localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID, filtered[0]!.id)
+            localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, filtered[0]!.dataUrl)
+        } else {
+            localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID)
+            localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
+            localStorage.setItem(SHARE_STORAGE_KEYS.IS_CUSTOM_BG, 'false')
+        }
+    }
+    return true
+}
+
+/** Mengambil background kustom berdasarkan ID */
+export function getCustomBgById(id: string): CustomBgItem | undefined {
+    const list = loadCustomBgList()
+    return list.find((b) => b.id === id)
 }
 
 /** Membaca seluruh pengaturan share dari localStorage dengan fallback default */
 export function loadShareSettings(): ShareSettings {
+    const bgList = loadCustomBgList()
+    const storedBgId = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID)
+    const activeBgItem = (storedBgId && bgList.find((b) => b.id === storedBgId)) || bgList[0] || null
+
     return {
         avatarUrl: localStorage.getItem(SHARE_STORAGE_KEYS.AVATAR) || null,
         traderHandle: localStorage.getItem(SHARE_STORAGE_KEYS.HANDLE) || '@trader',
-        brandTitle: localStorage.getItem(SHARE_STORAGE_KEYS.BRAND_TITLE) || 'SHARENYA',
+        brandTitle: (() => {
+            const b = localStorage.getItem(SHARE_STORAGE_KEYS.BRAND_TITLE)
+            return (!b || b === 'SHARENYA') ? 'NITIREKSO' : b
+        })(),
         brandSubtitle: localStorage.getItem(SHARE_STORAGE_KEYS.BRAND_SUBTITLE) || 'JOURNAL',
         mexcLogoUrl: localStorage.getItem(SHARE_STORAGE_KEYS.MEXC_LOGO) || null,
         mexcReferralCode: localStorage.getItem(SHARE_STORAGE_KEYS.MEXC_REF) || '',
@@ -136,10 +444,12 @@ export function loadShareSettings(): ShareSettings {
         bitunixReferralCode: localStorage.getItem(SHARE_STORAGE_KEYS.BITUNIX_REF) || '',
         showReferral: localStorage.getItem(SHARE_STORAGE_KEYS.SHOW_REF) !== 'false', // default true
         bgPresetId: localStorage.getItem(SHARE_STORAGE_KEYS.BG_PRESET_ID) || 'dark-navy',
-        customBgUrl: localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG) || null,
+        customBgId: activeBgItem ? activeBgItem.id : null,
+        customBgUrl: activeBgItem ? activeBgItem.dataUrl : (localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG) || null),
         isCustomBg: localStorage.getItem(SHARE_STORAGE_KEYS.IS_CUSTOM_BG) === 'true',
         bgDimming: Number(localStorage.getItem(SHARE_STORAGE_KEYS.BG_DIMMING)) || 75,
-        showFullText: localStorage.getItem(SHARE_STORAGE_KEYS.FULL_TEXT) !== 'false' // default true
+        showFullText: localStorage.getItem(SHARE_STORAGE_KEYS.FULL_TEXT) !== 'false', // default true
+        showTradeTimes: localStorage.getItem(SHARE_STORAGE_KEYS.SHOW_TRADE_TIMES) !== 'false' // default true
     }
 }
 
@@ -178,6 +488,10 @@ export function saveShareSettings(settings: Partial<ShareSettings>): void {
     if (settings.bgPresetId !== undefined) {
         localStorage.setItem(SHARE_STORAGE_KEYS.BG_PRESET_ID, settings.bgPresetId)
     }
+    if (settings.customBgId !== undefined) {
+        if (settings.customBgId) localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID, settings.customBgId)
+        else localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID)
+    }
     if (settings.customBgUrl !== undefined) {
         if (settings.customBgUrl) localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, settings.customBgUrl)
         else localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
@@ -190,5 +504,8 @@ export function saveShareSettings(settings: Partial<ShareSettings>): void {
     }
     if (settings.showFullText !== undefined) {
         localStorage.setItem(SHARE_STORAGE_KEYS.FULL_TEXT, String(settings.showFullText))
+    }
+    if (settings.showTradeTimes !== undefined) {
+        localStorage.setItem(SHARE_STORAGE_KEYS.SHOW_TRADE_TIMES, String(settings.showTradeTimes))
     }
 }

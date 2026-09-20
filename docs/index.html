@@ -735,6 +735,132 @@
       color: var(--accent-amethyst);
     }
 
+    /* Showcase Section & Tabs */
+    .showcase-tabs-nav {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 2.25rem;
+    }
+
+    .showcase-tab-btn {
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      border: 1px solid var(--border-subtle);
+      border-radius: 9999px;
+      padding: 0.65rem 1.35rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      font-family: inherit;
+    }
+
+    .showcase-tab-btn:hover {
+      background: var(--bg-surface-elevated);
+      color: var(--text-main);
+      border-color: var(--border-focus);
+      transform: translateY(-1px);
+    }
+
+    .showcase-tab-btn.active {
+      background: linear-gradient(135deg, rgba(147, 51, 234, 0.22) 0%, rgba(121, 40, 202, 0.22) 100%);
+      color: #FFFFFF;
+      border-color: var(--accent-amethyst);
+      box-shadow: 0 0 22px rgba(147, 51, 234, 0.35);
+    }
+
+    .showcase-view-panel {
+      display: none;
+      animation: fadeInShowcase 0.35s ease forwards;
+    }
+
+    .showcase-view-panel.active {
+      display: block;
+    }
+
+    @keyframes fadeInShowcase {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .showcase-window {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 45px -10px var(--primary-glow);
+    }
+
+    .showcase-img-wrap {
+      position: relative;
+      background: #08070D;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .showcase-img {
+      width: 100%;
+      height: auto;
+      max-height: 720px;
+      display: block;
+      object-fit: contain;
+      transition: transform 0.3s ease;
+    }
+
+    .showcase-info-bar {
+      padding: 1.5rem 2rem;
+      background: var(--bg-surface-elevated);
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.5rem;
+    }
+
+    .showcase-desc-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 0.35rem;
+    }
+
+    .showcase-desc-text {
+      color: var(--text-muted);
+      font-size: 0.925rem;
+      max-width: 680px;
+      line-height: 1.6;
+    }
+
+    .showcase-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .showcase-badge {
+      background: rgba(147, 51, 234, 0.12);
+      border: 1px solid rgba(147, 51, 234, 0.3);
+      color: var(--accent-amethyst);
+      padding: 0.35rem 0.85rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
     /* Responsive */
     @media (min-width: 768px) {
       .nav-links {
@@ -755,6 +881,7 @@
 
       <nav aria-label="Navigasi Utama">
         <ul class="nav-links">
+          <li><a href="#showcase">Tangkapan Layar</a></li>
           <li><a href="#keunggulan">Keunggulan</a></li>
           <li><a href="#fitur">Fitur Lengkap</a></li>
           <li><a href="#komparasi">Komparasi</a></li>
@@ -905,6 +1032,184 @@
               <div style="display: flex; gap: 1.5rem; align-items: center;">
                 <span style="color: var(--text-dim);">Bitunix Futures</span>
                 <span style="color: var(--accent-loss); font-weight: 700;">-$145.00 (-1.0R)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Showcase Tangkapan Layar Nyata Aplikasi -->
+    <section id="showcase" style="padding: 4.5rem 0; background: linear-gradient(180deg, #0C0B14 0%, #110E1C 50%, #0C0B14 100%);">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">Tangkapan Layar Asli</div>
+          <h2 class="section-title">Eksplorasi Antarmuka Desktop nitirekso</h2>
+          <p class="section-desc">
+            Lihat langsung tampilan antarmuka gelap yang ergonomis, dirancang khusus untuk kenyamanan mata trader saat menganalisis pasar berjam-jam.
+          </p>
+        </div>
+
+        <!-- Tab Selector -->
+        <div class="showcase-tabs-nav" role="tablist">
+          <button class="showcase-tab-btn active" data-tab="tradelog" onclick="switchShowcaseTab('tradelog')" role="tab" aria-selected="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+              <line x1="3" y1="9" x2="21" y2="9"></line>
+              <line x1="9" y1="21" x2="9" y2="9"></line>
+            </svg>
+            <span>Trade Log &amp; Riwayat</span>
+          </button>
+
+          <button class="showcase-tab-btn" data-tab="journal" onclick="switchShowcaseTab('journal')" role="tab" aria-selected="false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+            <span>Jurnal Transaksi &amp; SOP</span>
+          </button>
+
+          <button class="showcase-tab-btn" data-tab="share" onclick="switchShowcaseTab('share')" role="tab" aria-selected="false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="18" cy="5" r="3"></circle>
+              <circle cx="6" cy="12" r="3"></circle>
+              <circle cx="18" cy="19" r="3"></circle>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+            </svg>
+            <span>Kartu PnL Flex (Viral Ready)</span>
+          </button>
+
+          <button class="showcase-tab-btn" data-tab="customizer" onclick="switchShowcaseTab('customizer')" role="tab" aria-selected="false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            <span>Studio Kustomisasi Kartu</span>
+          </button>
+        </div>
+
+        <!-- Panel 1: Trade Log -->
+        <div id="panel-tradelog" class="showcase-view-panel active">
+          <div class="showcase-window">
+            <div class="mockup-header">
+              <div class="mockup-dots">
+                <div class="mockup-dot dot-red"></div>
+                <div class="mockup-dot dot-yellow"></div>
+                <div class="mockup-dot dot-green"></div>
+              </div>
+              <div class="mockup-title">nitirekso — Trade Log (Daftar Transaksi Sinkron)</div>
+              <div></div>
+            </div>
+            <div class="showcase-img-wrap">
+              <img src="assets/screenshots/dasbor.png" alt="Tangkapan Layar Trade Log nitirekso" class="showcase-img" loading="lazy" />
+            </div>
+            <div class="showcase-info-bar">
+              <div>
+                <h3 class="showcase-desc-title">Histori Transaksi Otomatis &amp; Metrik Eksekusi</h3>
+                <p class="showcase-desc-text">
+                  Daftar transaksi yang ditarik instan dari MEXC &amp; Bitunix via Read-Only API. Memuat arah posisi, durasi holding, label tag, evaluasi grade SOP, R-Multiple, dan nominal PnL transparan.
+                </p>
+              </div>
+              <div class="showcase-badges">
+                <span class="showcase-badge">⚡ Auto-Sync API</span>
+                <span class="showcase-badge">📁 Ekspor CSV/JSON/PDF</span>
+                <span class="showcase-badge">🔒 100% DB SQLite Lokal</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel 2: Journal -->
+        <div id="panel-journal" class="showcase-view-panel">
+          <div class="showcase-window">
+            <div class="mockup-header">
+              <div class="mockup-dots">
+                <div class="mockup-dot dot-red"></div>
+                <div class="mockup-dot dot-yellow"></div>
+                <div class="mockup-dot dot-green"></div>
+              </div>
+              <div class="mockup-title">nitirekso — Journal Entry (Catatan &amp; Grading)</div>
+              <div></div>
+            </div>
+            <div class="showcase-img-wrap">
+              <img src="assets/screenshots/jurnal.png" alt="Tangkapan Layar Jurnal Transaksi nitirekso" class="showcase-img" loading="lazy" />
+            </div>
+            <div class="showcase-info-bar">
+              <div>
+                <h3 class="showcase-desc-title">Jurnal Tesis, Review Emosi &amp; Grading SOP</h3>
+                <p class="showcase-desc-text">
+                  Dokumentasikan analisa sebelum masuk market (*trade thesis*) dan evaluasi mental setelah trade ditutup. Pisahkan kualitas disiplin (*Grade A/B/C*) dari sekadar hasil menang atau kalah semu.
+                </p>
+              </div>
+              <div class="showcase-badges">
+                <span class="showcase-badge">🧠 Evaluasi Psikologi</span>
+                <span class="showcase-badge">🎯 Execution Grade A/B/C</span>
+                <span class="showcase-badge">🚫 Anti Revenge Trading</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel 3: Share Card -->
+        <div id="panel-share" class="showcase-view-panel">
+          <div class="showcase-window">
+            <div class="mockup-header">
+              <div class="mockup-dots">
+                <div class="mockup-dot dot-red"></div>
+                <div class="mockup-dot dot-yellow"></div>
+                <div class="mockup-dot dot-green"></div>
+              </div>
+              <div class="mockup-title">nitirekso — Profit Sharing Card (Preview Kartu Pamer)</div>
+              <div></div>
+            </div>
+            <div class="showcase-img-wrap">
+              <img src="assets/screenshots/pnl-flex-share.png" alt="Tangkapan Layar Kartu Pamer PnL Flex nitirekso" class="showcase-img" loading="lazy" />
+            </div>
+            <div class="showcase-info-bar">
+              <div>
+                <h3 class="showcase-desc-title">Kartu Pamer PnL Flex Estetik (Retina 2x)</h3>
+                <p class="showcase-desc-text">
+                  Hasilkan kartu performa trading berkualitas tinggi siap pamer di Twitter/Telegram. Menampilkan ROI %, R-Multiple, kutipan tesis analisa, grade eksekusi, foto profil, dan logo exchange resmi.
+                </p>
+              </div>
+              <div class="showcase-badges">
+                <span class="showcase-badge">✨ Canvas Native Retina</span>
+                <span class="showcase-badge">📐 Aspek Rasio 1:1, 9:16, 16:9</span>
+                <span class="showcase-badge">🕶️ Mode Privasi Sensor Saldo</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel 4: Customizer -->
+        <div id="panel-customizer" class="showcase-view-panel">
+          <div class="showcase-window">
+            <div class="mockup-header">
+              <div class="mockup-dots">
+                <div class="mockup-dot dot-red"></div>
+                <div class="mockup-dot dot-yellow"></div>
+                <div class="mockup-dot dot-green"></div>
+              </div>
+              <div class="mockup-title">nitirekso — Profit Sharing Card Customizer</div>
+              <div></div>
+            </div>
+            <div class="showcase-img-wrap">
+              <img src="assets/screenshots/pnl-flex-custom.png" alt="Tangkapan Layar Studio Kustomisasi Desain nitirekso" class="showcase-img" loading="lazy" />
+            </div>
+            <div class="showcase-info-bar">
+              <div>
+                <h3 class="showcase-desc-title">Studio Kustomisasi Visual &amp; Wallpaper</h3>
+                <p class="showcase-desc-text">
+                  Fleksibilitas penuh untuk mengubah wallpaper background kartu, memilih 5 tema warna visual (*Cyberpunk Neon, Obsidian Sleek, Emerald Alpha*), template cepat, dan menyalakan/mematikan komponen teks.
+                </p>
+              </div>
+              <div class="showcase-badges">
+                <span class="showcase-badge">🎨 5 Tema Preset Eksklusif</span>
+                <span class="showcase-badge">🖼️ Upload Custom Wallpaper</span>
+                <span class="showcase-badge">⚙️ Personalisasi Profil &amp; Reff</span>
               </div>
             </div>
           </div>
@@ -1216,6 +1521,7 @@
     <div class="container">
       <ul class="footer-links">
         <li><a href="#hero">Beranda</a></li>
+        <li><a href="#showcase">Tangkapan Layar</a></li>
         <li><a href="#keunggulan">Keunggulan</a></li>
         <li><a href="#fitur">Fitur</a></li>
         <li><a href="#komparasi">Komparasi</a></li>
@@ -1232,6 +1538,25 @@
       </p>
     </div>
   </footer>
+
+  <!-- Script Interaktif Showcase Switcher -->
+  <script>
+    function switchShowcaseTab(tabId) {
+      // Perbarui tombol tab yang aktif
+      const buttons = document.querySelectorAll('.showcase-tab-btn');
+      buttons.forEach(function (btn) {
+        const isActive = btn.getAttribute('data-tab') === tabId;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+
+      // Perbarui panel konten yang aktif
+      const panels = document.querySelectorAll('.showcase-view-panel');
+      panels.forEach(function (panel) {
+        panel.classList.toggle('active', panel.id === 'panel-' + tabId);
+      });
+    }
+  </script>
 </body>
 
 </html>

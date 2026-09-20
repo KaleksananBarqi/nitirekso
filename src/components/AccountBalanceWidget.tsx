@@ -153,6 +153,16 @@ export function AccountBalanceWidget({
                                         hide={hidePnl}
                                     />
                                 </span>
+                                {mexcBalance.total - mexcBalance.available > 0.01 && (
+                                    <span className="inline-flex items-center text-[10px] text-muted-foreground">
+                                        (Avail:&nbsp;
+                                        <PnlValue
+                                            value={`$${mexcBalance.available.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                            hide={hidePnl}
+                                        />
+                                        )
+                                    </span>
+                                )}
                             </div>
                         )}
                         {bitunixBalance && (
@@ -164,6 +174,16 @@ export function AccountBalanceWidget({
                                         hide={hidePnl}
                                     />
                                 </span>
+                                {bitunixBalance.total - bitunixBalance.available > 0.01 && (
+                                    <span className="inline-flex items-center text-[10px] text-muted-foreground">
+                                        (Avail:&nbsp;
+                                        <PnlValue
+                                            value={`$${bitunixBalance.available.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                            hide={hidePnl}
+                                        />
+                                        )
+                                    </span>
+                                )}
                             </div>
                         )}
                     </div>

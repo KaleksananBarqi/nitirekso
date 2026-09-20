@@ -70,13 +70,19 @@ asarUnpack:
 # di direktori userData user saat runtime (keputusan D2).
 
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch:
         - x64
-  # Tanpa code signing, Windows SmartScreen akan menampilkan peringatan saat
-  # installer dibuka. Itu diharapkan untuk build personal tanpa sertifikat.
-  signAndEditExecutable: false
+  # Melewatkan code signing (karena tanpa sertifikat), namun TETAP menerapkan icon dan metadata aplikasi
+  signExecutable: false
+
+extraResources:
+  - from: build/icon.ico
+    to: icon.ico
+  - from: build/icon.png
+    to: icon.png
 
 nsis:
   # `oneClick: false` memunculkan wizard instalasi, sehingga user bisa memilih

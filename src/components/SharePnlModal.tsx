@@ -1,13 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { TradeDetail } from '@shared/domain'
+import { type ExecutionGrade, type TradeDetail, computePlannedRR } from '@shared/domain'
 import { Modal } from './ui'
-import { formatDate, formatDuration, formatPercent, formatPnl, formatPrice, formatR } from '../lib/format'
+import { formatDate, formatDateTime, formatDuration, formatPercent, formatPnl, formatPrice, formatR } from '../lib/format'
+import { cn } from '../lib/utils'
 import {
     BG_TEMPLATES,
+    BUILTIN_TEMPLATES,
     EXCHANGES,
     loadShareSettings,
+    loadCustomBgList,
+    addCustomBgItem,
+    getAllShareTemplates,
+    saveCustomShareTemplate,
+    deleteCustomShareTemplate,
+    getActiveTemplateId,
+    setActiveTemplateId,
     type BgTemplate,
-    type ExchangeName
+    type ExchangeName,
+    type ShareCardTemplate,
+    type CustomBgItem
 } from '../lib/shareSettings'
 
 // ---------------------------------------------------------------------------
@@ -74,17 +85,30 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const roiPercent = margin > 0 ? (trade.trade.realizedPnl / margin) * 100 : 0
     const duration = formatDuration(trade.trade.entryTime, trade.trade.exitTime)
 
-    // --- Muat Konfigurasi Branding dari Settings ---
+    // --- Muat Konfigurasi Branding, Template & Galeri Background dari Storage ---
     const [savedSettings] = useState(() => loadShareSettings())
+    const [customBgList, setCustomBgList] = useState<CustomBgItem[]>(() => loadCustomBgList())
+    const [templates, setTemplates] = useState<ShareCardTemplate[]>(() => getAllShareTemplates())
+    const [activeTemplateId, setActiveTplId] = useState<string>(() => getActiveTemplateId())
+
+    const activeTemplate = templates.find((t) => t.id === activeTemplateId) || templates[0]!
 
     const initialBgIdx = Math.max(
         0,
-        BG_TEMPLATES.findIndex((t) => t.id === savedSettings.bgPresetId)
+        BG_TEMPLATES.findIndex((t) => t.id === (activeTemplate?.bgPresetId || savedSettings.bgPresetId))
     )
 
-    // --- State: Background Preset (Bisa Switch Cepat di Modal) ---
+    // --- State: Background & Galeri ---
+    const initialCustomBgId = activeTemplate?.customBgId || savedSettings.customBgId || (customBgList[0]?.id ?? null)
     const [selectedBgIdx, setSelectedBgIdx] = useState<number>(initialBgIdx)
-    const [isCustomBgActive, setIsCustomBgActive] = useState<boolean>(savedSettings.isCustomBg && !!savedSettings.customBgUrl)
+    const [selectedCustomBgId, setSelectedCustomBgId] = useState<string | null>(initialCustomBgId)
+    const [isCustomBgActive, setIsCustomBgActive] = useState<boolean>(
+        activeTemplate ? (activeTemplate.isCustomBg && (!!activeTemplate.customBgId || customBgList.length > 0)) : (savedSettings.isCustomBg && customBgList.length > 0)
+    )
+
+    // Wallpaper kustom yang sedang aktif
+    const activeCustomBgItem = customBgList.find((b) => b.id === selectedCustomBgId) || customBgList[0] || null
+    const activeCustomBgUrl = activeCustomBgItem ? activeCustomBgItem.dataUrl : (savedSettings.customBgUrl || null)
 
     const bg: BgTemplate = BG_TEMPLATES[selectedBgIdx] ?? BG_TEMPLATES[0]!
     const accent = isWin ? bg.accentProfit : bg.accentLoss
@@ -92,10 +116,24 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     // Data Identitas & Branding dari Settings
     const avatarUrl = savedSettings.avatarUrl
     const traderHandle = savedSettings.traderHandle
-    const brandTitle = savedSettings.brandTitle || 'SHARENYA'
+    const brandTitle = savedSettings.brandTitle || 'NITIREKSO'
     const brandSubtitle = savedSettings.brandSubtitle || 'JOURNAL'
-    const customBgUrl = savedSettings.customBgUrl
     const bgDimming = savedSettings.bgDimming
+
+    // Data Planned Risk
+    const plannedStop = trade.plannedRisk?.plannedStop ?? null
+    const plannedTarget = trade.plannedRisk?.plannedTarget ?? null
+    const plannedRr = trade.plannedRisk?.plannedRr ?? computePlannedRR(
+        trade.trade.direction,
+        trade.trade.entryPrice,
+        plannedStop,
+        plannedTarget
+    )
+
+    // Data Jurnal (Setup, Grade, Emosi)
+    const setupTag = trade.journal?.setupTag ?? null
+    const executionGrade = trade.journal?.executionGrade ?? null
+    const emotionTag = trade.journal?.emotionTag ?? null
 
     // Data Exchange & Referral dari Settings
     const mexcLogoUrl = savedSettings.mexcLogoUrl
@@ -108,18 +146,187 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const [selectedExchange, setSelectedExchange] = useState<ExchangeName>(defaultExchange)
 
     // --- State: Toggle Visibilitas Elemen ---
-    const [showSide, setShowSide] = useState(true)
-    const [showPnl, setShowPnl] = useState(true)
-    const [showRoi, setShowRoi] = useState(true)
-    const [showProfile, setShowProfile] = useState(true)
-    const [showWatermark, setShowWatermark] = useState(true)
-    const [showDuration, setShowDuration] = useState(true)
-    const [showReferral, setShowReferral] = useState<boolean>(savedSettings.showReferral)
-    const [showThesis, setShowThesis] = useState<boolean>(!!(trade.journal?.preTradeThesis))
-    const [showReview, setShowReview] = useState<boolean>(!!(trade.journal?.postTradeReview))
+    const [showSide, setShowSide] = useState<boolean>(activeTemplate?.showSide ?? true)
+    const [showPnl, setShowPnl] = useState<boolean>(activeTemplate?.showPnl ?? true)
+    const [showRoi, setShowRoi] = useState<boolean>(activeTemplate?.showRoi ?? true)
+    const [showTradeTimes, setShowTradeTimes] = useState<boolean>(activeTemplate?.showTradeTimes ?? savedSettings.showTradeTimes ?? true)
+    const [showProfile, setShowProfile] = useState<boolean>(activeTemplate?.showProfile ?? true)
+    const [showWatermark, setShowWatermark] = useState<boolean>(activeTemplate?.showWatermark ?? true)
+    const [showDuration, setShowDuration] = useState<boolean>(activeTemplate?.showDuration ?? true)
+    const [showPlan, setShowPlan] = useState<boolean>(activeTemplate?.showPlan ?? true)
+    const [showSetup, setShowSetup] = useState<boolean>(activeTemplate ? activeTemplate.showSetup : !!setupTag)
+    const [showGrade, setShowGrade] = useState<boolean>(activeTemplate ? activeTemplate.showGrade : !!executionGrade)
+    const [showEmotion, setShowEmotion] = useState<boolean>(activeTemplate ? activeTemplate.showEmotion : !!emotionTag)
+    const [showReferral, setShowReferral] = useState<boolean>(activeTemplate ? activeTemplate.showReferral : savedSettings.showReferral)
+    const [showThesis, setShowThesis] = useState<boolean>(activeTemplate ? activeTemplate.showThesis : !!(trade.journal?.preTradeThesis))
+    const [showReview, setShowReview] = useState<boolean>(activeTemplate ? activeTemplate.showReview : !!(trade.journal?.postTradeReview))
 
     // --- State: Opsi Tampilkan Semua Teks (Tanpa Terpotong) ---
-    const [showFullText, setShowFullText] = useState<boolean>(savedSettings.showFullText)
+    const [showFullText, setShowFullText] = useState<boolean>(activeTemplate ? activeTemplate.showFullText : savedSettings.showFullText)
+
+    // --- State: Dialog Simpan Template Baru & Inline Actions ---
+    const [isSaveModalOpen, setIsSaveModalOpen] = useState<boolean>(false)
+    const [newTemplateName, setNewTemplateName] = useState<string>('')
+
+    const uploadBgModalInputRef = useRef<HTMLInputElement>(null)
+
+    // Upload background gambar baru langsung dari modal
+    const handleUploadNewBg = (file: File | undefined) => {
+        if (!file) return
+        if (!file.type.startsWith('image/')) {
+            alert('Harap pilih berkas gambar (PNG, JPG, SVG, WebP).')
+            return
+        }
+        if (file.size > 8 * 1024 * 1024) {
+            alert('Ukuran berkas maksimal 8MB.')
+            return
+        }
+        const reader = new FileReader()
+        reader.onload = (e) => {
+            const dataUrl = e.target?.result as string
+            if (dataUrl) {
+                const cleanName = file.name.replace(/\.[^/.]+$/, '').slice(0, 18) || `Wallpaper ${customBgList.length + 1}`
+                const created = addCustomBgItem({ name: cleanName, dataUrl })
+                const updatedList = loadCustomBgList()
+                setCustomBgList(updatedList)
+                setSelectedCustomBgId(created.id)
+                setIsCustomBgActive(true)
+            }
+        }
+        reader.readAsDataURL(file)
+    }
+
+    // Switch ke template terpilih
+    const handleSelectTemplate = (tpl: ShareCardTemplate) => {
+        setActiveTplId(tpl.id)
+        setActiveTemplateId(tpl.id)
+        const bgIdx = BG_TEMPLATES.findIndex((b) => b.id === tpl.bgPresetId)
+        if (bgIdx >= 0) setSelectedBgIdx(bgIdx)
+        if (tpl.isCustomBg) {
+            setIsCustomBgActive(true)
+            if (tpl.customBgId) {
+                setSelectedCustomBgId(tpl.customBgId)
+            } else if (customBgList.length > 0) {
+                setSelectedCustomBgId(customBgList[0]!.id)
+            }
+        } else {
+            setIsCustomBgActive(false)
+        }
+        setShowSide(tpl.showSide)
+        setShowPnl(tpl.showPnl)
+        setShowRoi(tpl.showRoi)
+        setShowTradeTimes(tpl.showTradeTimes)
+        setShowDuration(tpl.showDuration)
+        setShowProfile(tpl.showProfile)
+        setShowWatermark(tpl.showWatermark)
+        setShowPlan(tpl.showPlan)
+        setShowSetup(tpl.showSetup)
+        setShowGrade(tpl.showGrade)
+        setShowEmotion(tpl.showEmotion)
+        setShowReferral(tpl.showReferral)
+        setShowThesis(tpl.showThesis)
+        setShowReview(tpl.showReview)
+        setShowFullText(tpl.showFullText)
+    }
+
+    // Simpan konfigurasi saat ini sebagai template baru
+    const handleSaveNewTemplate = () => {
+        const trimmed = newTemplateName.trim()
+        if (!trimmed) return
+        const currentBgId = BG_TEMPLATES[selectedBgIdx]?.id || 'dark-navy'
+        const saved = saveCustomShareTemplate({
+            name: trimmed,
+            bgPresetId: currentBgId,
+            customBgId: isCustomBgActive ? selectedCustomBgId : null,
+            isCustomBg: isCustomBgActive,
+            bgDimming: savedSettings.bgDimming,
+            showSide,
+            showPnl,
+            showRoi,
+            showTradeTimes,
+            showDuration,
+            showProfile,
+            showWatermark,
+            showPlan,
+            showSetup,
+            showGrade,
+            showEmotion,
+            showReferral,
+            showThesis,
+            showReview,
+            showFullText
+        })
+        const updated = getAllShareTemplates()
+        setTemplates(updated)
+        setActiveTplId(saved.id)
+        setActiveTemplateId(saved.id)
+        setNewTemplateName('')
+        setIsSaveModalOpen(false)
+    }
+
+    // Perbarui konfigurasi template kustom aktif
+    const handleUpdateActiveTemplate = () => {
+        if (!activeTemplate || activeTemplate.isBuiltin) return
+        const currentBgId = BG_TEMPLATES[selectedBgIdx]?.id || 'dark-navy'
+        saveCustomShareTemplate({
+            id: activeTemplate.id,
+            name: activeTemplate.name,
+            bgPresetId: currentBgId,
+            customBgId: isCustomBgActive ? selectedCustomBgId : null,
+            isCustomBg: isCustomBgActive,
+            bgDimming: savedSettings.bgDimming,
+            showSide,
+            showPnl,
+            showRoi,
+            showTradeTimes,
+            showDuration,
+            showProfile,
+            showWatermark,
+            showPlan,
+            showSetup,
+            showGrade,
+            showEmotion,
+            showReferral,
+            showThesis,
+            showReview,
+            showFullText
+        })
+        setTemplates(getAllShareTemplates())
+    }
+
+    // Hapus template kustom
+    const handleDeleteTemplate = (id: string) => {
+        deleteCustomShareTemplate(id)
+        const updated = getAllShareTemplates()
+        setTemplates(updated)
+        const fallback = updated[0] || BUILTIN_TEMPLATES[0]!
+        setActiveTplId(fallback.id)
+        setActiveTemplateId(fallback.id)
+        handleSelectTemplate(fallback)
+    }
+
+    // Deteksi apakah konfigurasi telah dimodifikasi dari template aktif
+    const currentBgId = BG_TEMPLATES[selectedBgIdx]?.id || 'dark-navy'
+    const isModified = activeTemplate ? (
+        activeTemplate.bgPresetId !== currentBgId ||
+        activeTemplate.isCustomBg !== isCustomBgActive ||
+        (isCustomBgActive && activeTemplate.customBgId !== selectedCustomBgId) ||
+        activeTemplate.showSide !== showSide ||
+        activeTemplate.showPnl !== showPnl ||
+        activeTemplate.showRoi !== showRoi ||
+        activeTemplate.showTradeTimes !== showTradeTimes ||
+        activeTemplate.showDuration !== showDuration ||
+        activeTemplate.showProfile !== showProfile ||
+        activeTemplate.showWatermark !== showWatermark ||
+        activeTemplate.showPlan !== showPlan ||
+        activeTemplate.showSetup !== showSetup ||
+        activeTemplate.showGrade !== showGrade ||
+        activeTemplate.showEmotion !== showEmotion ||
+        activeTemplate.showReferral !== showReferral ||
+        activeTemplate.showThesis !== showThesis ||
+        activeTemplate.showReview !== showReview ||
+        activeTemplate.showFullText !== showFullText
+    ) : false
 
     // --- State: Konten Teks Editable ---
     const [customThesis, setCustomThesis] = useState<string>(trade.journal?.preTradeThesis || '')
@@ -150,17 +357,17 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         }
     }, [avatarUrl])
 
-    // Preload gambar Custom Background
+    // Preload gambar Custom Background Aktif
     useEffect(() => {
-        if (customBgUrl) {
+        if (activeCustomBgUrl) {
             const img = new Image()
             img.crossOrigin = 'anonymous'
-            img.src = customBgUrl
+            img.src = activeCustomBgUrl
             img.onload = () => { customBgImgRef.current = img }
         } else {
             customBgImgRef.current = null
         }
-    }, [customBgUrl])
+    }, [activeCustomBgUrl])
 
     // Preload logo MEXC
     useEffect(() => {
@@ -241,13 +448,22 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         const symbolH = 48
         const roiH = showRoi ? 92 : 0
         const pnlH = showPnl ? 46 : 0
-        const statsH = 132
+        const statsH = showTradeTimes ? 158 : 132
+        const planBoxH = 120
         const footerH = (showProfile || showWatermark) ? 68 : 0
 
-        let innerH = padTop + headerH + 32 + symbolH + 24
+        const hasBadges = (showSetup && !!setupTag) || (showGrade && !!executionGrade) || (showEmotion && !!emotionTag)
+        const badgesH = hasBadges ? 40 : 0
+
+        let innerH = padTop + headerH + 32 + symbolH + (hasBadges ? 16 + badgesH : 0) + 24
         if (showRoi) innerH += roiH + 16
         if (showPnl) innerH += pnlH + 28
-        innerH += statsH + 28
+        innerH += statsH
+        if (showPlan) {
+            innerH += 16 + planBoxH + 20
+        } else {
+            innerH += 28
+        }
         if (thesisBoxH > 0) innerH += thesisBoxH + 20
         if (reviewBoxH > 0) innerH += reviewBoxH + 20
         if (footerH > 0) innerH += 24 + 1 + 24 + footerH
@@ -467,7 +683,71 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         }
         ctx.restore()
 
-        curY += symbolH + 24
+        // B2. Journal Meta Badges (Setup, Grade, Emotion) di Canvas
+        if (hasBadges) {
+            curY += symbolH + 16
+            ctx.save()
+            let badgeX = cx
+            const badgeY = curY
+            const badgeH = 36
+            const badgeRadius = 10
+
+            const drawBadge = (label: string, icon: string, textColor: string, bgColor: string, borderColor: string) => {
+                ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                const fullText = `${icon} ${label}`
+                const textW = ctx.measureText(fullText).width
+                const pillW = textW + 28
+
+                if (badgeX + pillW > cx + contentW) return
+
+                ctx.fillStyle = bgColor
+                ctx.strokeStyle = borderColor
+                ctx.lineWidth = 1.2
+                ctx.beginPath()
+                ctx.roundRect(badgeX, badgeY, pillW, badgeH, badgeRadius)
+                ctx.fill()
+                ctx.stroke()
+
+                ctx.fillStyle = textColor
+                ctx.fillText(fullText, badgeX + 14, badgeY + 25)
+
+                badgeX += pillW + 12
+            }
+
+            if (showSetup && setupTag) {
+                drawBadge(setupTag, '🎯', '#38bdf8', 'rgba(56, 189, 248, 0.14)', 'rgba(56, 189, 248, 0.32)')
+            }
+
+            if (showGrade && executionGrade) {
+                const gradeColors: Record<string, { text: string; bg: string; border: string }> = {
+                    A: { text: '#34d399', bg: 'rgba(52, 211, 153, 0.16)', border: 'rgba(52, 211, 153, 0.36)' },
+                    B: { text: '#38bdf8', bg: 'rgba(56, 189, 248, 0.16)', border: 'rgba(56, 189, 248, 0.36)' },
+                    C: { text: '#fbbf24', bg: 'rgba(251, 191, 36, 0.16)', border: 'rgba(251, 191, 36, 0.36)' },
+                    D: { text: '#f87171', bg: 'rgba(248, 113, 113, 0.16)', border: 'rgba(248, 113, 113, 0.36)' }
+                }
+                const defaultGradeColor = { text: '#38bdf8', bg: 'rgba(56, 189, 248, 0.16)', border: 'rgba(56, 189, 248, 0.36)' }
+                const gc = gradeColors[executionGrade] || defaultGradeColor
+                drawBadge(`Grade ${executionGrade}`, '⭐', gc.text, gc.bg, gc.border)
+            }
+
+            if (showEmotion && emotionTag) {
+                const emotionIcons: Record<string, string> = {
+                    calm: '😌',
+                    fomo: '⚡',
+                    greed: '🔥',
+                    revenge: '😤',
+                    anxious: '😰',
+                    overconfident: '😎'
+                }
+                const emoIcon = emotionIcons[emotionTag.toLowerCase()] || '🧠'
+                drawBadge(emotionTag.charAt(0).toUpperCase() + emotionTag.slice(1), emoIcon, '#c084fc', 'rgba(192, 132, 252, 0.15)', 'rgba(192, 132, 252, 0.35)')
+            }
+
+            ctx.restore()
+            curY += badgesH + 24
+        } else {
+            curY += symbolH + 24
+        }
 
         // C. ROI Hero Text
         if (showRoi) {
@@ -497,7 +777,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             curY += pnlH + 28
         }
 
-        // E. Stats Row Grid (Entry, Exit, Duration)
+        // E. Stats Row Grid (Entry, Exit, Duration, Aktual R:R)
         ctx.save()
         ctx.fillStyle = 'rgba(255, 255, 255, 0.04)'
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
@@ -507,30 +787,89 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         ctx.fill()
         ctx.stroke()
 
-        const statColW = contentW / 3
-        const drawStatCol = (title: string, val: string, colIdx: number) => {
-            const colX = cx + statColW * colIdx + 28
-            ctx.font = '22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+        const statColW = contentW / 4
+        const drawStatCol = (title: string, val: string, colIdx: number, valColor = '#ffffff', subText?: string) => {
+            const colX = cx + statColW * colIdx + 20
+            ctx.font = '20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
             ctx.fillStyle = bg.textSub
-            ctx.fillText(title, colX, curY + 46)
+            ctx.fillText(title, colX, curY + 44)
 
-            ctx.font = 'bold 30px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = '#ffffff'
-            ctx.fillText(val, colX, curY + 92)
+            ctx.font = 'bold 26px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+            ctx.fillStyle = valColor
+            ctx.fillText(val, colX, curY + 86)
+
+            if (subText) {
+                ctx.font = '15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                ctx.fillStyle = bg.textSub
+                ctx.fillText(subText, colX, curY + 124)
+            }
         }
 
-        drawStatCol('Entry Price', formatPrice(trade.trade.entryPrice), 0)
-        drawStatCol('Exit Price', formatPrice(trade.trade.exitPrice), 1)
+        const actualRVal = trade.rMultiple !== null && trade.rMultiple !== undefined
+            ? formatR(trade.rMultiple)
+            : '—'
+        const actualRColor = trade.rMultiple !== null && trade.rMultiple !== undefined
+            ? (trade.rMultiple > 0 ? bg.accentProfit : trade.rMultiple < 0 ? bg.accentLoss : '#ffffff')
+            : '#ffffff'
+
+        const entryTimeText = showTradeTimes && trade.trade.entryTime ? formatDateTime(trade.trade.entryTime) : undefined
+        const exitTimeText = showTradeTimes ? (trade.trade.exitTime ? formatDateTime(trade.trade.exitTime) : 'Posisi Terbuka') : undefined
+
+        drawStatCol('Entry Price', formatPrice(trade.trade.entryPrice), 0, '#ffffff', entryTimeText)
+        drawStatCol('Exit Price', formatPrice(trade.trade.exitPrice), 1, '#ffffff', exitTimeText)
         drawStatCol('Duration', showDuration ? duration : '—', 2)
+        drawStatCol('R-Multiple', actualRVal, 3, actualRColor)
 
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
         ctx.beginPath()
         ctx.moveTo(cx + statColW, curY + 24); ctx.lineTo(cx + statColW, curY + statsH - 24)
         ctx.moveTo(cx + statColW * 2, curY + 24); ctx.lineTo(cx + statColW * 2, curY + statsH - 24)
+        ctx.moveTo(cx + statColW * 3, curY + 24); ctx.lineTo(cx + statColW * 3, curY + statsH - 24)
         ctx.stroke()
         ctx.restore()
 
-        curY += statsH + 28
+        curY += statsH + (showPlan ? 16 : 28)
+
+        // E2. Plan Risk Grid (Plan SL, Plan TP, Plan R:R)
+        if (showPlan) {
+            ctx.save()
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.03)'
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)'
+            ctx.lineWidth = 1
+            ctx.beginPath()
+            ctx.roundRect(cx, curY, contentW, planBoxH, 18)
+            ctx.fill()
+            ctx.stroke()
+
+            const planColW = contentW / 3
+            const drawPlanCol = (title: string, val: string, colIdx: number, valColor: string) => {
+                const colX = cx + planColW * colIdx + 24
+                ctx.font = '20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                ctx.fillStyle = bg.textSub
+                ctx.fillText(title, colX, curY + 44)
+
+                ctx.font = 'bold 26px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                ctx.fillStyle = valColor
+                ctx.fillText(val, colX, curY + 86)
+            }
+
+            const slStr = plannedStop !== null ? formatPrice(plannedStop) : '—'
+            const tpStr = plannedTarget !== null ? formatPrice(plannedTarget) : '—'
+            const rrStr = plannedRr !== null ? `1:${plannedRr.toFixed(2)}` : '—'
+
+            drawPlanCol('Plan SL', slStr, 0, '#f87171')
+            drawPlanCol('Plan TP', tpStr, 1, '#34d399')
+            drawPlanCol('Plan R:R', rrStr, 2, '#38bdf8')
+
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)'
+            ctx.beginPath()
+            ctx.moveTo(cx + planColW, curY + 20); ctx.lineTo(cx + planColW, curY + planBoxH - 20)
+            ctx.moveTo(cx + planColW * 2, curY + 20); ctx.lineTo(cx + planColW * 2, curY + planBoxH - 20)
+            ctx.stroke()
+            ctx.restore()
+
+            curY += planBoxH + 20
+        }
 
         // F. Trade Thesis (Dinamis: Penuh / Compact)
         if (thesisBoxH > 0) {
@@ -649,7 +988,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 ctx.save()
                 ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.75)'
-                const wm1 = 'sharenya.app'
+                const wm1 = 'nitirekso'
                 const w1W = ctx.measureText(wm1).width
                 ctx.fillText(wm1, mx + cw - 52 - w1W, curY + 26)
 
@@ -666,6 +1005,8 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     }, [
         bg, accent, selectedExchange, trade,
         showSide, showPnl, showRoi, showProfile, showWatermark, showDuration,
+        showPlan, plannedStop, plannedTarget, plannedRr,
+        showSetup, setupTag, showGrade, executionGrade, showEmotion, emotionTag,
         showThesis, customThesis, showReview, customReview, showFullText, showReferral,
         traderHandle, brandTitle, brandSubtitle, activeLogoImg, activeReferral,
         duration, roiPercent, leverage,
@@ -741,14 +1082,25 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                             activeReferral={activeReferral}
                             avatarUrl={avatarUrl}
                             isCustomBgActive={isCustomBgActive}
-                            customBgUrl={customBgUrl}
+                            customBgUrl={activeCustomBgUrl}
                             bgDimming={bgDimming}
                             showSide={showSide}
                             showPnl={showPnl}
                             showRoi={showRoi}
+                            showTradeTimes={showTradeTimes}
                             showProfile={showProfile}
                             showWatermark={showWatermark}
                             showDuration={showDuration}
+                            showPlan={showPlan}
+                            plannedStop={plannedStop}
+                            plannedTarget={plannedTarget}
+                            plannedRr={plannedRr}
+                            setupTag={setupTag}
+                            executionGrade={executionGrade}
+                            emotionTag={emotionTag}
+                            showSetup={showSetup}
+                            showGrade={showGrade}
+                            showEmotion={showEmotion}
                             showReferral={showReferral}
                             showThesis={showThesis}
                             customThesis={customThesis}
@@ -761,50 +1113,209 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                     <canvas ref={canvasRef} className="hidden" />
                 </div>
 
-                {/* ── BACKGROUND PRESET SELECTOR ── */}
-                <div className="border-t border-border/40 px-4 py-2 bg-card/30 flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-xs font-semibold text-muted-foreground mr-1">Tema:</span>
-                        {BG_TEMPLATES.map((t, i) => (
+                {/* ── DIALOG MINI SIMPAN TEMPLATE BARU ── */}
+                {isSaveModalOpen && (
+                    <div className="mx-4 mt-2.5 p-3 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex-1 min-w-[200px]">
+                            <label className="text-[11px] font-bold text-primary block mb-1">
+                                💾 Simpan Konfigurasi Desain Sebagai Template:
+                            </label>
+                            <input
+                                type="text"
+                                value={newTemplateName}
+                                onChange={(e) => setNewTemplateName(e.target.value)}
+                                placeholder="Contoh: Twitter No-USD, Hit & Run Scalp..."
+                                className="w-full h-8 px-2.5 text-xs rounded-md bg-background border border-border focus:border-primary focus:outline-none"
+                                autoFocus
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveNewTemplate()
+                                    if (e.key === 'Escape') setIsSaveModalOpen(false)
+                                }}
+                            />
+                        </div>
+                        <div className="flex items-center gap-2 mt-3 sm:mt-0">
                             <button
-                                key={t.id}
+                                type="button"
+                                onClick={handleSaveNewTemplate}
+                                disabled={!newTemplateName.trim()}
+                                className="h-8 px-3.5 rounded-md bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-xs"
+                            >
+                                Simpan
+                            </button>
+                            <button
                                 type="button"
                                 onClick={() => {
-                                    setSelectedBgIdx(i)
-                                    setIsCustomBgActive(false)
+                                    setIsSaveModalOpen(false)
+                                    setNewTemplateName('')
                                 }}
-                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${!isCustomBgActive && selectedBgIdx === i
-                                    ? 'border-primary bg-primary/10 text-foreground font-semibold shadow-xs'
-                                    : 'border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground'
-                                    }`}
+                                className="h-8 px-2.5 rounded-md bg-muted text-muted-foreground text-xs font-medium hover:text-foreground transition-colors"
                             >
-                                <span
-                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                    style={{
-                                        background: t.isTransparent ? 'linear-gradient(45deg, #38bdf8 0%, #a855f7 100%)' : t.accentProfit,
-                                    }}
-                                />
-                                <span>{t.label}</span>
+                                Batal
                             </button>
-                        ))}
+                        </div>
+                    </div>
+                )}
 
-                        {customBgUrl && (
-                            <button
-                                type="button"
-                                onClick={() => setIsCustomBgActive(true)}
-                                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${isCustomBgActive
-                                    ? 'border-primary bg-primary/15 text-foreground font-semibold shadow-xs'
-                                    : 'border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground'
-                                    }`}
-                            >
-                                <span>🖼️ Custom BG</span>
-                            </button>
-                        )}
+                {/* ── TEMPLATE SELECTOR BAR ── */}
+                <div className="border-t border-border/40 px-4 py-2 bg-card/40 flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-bold text-foreground mr-1 flex items-center gap-1">
+                            <span>✨</span>
+                            <span>Template:</span>
+                        </span>
+                        {templates.map((tpl) => {
+                            const isActive = activeTemplateId === tpl.id
+                            return (
+                                <div key={tpl.id} className="relative group flex items-center">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSelectTemplate(tpl)}
+                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                                            isActive
+                                                ? 'border-primary bg-primary/20 text-primary-foreground shadow-xs ring-1 ring-primary/40'
+                                                : 'border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                                        }`}
+                                    >
+                                        <span>{tpl.isBuiltin ? (tpl.id === 'privacy-no-usd' ? '🕊️' : tpl.id === 'glass-sticker' ? '💎' : '⭐') : '🎨'}</span>
+                                        <span>{tpl.name}</span>
+                                    </button>
+                                    {!tpl.isBuiltin && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                if (confirm(`Hapus template "${tpl.name}"?`)) {
+                                                    handleDeleteTemplate(tpl.id)
+                                                }
+                                            }}
+                                            title="Hapus template kustom ini"
+                                            className="ml-1 p-0.5 text-muted-foreground hover:text-destructive text-[11px] rounded transition-colors"
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
+                            )
+                        })}
+
+                        <button
+                            type="button"
+                            onClick={() => setIsSaveModalOpen(true)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border border-dashed border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 transition-all shadow-xs"
+                        >
+                            <span>+ Simpan Desain</span>
+                        </button>
                     </div>
 
-                    <span className="text-[11px] text-muted-foreground">
-                        ⚙️ Brand, Logo & Reff diatur di <span className="font-medium text-foreground">Settings</span>
-                    </span>
+                    {/* Tombol Perbarui jika ada modifikasi pada template kustom */}
+                    {activeTemplate && !activeTemplate.isBuiltin && isModified && (
+                        <button
+                            type="button"
+                            onClick={handleUpdateActiveTemplate}
+                            className="text-[11px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-lg hover:bg-amber-500/20 transition-colors animate-pulse"
+                        >
+                            💾 Perbarui Template
+                        </button>
+                    )}
+                </div>
+
+                {/* ── BACKGROUND & WALLPAPER SELECTOR ── */}
+                <div className="border-t border-border/40 px-4 py-2.5 bg-card/30 flex flex-col gap-2">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                        {/* Grup 1: Preset Warna */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-semibold text-muted-foreground mr-1 flex items-center gap-1">
+                                <span>🎨</span>
+                                <span>Tema Preset:</span>
+                            </span>
+                            {BG_TEMPLATES.map((t, i) => {
+                                const isSelected = !isCustomBgActive && selectedBgIdx === i
+                                return (
+                                    <button
+                                        key={t.id}
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedBgIdx(i)
+                                            setIsCustomBgActive(false)
+                                        }}
+                                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                                            isSelected
+                                                ? 'border-primary bg-primary/15 text-foreground font-bold shadow-xs ring-1 ring-primary/40'
+                                                : 'border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground'
+                                        }`}
+                                    >
+                                        <span
+                                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                            style={{
+                                                background: t.isTransparent ? 'linear-gradient(45deg, #38bdf8 0%, #a855f7 100%)' : t.accentProfit,
+                                            }}
+                                        />
+                                        <span>{t.label}</span>
+                                    </button>
+                                )
+                            })}
+                        </div>
+
+                        <span className="text-[11px] text-muted-foreground hidden sm:inline">
+                            ⚙️ Brand & Reff di <span className="font-medium text-foreground">Settings</span>
+                        </span>
+                    </div>
+
+                    {/* Grup 2: Galeri Wallpaper Kustom */}
+                    <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-border/20">
+                        <span className="text-xs font-semibold text-muted-foreground mr-1 flex items-center gap-1">
+                            <span>🖼️</span>
+                            <span>Wallpaper Kustom:</span>
+                        </span>
+
+                        {customBgList.map((bgItem) => {
+                            const isSelected = isCustomBgActive && selectedCustomBgId === bgItem.id
+                            return (
+                                <button
+                                    key={bgItem.id}
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedCustomBgId(bgItem.id)
+                                        setIsCustomBgActive(true)
+                                    }}
+                                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
+                                        isSelected
+                                            ? 'border-primary bg-primary/20 text-foreground font-bold shadow-xs ring-1 ring-primary/50'
+                                            : 'border-border/60 bg-muted/20 text-muted-foreground hover:text-foreground hover:border-border'
+                                    }`}
+                                >
+                                    <img
+                                        src={bgItem.dataUrl}
+                                        alt={bgItem.name}
+                                        className="w-4 h-4 rounded object-cover border border-white/20"
+                                    />
+                                    <span className="truncate max-w-[100px]">{bgItem.name}</span>
+                                </button>
+                            )
+                        })}
+
+                        {/* Hidden input file untuk upload */}
+                        <input
+                            ref={uploadBgModalInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                                handleUploadNewBg(e.target.files?.[0])
+                                if (uploadBgModalInputRef.current) uploadBgModalInputRef.current.value = ''
+                            }}
+                            className="hidden"
+                        />
+
+                        {/* Tombol Upload Cepat Langsung di Modal */}
+                        <button
+                            type="button"
+                            onClick={() => uploadBgModalInputRef.current?.click()}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border border-dashed border-border bg-muted/30 text-muted-foreground hover:text-primary hover:border-primary/60 transition-all"
+                            title="Upload gambar wallpaper baru ke koleksi Anda"
+                        >
+                            <span>+ Upload BG</span>
+                        </button>
+                    </div>
                 </div>
 
                 {/* ── TOGGLE CHECKBOXES ── */}
@@ -828,11 +1339,16 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                     <div className="flex flex-wrap gap-x-4 gap-y-2">
                         {([
                             ['Side', showSide, setShowSide],
-                            ['PnL', showPnl, setShowPnl],
+                            ['PnL (USD)', showPnl, setShowPnl],
                             ['ROI', showRoi, setShowRoi],
+                            ['Waktu Trade', showTradeTimes, setShowTradeTimes],
+                            ['Duration', showDuration, setShowDuration],
+                            ['Setup', showSetup, setShowSetup],
+                            ['Grade', showGrade, setShowGrade],
+                            ['Emosi', showEmotion, setShowEmotion],
                             ['Profile', showProfile, setShowProfile],
                             ['Watermark', showWatermark, setShowWatermark],
-                            ['Duration', showDuration, setShowDuration],
+                            ['Risk Plan', showPlan, setShowPlan],
                             ['Referral Code', showReferral, setShowReferral],
                             ['Thesis', showThesis, setShowThesis],
                             ['Review', showReview, setShowReview],
@@ -1009,9 +1525,20 @@ interface PnlCardProps {
     showSide: boolean
     showPnl: boolean
     showRoi: boolean
+    showTradeTimes: boolean
     showProfile: boolean
     showWatermark: boolean
     showDuration: boolean
+    showPlan: boolean
+    plannedStop: number | null
+    plannedTarget: number | null
+    plannedRr: number | null
+    setupTag: string | null
+    executionGrade: ExecutionGrade | null
+    emotionTag: string | null
+    showSetup: boolean
+    showGrade: boolean
+    showEmotion: boolean
     showReferral: boolean
     showThesis: boolean
     customThesis: string
@@ -1024,8 +1551,10 @@ function PnlCard({
     trade, bg, accent, roiPercent, duration, leverage, selectedExchange,
     traderHandle, brandTitle, brandSubtitle, activeLogoUrl, activeReferral,
     avatarUrl, isCustomBgActive, customBgUrl, bgDimming,
-    showSide, showPnl, showRoi, showProfile, showWatermark, showDuration, showReferral,
-    showThesis, customThesis, showReview, customReview, showFullText
+    showSide, showPnl, showRoi, showTradeTimes, showProfile, showWatermark, showDuration,
+    showPlan, plannedStop, plannedTarget, plannedRr,
+    setupTag, executionGrade, emotionTag, showSetup, showGrade, showEmotion,
+    showReferral, showThesis, customThesis, showReview, customReview, showFullText
 }: PnlCardProps) {
     const isTransparentMode = !isCustomBgActive && bg.isTransparent
     const hasReferralDisplay = showReferral && !!activeReferral.trim()
@@ -1142,6 +1671,47 @@ function PnlCard({
                     )}
                 </div>
 
+                {/* ── Journal Badges: Setup, Grade, Emosi ── */}
+                {((showSetup && setupTag) || (showGrade && executionGrade) || (showEmotion && emotionTag)) && (
+                    <div className="flex flex-wrap items-center gap-2 mb-2.5">
+                        {showSetup && setupTag && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 shadow-xs">
+                                <span>🎯</span>
+                                <span>{setupTag}</span>
+                            </span>
+                        )}
+                        {showGrade && executionGrade && (
+                            <span
+                                className={cn(
+                                    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border shadow-xs',
+                                    executionGrade === 'A'
+                                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                        : executionGrade === 'B'
+                                            ? 'bg-sky-500/15 text-sky-400 border-sky-500/30'
+                                            : executionGrade === 'C'
+                                                ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                                                : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                                )}
+                            >
+                                <span>⭐</span>
+                                <span>Grade {executionGrade}</span>
+                            </span>
+                        )}
+                        {showEmotion && emotionTag && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30 shadow-xs">
+                                <span>
+                                    {emotionTag.toLowerCase() === 'calm' ? '😌' :
+                                     emotionTag.toLowerCase() === 'fomo' ? '⚡' :
+                                     emotionTag.toLowerCase() === 'revenge' ? '😤' :
+                                     emotionTag.toLowerCase() === 'anxious' ? '😰' :
+                                     emotionTag.toLowerCase() === 'overconfident' ? '😎' : '🧠'}
+                                </span>
+                                <span className="capitalize">{emotionTag}</span>
+                            </span>
+                        )}
+                    </div>
+                )}
+
                 {/* ── ROI Hero ── */}
                 {showRoi && (
                     <div
@@ -1166,27 +1736,80 @@ function PnlCard({
                     </div>
                 )}
 
-                {/* ── Key Metrics Grid (Entry, Exit, Duration) ── */}
+                {/* ── Key Metrics Grid (Entry, Exit, Duration, Aktual R:R) ── */}
                 <div
-                    className="grid grid-cols-3 gap-2 p-3 rounded-xl mb-3"
+                    className="grid grid-cols-4 gap-2 p-3 rounded-xl mb-3"
                     style={{
                         background: 'rgba(255, 255, 255, 0.04)',
                         border: '1px solid rgba(255, 255, 255, 0.08)'
                     }}
                 >
                     <div>
-                        <div className="text-[11px] leading-tight mb-1" style={{ color: bg.textSub }}>Entry Price</div>
+                        <div className="text-[10px] leading-tight mb-1" style={{ color: bg.textSub }}>Entry Price</div>
                         <div className="text-xs font-bold text-white truncate">{formatPrice(trade.trade.entryPrice)}</div>
+                        {showTradeTimes && trade.trade.entryTime && (
+                            <div className="text-[9px] leading-tight mt-1 truncate font-medium" style={{ color: bg.textSub }}>
+                                {formatDateTime(trade.trade.entryTime)}
+                            </div>
+                        )}
                     </div>
                     <div>
-                        <div className="text-[11px] leading-tight mb-1" style={{ color: bg.textSub }}>Exit Price</div>
+                        <div className="text-[10px] leading-tight mb-1" style={{ color: bg.textSub }}>Exit Price</div>
                         <div className="text-xs font-bold text-white truncate">{formatPrice(trade.trade.exitPrice)}</div>
+                        {showTradeTimes && (
+                            <div className="text-[9px] leading-tight mt-1 truncate font-medium" style={{ color: bg.textSub }}>
+                                {trade.trade.exitTime ? formatDateTime(trade.trade.exitTime) : 'Posisi Terbuka'}
+                            </div>
+                        )}
                     </div>
                     <div>
-                        <div className="text-[11px] leading-tight mb-1" style={{ color: bg.textSub }}>Duration</div>
+                        <div className="text-[10px] leading-tight mb-1" style={{ color: bg.textSub }}>Duration</div>
                         <div className="text-xs font-bold text-white truncate">{showDuration ? duration : '—'}</div>
                     </div>
+                    <div>
+                        <div className="text-[10px] leading-tight mb-1" style={{ color: bg.textSub }}>R-Multiple</div>
+                        <div
+                            className="text-xs font-bold truncate"
+                            style={{
+                                color: trade.rMultiple !== null && trade.rMultiple !== undefined
+                                    ? (trade.rMultiple > 0 ? '#10b981' : trade.rMultiple < 0 ? '#ef4444' : '#ffffff')
+                                    : '#94a3b8'
+                            }}
+                        >
+                            {trade.rMultiple !== null && trade.rMultiple !== undefined ? formatR(trade.rMultiple) : '—'}
+                        </div>
+                    </div>
                 </div>
+
+                {/* ── Planned Risk Grid (Plan SL, Plan TP, Plan R:R) ── */}
+                {showPlan && (
+                    <div
+                        className="grid grid-cols-3 gap-2 p-3 rounded-xl mb-3"
+                        style={{
+                            background: 'rgba(255, 255, 255, 0.03)',
+                            border: '1px solid rgba(255, 255, 255, 0.06)'
+                        }}
+                    >
+                        <div>
+                            <div className="text-[10px] leading-tight mb-1" style={{ color: bg.textSub }}>Plan SL</div>
+                            <div className="text-xs font-bold text-rose-400 truncate">
+                                {plannedStop !== null && plannedStop !== undefined ? formatPrice(plannedStop) : '—'}
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-[10px] leading-tight mb-1" style={{ color: bg.textSub }}>Plan TP</div>
+                            <div className="text-xs font-bold text-emerald-400 truncate">
+                                {plannedTarget !== null && plannedTarget !== undefined ? formatPrice(plannedTarget) : '—'}
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-[10px] leading-tight mb-1" style={{ color: bg.textSub }}>Plan R:R</div>
+                            <div className="text-xs font-bold text-sky-400 truncate">
+                                {plannedRr !== null && plannedRr !== undefined ? `1:${plannedRr.toFixed(2)}` : '—'}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* ── Trade Thesis (Dinamis: Penuh / Compact) ── */}
                 {showThesis && customThesis.trim() && (
@@ -1260,7 +1883,7 @@ function PnlCard({
 
                         {showWatermark && (
                             <div className="text-[10px] text-right leading-tight ml-auto" style={{ color: bg.textSub }}>
-                                <div className="font-semibold text-white/80">sharenya.app</div>
+                                <div className="font-semibold text-white/80">nitirekso</div>
                                 <div>Trading Journal</div>
                             </div>
                         )}
