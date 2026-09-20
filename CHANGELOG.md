@@ -19,13 +19,16 @@ Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/
 - **Perbaikan Git Tracking Aset Dokumentasi**:
   - Whitelist folder `docs/assets/screenshots/` di `.gitignore` dan normalisasi berkas screenshot ke nama kebab-case.
 
-### ⚙️ Automasi CI/CD & Rilis GitHub
-- **Workflow Rilis Otomatis (`.github/workflows/release.yml`)**:
+### ⚙️ Automasi CI/CD & Rilis Multi-Platform (Windows, macOS, Linux)
+- **Workflow Rilis Matriks Otomatis (`.github/workflows/release.yml`)**:
   - Trigger otomatis saat push tag versi (`v*`) dan trigger manual (`workflow_dispatch`).
-  - Quality Gate: verifikasi typecheck TypeScript otomatis sebelum build.
-  - Packaging installer mandiri Windows NSIS (`nitirekso-Setup-<version>.exe`) dan blockmap di runner `windows-latest`.
+  - Quality Gate: verifikasi typecheck TypeScript otomatis sebelum build di setiap runner.
+  - **Dukungan Tiga Platform Utama**:
+    - **Windows**: Installer mandiri NSIS (`nitirekso-Setup-<version>.exe`) di runner `windows-latest`.
+    - **macOS**: Paket DMG dan ZIP (`nitirekso-<version>-mac-arm64.dmg`, `nitirekso-<version>-mac-x64.dmg`, `.zip`) untuk Apple Silicon (M1/M2/M3/M4) dan Intel di runner `macos-latest`.
+    - **Linux**: Paket AppImage portabel dan berkas instalasi Debian/Ubuntu (`nitirekso-<version>-linux-x64.AppImage`, `nitirekso-<version>-linux-x64.deb`) di runner `ubuntu-latest`.
   - Ekstraksi catatan rilis otomatis dari `CHANGELOG.md` menggunakan skrip `scripts/extract-release-notes.cjs`.
-  - Publikasi rilis idempotent dengan flag `--clobber`.
+  - Agregasi seluruh binary installer dan publikasi rilis idempotent dengan flag `--clobber`.
 
 ---
 

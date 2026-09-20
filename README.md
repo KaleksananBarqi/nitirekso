@@ -104,12 +104,24 @@ npm install
 npm run dev
 ```
 
-### Membuat Installer Desktop (.exe)
+### Membuat Installer Desktop Multi-Platform
 ```bash
-# Menghasilkan installer mandiri di folder release/
+# Menghasilkan installer mandiri Windows (.exe)
 npm run dist
+
+# Menghasilkan paket macOS (.dmg & .zip)
+npm run dist:mac
+
+# Menghasilkan paket Linux (.AppImage & .deb)
+npm run dist:linux
+
+# Menghasilkan seluruh platform sekaligus (Windows, macOS, Linux)
+npm run dist:all
 ```
-Hasil installer berformat `release/nitirekso-Setup-<versi>.exe` yang dapat langsung dipasang tanpa perlu terminal, Docker, atau database server eksternal.
+Hasil build tersimpan di folder `release/`:
+* **Windows**: `nitirekso-Setup-<versi>.exe` (NSIS Wizard Installer)
+* **macOS**: `nitirekso-<versi>-mac-arm64.dmg` (Apple Silicon) & `nitirekso-<versi>-mac-x64.dmg` (Intel), serta berkas portabel `.zip`
+* **Linux**: `nitirekso-<versi>-linux-x64.AppImage` (Portable) & `nitirekso-<versi>-linux-x64.deb` (Debian/Ubuntu)
 
 ---
 
@@ -180,7 +192,7 @@ Spreadsheet manual menuntut trader mengetik ulang harga entry, exit, komisi, dan
 Dalam trading kripto futures, profit bisa saja terjadi akibat melanggar rencana trading (*bad win* / faktor hoki), sementara kerugian wajar bisa terjadi meskipun SOP telah dipatuhi (*good loss*). nitirekso melatih Anda menilai kepatuhan terhadap proses eksekusi, bukan sekadar nominal dolar, demi menjaga psikologi trading yang tahan banting.
 
 ### 5. Di mana saya bisa mengunduh installer nitirekso?
-Anda dapat mengunduh installer mandiri `.exe` versi terbaru langsung dari halaman [GitHub Releases](https://github.com/KaleksananBarqi/nitirekso/releases) atau mengunjungi [Landing Page Resmi](https://kaleksananbarqi.github.io/nitirekso/).
+Anda dapat mengunduh paket resmi versi terbaru untuk **Windows** (`.exe`), **macOS** (`.dmg`, `.zip`), maupun **Linux** (`.AppImage`, `.deb`) langsung dari halaman [GitHub Releases](https://github.com/KaleksananBarqi/nitirekso/releases) atau mengunjungi [Landing Page Resmi](https://kaleksananbarqi.github.io/nitirekso/).
 
 ---
 
