@@ -37,6 +37,69 @@ import { cn } from '../lib/utils'
  * user bisa menyimpulkan hal yang salah karena membandingkan apel dengan jeruk.
  */
 
+function toLocalDateStr(d: Date): string {
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+}
+
+function getPeriodPresets(): { id: string; label: string; getRange: () => { from: string; to: string } }[] {
+    const now = new Date()
+    const today = toLocalDateStr(now)
+
+    return [
+        {
+            id: 'today',
+            label: 'Hari Ini',
+            getRange: () => ({ from: today, to: today })
+        },
+        {
+            id: '7d',
+            label: '7 Hari',
+            getRange: () => {
+                const d = new Date()
+                d.setDate(d.getDate() - 6)
+                return { from: toLocalDateStr(d), to: today }
+            }
+        },
+        {
+            id: '30d',
+            label: '30 Hari',
+            getRange: () => {
+                const d = new Date()
+                d.setDate(d.getDate() - 29)
+                return { from: toLocalDateStr(d), to: today }
+            }
+        },
+        {
+            id: 'thisMonth',
+            label: 'Bulan Ini',
+            getRange: () => {
+                const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+                return { from: toLocalDateStr(firstDay), to: today }
+            }
+        },
+        {
+            id: 'lastMonth',
+            label: 'Bulan Lalu',
+            getRange: () => {
+                const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+                const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0)
+                return {
+                    from: toLocalDateStr(firstDayLastMonth),
+                    to: toLocalDateStr(lastDayLastMonth)
+                }
+            }
+        },
+        {
+            id: 'all',
+            label: 'Semua',
+            getRange: () => ({ from: '', to: '' })
+        }
+    ]
+}
+
 interface Filters {
     from: string
     to: string
@@ -57,6 +120,17 @@ export function Analytics({ trades, hidePnl }: AnalyticsProps): React.JSX.Elemen
     const [dimension, setDimension] = useState<Dimension>('setupTag')
     const [equityVariant, setEquityVariant] = useState<'equity' | 'drawdown'>('equity')
     const [shareAnalyticsOpen, setShareAnalyticsOpen] = useState(false)
+
+    const periodPresets = useMemo(() => getPeriodPresets(), [])
+
+    const activePeriodLabel = useMemo(() => {
+        if (!filters.from && !filters.to) return 'All-Time Performance'
+        if (filters.from === filters.to) return `Kinerja Hari Ini (${filters.from})`
+        if (filters.from && filters.to) return `${filters.from} s/d ${filters.to}`
+        if (filters.from) return `Mulai ${filters.from}`
+        if (filters.to) return `Sampai ${filters.to}`
+        return 'Performance'
+    }, [filters.from, filters.to])
 
     const options = useMemo(() => collectFilterValues(trades), [trades])
 
@@ -122,12 +196,41 @@ export function Analytics({ trades, hidePnl }: AnalyticsProps): React.JSX.Elemen
             <div className="flex-1 overflow-y-auto px-6 py-4">
                 {/* --- Filter global --- */}
                 <section className="rounded-lg border border-border bg-card p-3">
-                    <div className="mb-2 flex items-center gap-2">
-                        <h2 className="text-xs font-semibold">Filter Global</h2>
-                        <span className="text-[10px] text-muted-foreground">
-                            berlaku untuk SEMUA chart & metrik di halaman ini
-                        </span>
+                    <div className="mb-2 flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                            <h2 className="text-xs font-semibold">Filter Global</h2>
+                            <span className="text-[10px] text-muted-foreground">
+                                berlaku untuk SEMUA chart & metrik di halaman ini
+                            </span>
+                        </div>
                     </div>
+
+                    {/* Presets Periode Cepat */}
+                    <div className="mb-3 flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-semibold text-muted-foreground mr-1 flex items-center gap-1">
+                            <span>📅</span>
+                            <span>Periode Cepat:</span>
+                        </span>
+                        {periodPresets.map((preset) => {
+                            const range = preset.getRange()
+                            const isMatch = filters.from === range.from && filters.to === range.to
+                            return (
+                                <button
+                                    key={preset.id}
+                                    type="button"
+                                    onClick={() => setFilters((f) => ({ ...f, from: range.from, to: range.to }))}
+                                    className={`px-2.5 py-0.5 rounded-md text-[11px] font-medium transition-all ${
+                                        isMatch
+                                            ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
+                                            : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground border border-border/40'
+                                    }`}
+                                >
+                                    {preset.label}
+                                </button>
+                            )
+                        })}
+                    </div>
+
                     <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
                         <label className="flex flex-col gap-1">
                             <span className="text-[10px] text-muted-foreground">Dari tanggal (exit)</span>
@@ -510,6 +613,7 @@ export function Analytics({ trades, hidePnl }: AnalyticsProps): React.JSX.Elemen
                 isOpen={shareAnalyticsOpen}
                 onClose={() => setShareAnalyticsOpen(false)}
                 trades={filtered}
+                initialPeriodLabel={activePeriodLabel}
             />
         </div>
     )

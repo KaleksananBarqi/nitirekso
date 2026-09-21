@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import {
     IPC_CHANNELS,
     type AppHealth,
+    type AppUpdateInfo,
     type BackupRunResult,
     type BackupStatusPayload,
     type CredentialSavePayload,
@@ -170,7 +171,17 @@ const api: PreloadApi = {
         ipcRenderer.invoke(IPC_CHANNELS.logWrite, { message, details, level: 'WARN' }),
 
     logInfo: (message: string, details?: unknown): Promise<void> =>
-        ipcRenderer.invoke(IPC_CHANNELS.logWrite, { message, details, level: 'INFO' })
+        ipcRenderer.invoke(IPC_CHANNELS.logWrite, { message, details, level: 'INFO' }),
+
+    // --- Utilitas Aplikasi & Pembaruan ---
+    openExternalUrl: (url: string): Promise<MutationResult<void>> =>
+        ipcRenderer.invoke(IPC_CHANNELS.openExternalUrl, url),
+
+    getAppVersion: (): Promise<string> =>
+        ipcRenderer.invoke(IPC_CHANNELS.getAppVersion),
+
+    checkForUpdates: (): Promise<MutationResult<AppUpdateInfo>> =>
+        ipcRenderer.invoke(IPC_CHANNELS.checkForUpdates)
 }
 
 contextBridge.exposeInMainWorld('api', api)

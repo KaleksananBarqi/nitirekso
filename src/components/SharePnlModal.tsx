@@ -1222,27 +1222,33 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 {/* ── BACKGROUND & WALLPAPER SELECTOR ── */}
                 <div className="border-t border-border/40 px-4 py-2.5 bg-card/30 flex flex-col gap-2">
                     <div className="flex items-center justify-between flex-wrap gap-2">
-                        {/* Grup 1: Preset Warna */}
+                        {/* Grup 1: Skema Warna (Aksen & Teks) */}
                         <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-xs font-semibold text-muted-foreground mr-1 flex items-center gap-1">
                                 <span>🎨</span>
-                                <span>Tema Preset:</span>
+                                <span>Skema Warna:</span>
                             </span>
                             {BG_TEMPLATES.map((t, i) => {
-                                const isSelected = !isCustomBgActive && selectedBgIdx === i
+                                const isColorSelected = selectedBgIdx === i
                                 return (
                                     <button
                                         key={t.id}
                                         type="button"
                                         onClick={() => {
                                             setSelectedBgIdx(i)
-                                            setIsCustomBgActive(false)
                                         }}
                                         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
-                                            isSelected
-                                                ? 'border-primary bg-primary/15 text-foreground font-bold shadow-xs ring-1 ring-primary/40'
+                                            isColorSelected
+                                                ? isCustomBgActive
+                                                    ? 'border-primary/80 bg-primary/15 text-foreground font-semibold shadow-xs ring-1 ring-primary/50'
+                                                    : 'border-primary bg-primary/20 text-foreground font-bold shadow-xs ring-2 ring-primary/60'
                                                 : 'border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground'
                                         }`}
+                                        title={
+                                            isCustomBgActive
+                                                ? `${t.label} (Aktif sebagai warna aksen & teks kartu)`
+                                                : `${t.label} (Aktif sebagai background & warna aksen)`
+                                        }
                                     >
                                         <span
                                             className="w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -1251,6 +1257,11 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                             }}
                                         />
                                         <span>{t.label}</span>
+                                        {isColorSelected && (
+                                            <span className="text-[10px] opacity-75 font-mono">
+                                                {isCustomBgActive ? '(Aksen)' : '✓'}
+                                            </span>
+                                        )}
                                     </button>
                                 )
                             })}
@@ -1265,8 +1276,23 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                     <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-border/20">
                         <span className="text-xs font-semibold text-muted-foreground mr-1 flex items-center gap-1">
                             <span>🖼️</span>
-                            <span>Wallpaper Kustom:</span>
+                            <span>Wallpaper:</span>
                         </span>
+
+                        {/* Opsi Polos (Gunakan Warna Tema Saja) */}
+                        <button
+                            type="button"
+                            onClick={() => setIsCustomBgActive(false)}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
+                                !isCustomBgActive
+                                    ? 'border-primary bg-primary/20 text-foreground font-bold shadow-xs ring-1 ring-primary/50'
+                                    : 'border-border/60 bg-muted/20 text-muted-foreground hover:text-foreground hover:border-border'
+                            }`}
+                            title="Gunakan latar belakang warna solid/gradien dari tema di atas"
+                        >
+                            <span>🚫</span>
+                            <span>Warna Tema Polos</span>
+                        </button>
 
                         {customBgList.map((bgItem) => {
                             const isSelected = isCustomBgActive && selectedCustomBgId === bgItem.id
@@ -1315,6 +1341,15 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                         >
                             <span>+ Upload BG</span>
                         </button>
+                    </div>
+
+                    <div className="text-[11px] text-muted-foreground/80 italic flex items-center gap-1">
+                        <span>💡</span>
+                        <span>
+                            {isCustomBgActive
+                                ? `Wallpaper kustom aktif. Skema warna '${bg.label}' mengatur warna aksen PnL & teks.`
+                                : `Menggunakan latar belakang warna murni '${bg.label}'.`}
+                        </span>
                     </div>
                 </div>
 
@@ -1474,7 +1509,12 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                             onClick: () => {
                                 const refStr = showReferral && activeReferral ? `\nRef Code: ${activeReferral}` : ''
                                 const text = `${trade.trade.symbol} ${trade.trade.direction.toUpperCase()} ${leverage}x | ${formatPercent(roiPercent)} ROI | ${formatPnl(trade.trade.realizedPnl)} USDT${refStr}\n\n#Trading #Crypto #${brandTitle} ${traderHandle}`
-                                window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank')
+                                const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`
+                                if (window.api?.openExternalUrl) {
+                                    void window.api.openExternalUrl(tweetUrl)
+                                } else {
+                                    window.open(tweetUrl, '_blank')
+                                }
                             },
                             disabled: false,
                         },

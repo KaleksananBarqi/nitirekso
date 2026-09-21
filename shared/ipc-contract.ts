@@ -61,7 +61,12 @@ export const IPC_CHANNELS = {
 
     // --- Screenshot (fitur 1) ---
     uploadScreenshot: 'screenshot:upload',
-    getScreenshot: 'screenshot:get'
+    getScreenshot: 'screenshot:get',
+
+    // --- Utilitas Aplikasi & Pembaruan ---
+    openExternalUrl: 'app:openExternalUrl',
+    getAppVersion: 'app:getVersion',
+    checkForUpdates: 'app:checkForUpdates'
 } as const
 
 /** Exchange yang bisa disinkronkan. */
@@ -287,6 +292,15 @@ export interface AiConfigStatus {
     keyHint: string | null
 }
 
+export interface AppUpdateInfo {
+    hasUpdate: boolean
+    currentVersion: string
+    latestVersion: string
+    releaseUrl: string
+    releaseNotes?: string
+    publishedAt?: string
+}
+
 /** Bentuk `window.api` yang diekspos preload ke renderer. */
 export interface PreloadApi {
     getAppHealth(): Promise<AppHealth>
@@ -341,6 +355,11 @@ export interface PreloadApi {
     logError(message: string, details?: unknown): Promise<void>
     logWarn(message: string, details?: unknown): Promise<void>
     logInfo(message: string, details?: unknown): Promise<void>
+
+    // --- Utilitas Aplikasi & Pembaruan ---
+    openExternalUrl(url: string): Promise<MutationResult<void>>
+    getAppVersion(): Promise<string>
+    checkForUpdates(): Promise<MutationResult<AppUpdateInfo>>
 }
 
 // Re-export tipe domain yang dipakai renderer, supaya renderer cukup

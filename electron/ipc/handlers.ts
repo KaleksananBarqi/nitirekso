@@ -1,9 +1,10 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain, shell } from 'electron'
 import {
     IPC_CHANNELS,
     type AiConfigPayload,
     type AiConfigStatus,
     type AppHealth,
+    type AppUpdateInfo,
     type BackupRunResult,
     type BackupStatusPayload,
     type JournalAnalysisResult,
@@ -359,7 +360,7 @@ export function registerIpcHandlers(): void {
         }
     })
 
-    ipcMain.handle(
+        ipcMain.handle(
         IPC_CHANNELS.analyzeJournal,
         async (_event, filter?: TradeFilterPayload): Promise<MutationResult<JournalAnalysisResult>> => {
             try {
@@ -369,6 +370,104 @@ export function registerIpcHandlers(): void {
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
                 logger.error('[ipc] AI analyze error:', message)
+                return { ok: false, error: message }
+            }
+        }
+    )
+
+    // --- Utilitas Aplikasi & Pembaruan ---
+
+    ipcMain.handle(
+        IPC_CHANNELS.openExternalUrl,
+        async (_event, url: string): Promise<MutationResult<void>> => {
+            try {
+                if (typeof url !== 'string' || !url.trim()) {
+                    return { ok: false, error: 'URL tidak valid' }
+                }
+                const parsed = new URL(url)
+                if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+                    return { ok: false, error: `Protokol tidak diizinkan: ${parsed.protocol}` }
+                }
+                await shell.openExternal(url)
+                return { ok: true }
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error)
+                logger.error('[ipc] openExternalUrl error:', message)
+                return { ok: false, error: message }
+            }
+        }
+    )
+
+    ipcMain.handle(IPC_CHANNELS.getAppVersion, (): string => {
+        try {
+            return app.getVersion()
+        } catch {
+            return '1.3.0'
+        }
+    })
+
+    ipcMain.handle(
+        IPC_CHANNELS.checkForUpdates,
+        async (): Promise<MutationResult<AppUpdateInfo>> => {
+            try {
+                const currentVersion = app.getVersion()
+                const res = await fetch(
+                    'https://api.github.com/repos/KaleksananBarqi/nitirekso/releases/latest',
+                    {
+                        headers: {
+                            'User-Agent': `nitirekso-desktop/${currentVersion}`,
+                            Accept: 'application/vnd.github.v3+json'
+                        }
+                    }
+                )
+
+                if (!res.ok) {
+                    return {
+                        ok: false,
+                        error: `Gagal memeriksa pembaruan (HTTP ${res.status}: ${res.statusText})`
+                    }
+                }
+
+                const data = (await res.json()) as {
+                    tag_name?: string
+                    html_url?: string
+                    body?: string
+                    published_at?: string
+                }
+
+                const latestTag = data.tag_name ? data.tag_name.replace(/^v/, '') : currentVersion
+                const releaseUrl = data.html_url || 'https://github.com/KaleksananBarqi/nitirekso/releases'
+                const releaseNotes = data.body || ''
+                const publishedAt = data.published_at
+
+                const isNewerVersion = (latest: string, current: string): boolean => {
+                    const cleanL = latest.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0)
+                    const cleanC = current.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0)
+                    for (let i = 0; i < Math.max(cleanL.length, cleanC.length); i++) {
+                        const l = cleanL[i] || 0
+                        const c = cleanC[i] || 0
+                        if (l > c) return true
+                        if (l < c) return false
+                    }
+                    return false
+                }
+
+                const hasUpdate = isNewerVersion(latestTag, currentVersion)
+
+                return {
+                    ok: true,
+                    data: {
+                        hasUpdate,
+                        currentVersion,
+                        latestVersion: latestTag,
+                        releaseUrl,
+                        releaseNotes,
+                        publishedAt
+                    }
+                }
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error)
+                logger.error('[ipc] checkForUpdates error:', message)
                 return { ok: false, error: message }
             }
         }

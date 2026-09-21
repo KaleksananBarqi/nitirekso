@@ -13,7 +13,7 @@ import logoUrl from '../assets/logo.svg'
  * terlihat seperti template admin-dashboard generik (brief §7).
  */
 
-export type RouteId = 'dashboard' | 'trades' | 'journal' | 'analytics' | 'settings' | 'logs'
+export type RouteId = 'dashboard' | 'trades' | 'journal' | 'analytics' | 'settings' | 'logs' | 'about'
 
 export interface NavItem {
     id: RouteId
@@ -27,7 +27,8 @@ const NAV_ITEMS: NavItem[] = [
     { id: 'journal', label: 'Journal Entry', hint: 'Catatan & grading' },
     { id: 'analytics', label: 'Analytics', hint: 'Breakdown mendalam' },
     { id: 'settings', label: 'Settings', hint: 'Preferensi & koneksi' },
-    { id: 'logs', label: 'Error Logs', hint: 'Log sistem & debugging' }
+    { id: 'logs', label: 'Error Logs', hint: 'Log sistem & debugging' },
+    { id: 'about', label: 'About', hint: 'Tentang & update' }
 ]
 
 interface AppShellProps {
@@ -94,6 +95,26 @@ export function AppShell({
                 </nav>
 
                 {statusSlot && <div className="border-t border-border p-3">{statusSlot}</div>}
+
+                {/* Footer Dukungan Saweria */}
+                <div className="border-t border-border/60 p-2.5 bg-card/40">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const url = 'https://saweria.co/arthex1204'
+                            if (window.api?.openExternalUrl) {
+                                void window.api.openExternalUrl(url)
+                            } else {
+                                window.open(url, '_blank')
+                            }
+                        }}
+                        className="group flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/50 hover:shadow-xs transition-all"
+                        title="Dukung pengembang nitirekso lewat Saweria"
+                    >
+                        <span className="transition-transform group-hover:scale-110">☕</span>
+                        <span>Beliin Aku Kopi</span>
+                    </button>
+                </div>
             </aside>
 
             <main className="flex-1 overflow-hidden">{children}</main>

@@ -77,6 +77,8 @@ win:
         - x64
   # Melewatkan code signing (karena tanpa sertifikat), namun TETAP menerapkan icon dan metadata aplikasi
   signExecutable: false
+  # Jangan meminta hak administrator saat binary aplikasi dijalankan
+  requestedExecutionLevel: asInvoker
 
 extraResources:
   - from: build/icon.ico
@@ -89,6 +91,9 @@ nsis:
   # lokasi install. Untuk aplikasi personal, wizard lebih jelas daripada
   # installer satu-klik yang langsung memasang tanpa konfirmasi.
   oneClick: false
+  # Pasang di direktori user (%LOCALAPPDATA%\Programs) agar tidak butuh hak Administrator
+  perMachine: false
+  allowElevation: false
   # Izinkan user mengganti folder instalasi.
   allowToChangeInstallationDirectory: true
   # Minta izin sebelum membuat shortcut. Membuat shortcut tanpa bertanya

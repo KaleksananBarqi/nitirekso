@@ -3,22 +3,65 @@ import type { TradeDetail } from '@shared/domain'
 import { Modal } from './ui'
 import { summarize, buildEquityCurve, computeDrawdown } from '../lib/analytics/metrics'
 import { formatDate, formatPnl, formatRatio } from '../lib/format'
+import { cn } from '../lib/utils'
 import {
     BG_TEMPLATES,
+    BUILTIN_TEMPLATES,
     EXCHANGES,
     loadShareSettings,
+    loadCustomBgList,
+    addCustomBgItem,
+    getAllShareTemplates,
+    saveCustomShareTemplate,
+    deleteCustomShareTemplate,
+    getActiveTemplateId,
+    setActiveTemplateId,
     type BgTemplate,
-    type ExchangeName
+    type ExchangeName,
+    type ShareCardTemplate,
+    type CustomBgItem
 } from '../lib/shareSettings'
 
 // ---------------------------------------------------------------------------
-// Tipe Props
+// Tipe Props & Opsi Rasio Kartu
 // ---------------------------------------------------------------------------
+
+export type CardAspectRatio = '16:9' | '1:1' | '4:5'
 
 export interface ShareAnalyticsModalProps {
     isOpen: boolean
     onClose: () => void
     trades: TradeDetail[]
+    initialPeriodLabel?: string
+}
+
+// ---------------------------------------------------------------------------
+// Helper Pemecah Teks Canvas (Word Wrap Dinamis)
+// ---------------------------------------------------------------------------
+
+function wrapCanvasText(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number
+): string[] {
+    const words = text.split(/\s+/)
+    const lines: string[] = []
+    let currentLine = ''
+
+    for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word
+        const metrics = ctx.measureText(testLine)
+        if (metrics.width > maxWidth && currentLine) {
+            lines.push(currentLine)
+            currentLine = word
+        } else {
+            currentLine = testLine
+        }
+    }
+    if (currentLine) {
+        lines.push(currentLine)
+    }
+    return lines
 }
 
 // ---------------------------------------------------------------------------
@@ -27,7 +70,7 @@ export interface ShareAnalyticsModalProps {
 
 function drawEquityCurveOnCanvas(
     ctx: CanvasRenderingContext2D,
-    points: { x: number; y: number }[],
+    points: { equity: number }[],
     x: number,
     y: number,
     w: number,
@@ -36,13 +79,13 @@ function drawEquityCurveOnCanvas(
 ): void {
     if (points.length < 2) return
 
-    const minPnl = Math.min(...points.map((p) => p.y))
-    const maxPnl = Math.max(...points.map((p) => p.y))
+    const minPnl = Math.min(...points.map((p) => p.equity))
+    const maxPnl = Math.max(...points.map((p) => p.equity))
     const range = maxPnl - minPnl || 1
 
-    const getCoord = (p: { x: number; y: number }, idx: number) => {
+    const getCoord = (p: { equity: number }, idx: number) => {
         const px = x + (idx / (points.length - 1)) * w
-        const py = y + h - ((p.y - minPnl) / range) * (h - 20) - 10
+        const py = y + h - ((p.equity - minPnl) / range) * (h - 24) - 12
         return { px, py }
     }
 
@@ -88,7 +131,7 @@ function drawEquityCurveOnCanvas(
     ctx.arc(last.px, last.py, 6, 0, Math.PI * 2)
     ctx.fillStyle = '#ffffff'
     ctx.fill()
-    ctx.lineWidth = 2.5
+    ctx.lineWidth = 3
     ctx.strokeStyle = color
     ctx.stroke()
     ctx.restore()
@@ -98,29 +141,63 @@ function drawEquityCurveOnCanvas(
 // Komponen Utama Modal Pamer Analisa
 // ---------------------------------------------------------------------------
 
-export function ShareAnalyticsModal({ isOpen, onClose, trades }: ShareAnalyticsModalProps): React.JSX.Element | null {
+export function ShareAnalyticsModal({
+    isOpen,
+    onClose,
+    trades,
+    initialPeriodLabel = 'All-Time Performance'
+}: ShareAnalyticsModalProps): React.JSX.Element | null {
     if (!isOpen) return null
-    return <ShareAnalyticsModalContent trades={trades} onClose={onClose} />
+    return (
+        <ShareAnalyticsModalContent
+            trades={trades}
+            initialPeriodLabel={initialPeriodLabel}
+            onClose={onClose}
+        />
+    )
 }
 
-function ShareAnalyticsModalContent({ trades, onClose }: { trades: TradeDetail[]; onClose: () => void }): React.JSX.Element {
+function ShareAnalyticsModalContent({
+    trades,
+    initialPeriodLabel,
+    onClose
+}: {
+    trades: TradeDetail[]
+    initialPeriodLabel: string
+    onClose: () => void
+}): React.JSX.Element {
     // --- Kalkulasi Metrik Analitik ---
     const summary = useMemo(() => summarize(trades), [trades])
     const curve = useMemo(() => buildEquityCurve(trades), [trades])
     const drawdown = useMemo(() => computeDrawdown(curve), [curve])
     const isProfit = summary.netPnlTotal >= 0
 
-    // --- Muat Konfigurasi Branding dari Settings ---
+    // --- Muat Konfigurasi Branding, Template & Galeri Wallpaper ---
     const [savedSettings] = useState(() => loadShareSettings())
+    const [customBgList, setCustomBgList] = useState<CustomBgItem[]>(() => loadCustomBgList())
+    const [templates, setTemplates] = useState<ShareCardTemplate[]>(() => getAllShareTemplates())
+    const [activeTemplateId, setActiveTplId] = useState<string>(() => getActiveTemplateId())
+
+    const activeTemplate = templates.find((t) => t.id === activeTemplateId) || templates[0]!
 
     const initialBgIdx = Math.max(
         0,
-        BG_TEMPLATES.findIndex((t) => t.id === savedSettings.bgPresetId)
+        BG_TEMPLATES.findIndex((t) => t.id === (activeTemplate?.bgPresetId || savedSettings.bgPresetId))
     )
 
-    // State: Background Preset
+    // --- State: Skema Warna & Wallpaper ---
+    const initialCustomBgId = activeTemplate?.customBgId || savedSettings.customBgId || (customBgList[0]?.id ?? null)
     const [selectedBgIdx, setSelectedBgIdx] = useState<number>(initialBgIdx)
-    const [isCustomBgActive, setIsCustomBgActive] = useState<boolean>(savedSettings.isCustomBg && !!savedSettings.customBgUrl)
+    const [selectedCustomBgId, setSelectedCustomBgId] = useState<string | null>(initialCustomBgId)
+    const [isCustomBgActive, setIsCustomBgActive] = useState<boolean>(
+        activeTemplate
+            ? activeTemplate.isCustomBg && (!!activeTemplate.customBgId || customBgList.length > 0)
+            : savedSettings.isCustomBg && customBgList.length > 0
+    )
+
+    // Wallpaper kustom yang sedang aktif
+    const activeCustomBgItem = customBgList.find((b) => b.id === selectedCustomBgId) || customBgList[0] || null
+    const activeCustomBgUrl = activeCustomBgItem ? activeCustomBgItem.dataUrl : (savedSettings.customBgUrl || null)
 
     const bg: BgTemplate = BG_TEMPLATES[selectedBgIdx] ?? BG_TEMPLATES[0]!
     const accent = isProfit ? bg.accentProfit : bg.accentLoss
@@ -130,20 +207,27 @@ function ShareAnalyticsModalContent({ trades, onClose }: { trades: TradeDetail[]
     const traderHandle = savedSettings.traderHandle
     const brandTitle = savedSettings.brandTitle || 'NITIREKSO'
     const brandSubtitle = 'ANALYTICS'
-    const customBgUrl = savedSettings.customBgUrl
     const bgDimming = savedSettings.bgDimming
 
     // Exchange selector
     const [selectedExchange, setSelectedExchange] = useState<ExchangeName>('mexc')
     const activeReferral = selectedExchange === 'bitunix' ? savedSettings.bitunixReferralCode : savedSettings.mexcReferralCode
 
-    // State Toggle Tampilan
-    const [showProfile, setShowProfile] = useState(true)
-    const [showWatermark, setShowWatermark] = useState(true)
-    const [showChart, setShowChart] = useState(true)
-    const [hideNominal, setHideNominal] = useState(false)
-    const [showReferral, setShowReferral] = useState<boolean>(savedSettings.showReferral)
-    const [periodLabel, setPeriodLabel] = useState('All-Time Performance')
+    // State Format & Rasio Kartu
+    const [aspectRatio, setAspectRatio] = useState<CardAspectRatio>('16:9')
+
+    // State Toggle Tampilan Komponen
+    const [showProfile, setShowProfile] = useState<boolean>(activeTemplate?.showProfile ?? true)
+    const [showWatermark, setShowWatermark] = useState<boolean>(activeTemplate?.showWatermark ?? true)
+    const [showChart, setShowChart] = useState<boolean>(true)
+    const [hideNominal, setHideNominal] = useState<boolean>(false)
+    const [showReferral, setShowReferral] = useState<boolean>(activeTemplate ? activeTemplate.showReferral : savedSettings.showReferral)
+    const [periodLabel, setPeriodLabel] = useState<string>(initialPeriodLabel)
+    const [customTraderNote, setCustomTraderNote] = useState<string>('')
+
+    // State Template Management Modal
+    const [isSavingTemplate, setIsSavingTemplate] = useState<boolean>(false)
+    const [newTemplateName, setNewTemplateName] = useState<string>('')
 
     // State Notifikasi Feedback
     const [copied, setCopied] = useState(false)
@@ -151,10 +235,28 @@ function ShareAnalyticsModalContent({ trades, onClose }: { trades: TradeDetail[]
 
     // Refs
     const canvasRef = useRef<HTMLCanvasElement | null>(null)
+    const uploadBgModalInputRef = useRef<HTMLInputElement | null>(null)
     const avatarImgRef = useRef<HTMLImageElement | null>(null)
     const customBgImgRef = useRef<HTMLImageElement | null>(null)
     const mexcLogoImgRef = useRef<HTMLImageElement | null>(null)
     const bitunixLogoImgRef = useRef<HTMLImageElement | null>(null)
+
+    // Upload background baru langsung dari modal
+    const handleUploadNewBg = (file?: File) => {
+        if (!file) return
+        const reader = new FileReader()
+        reader.onload = (e) => {
+            const dataUrl = e.target?.result as string
+            if (!dataUrl) return
+            const name = file.name.replace(/\.[^/.]+$/, '').slice(0, 15)
+            const newItem = addCustomBgItem({ name, dataUrl })
+            const updated = loadCustomBgList()
+            setCustomBgList(updated)
+            setSelectedCustomBgId(newItem.id)
+            setIsCustomBgActive(true)
+        }
+        reader.readAsDataURL(file)
+    }
 
     // Preload Avatar
     useEffect(() => {
@@ -170,15 +272,15 @@ function ShareAnalyticsModalContent({ trades, onClose }: { trades: TradeDetail[]
 
     // Preload Custom Wallpaper
     useEffect(() => {
-        if (customBgUrl) {
+        if (activeCustomBgUrl) {
             const img = new Image()
             img.crossOrigin = 'anonymous'
-            img.src = customBgUrl
+            img.src = activeCustomBgUrl
             img.onload = () => { customBgImgRef.current = img }
         } else {
             customBgImgRef.current = null
         }
-    }, [customBgUrl])
+    }, [activeCustomBgUrl])
 
     // Preload Logo Exchanges
     useEffect(() => {
@@ -196,23 +298,98 @@ function ShareAnalyticsModalContent({ trades, onClose }: { trades: TradeDetail[]
         }
     }, [savedSettings.mexcLogoUrl, savedSettings.bitunixLogoUrl])
 
-    // --- Render ke Canvas Beresolusi Tinggi (Export Engine Retina 2x) ---
+    // Switch Template
+    const handleApplyTemplate = (tpl: ShareCardTemplate) => {
+        setActiveTplId(tpl.id)
+        setActiveTemplateId(tpl.id)
+
+        const bgIdx = BG_TEMPLATES.findIndex((b) => b.id === tpl.bgPresetId)
+        if (bgIdx >= 0) setSelectedBgIdx(bgIdx)
+
+        if (tpl.isCustomBg && tpl.customBgId) {
+            setSelectedCustomBgId(tpl.customBgId)
+            setIsCustomBgActive(true)
+        } else {
+            setIsCustomBgActive(false)
+        }
+
+        setShowProfile(tpl.showProfile)
+        setShowWatermark(tpl.showWatermark)
+        setShowReferral(tpl.showReferral)
+    }
+
+    // Simpan Template Kustom Baru
+    const handleSaveNewTemplate = () => {
+        if (!newTemplateName.trim()) return
+        const newTpl: ShareCardTemplate = {
+            id: `custom-${Date.now()}`,
+            name: newTemplateName.trim(),
+            isBuiltin: false,
+            bgPresetId: bg.id,
+            isCustomBg: isCustomBgActive,
+            customBgId: isCustomBgActive ? selectedCustomBgId : null,
+            bgDimming,
+            showSide: true,
+            showPnl: true,
+            showRoi: true,
+            showTradeTimes: true,
+            showProfile,
+            showWatermark,
+            showDuration: true,
+            showPlan: true,
+            showSetup: true,
+            showGrade: true,
+            showEmotion: true,
+            showReferral,
+            showThesis: false,
+            showReview: false,
+            showFullText: false
+        }
+        saveCustomShareTemplate(newTpl)
+        const updated = getAllShareTemplates()
+        setTemplates(updated)
+        setActiveTplId(newTpl.id)
+        setActiveTemplateId(newTpl.id)
+        setNewTemplateName('')
+        setIsSavingTemplate(false)
+    }
+
+    // Hapus Template Kustom
+    const handleDeleteTemplate = (id: string, e: React.MouseEvent) => {
+        e.stopPropagation()
+        deleteCustomShareTemplate(id)
+        const updated = getAllShareTemplates()
+        setTemplates(updated)
+        if (activeTemplateId === id) {
+            setActiveTplId(updated[0]?.id || BUILTIN_TEMPLATES[0]!.id)
+            setActiveTemplateId(updated[0]?.id || BUILTIN_TEMPLATES[0]!.id)
+        }
+    }
+
+    // --- Render ke Canvas Beresolusi Tinggi (Retina Export Engine 2x) ---
     const renderCanvas = useCallback((): HTMLCanvasElement | null => {
         const canvas = canvasRef.current
         if (!canvas) return null
         const ctx = canvas.getContext('2d')
         if (!ctx) return null
 
-        const canvasW = 1080
-        const canvasH = 1350
+        let canvasW = 1280
+        let canvasH = 720
+        if (aspectRatio === '1:1') {
+            canvasW = 1080
+            canvasH = 1080
+        } else if (aspectRatio === '4:5') {
+            canvasW = 1080
+            canvasH = 1350
+        }
+
         canvas.width = canvasW
         canvas.height = canvasH
-
         ctx.clearRect(0, 0, canvasW, canvasH)
 
         const isTransparentMode = !isCustomBgActive && bg.isTransparent
 
-        // 1. Gambar Background Keseluruhan
+        // 1. Gambar Background
         if (!isTransparentMode) {
             if (isCustomBgActive && customBgImgRef.current && customBgImgRef.current.complete) {
                 const img = customBgImgRef.current
@@ -233,7 +410,7 @@ function ShareAnalyticsModalContent({ trades, onClose }: { trades: TradeDetail[]
                 ctx.fillStyle = `rgba(0, 0, 0, ${bgDimming / 100})`
                 ctx.fillRect(0, 0, canvasW, canvasH)
             } else {
-                // Background preset gradient
+                // Preset gradient
                 const grad = ctx.createLinearGradient(0, 0, 0, canvasH)
                 if (bg.id === 'cyberpunk') {
                     grad.addColorStop(0, '#1e0836')
@@ -261,294 +438,282 @@ function ShareAnalyticsModalContent({ trades, onClose }: { trades: TradeDetail[]
             }
         }
 
-        // 2. Card Container
-        const cardMargin = 40
-        const cardX = cardMargin
-        const cardY = cardMargin
-        const cardW = canvasW - cardMargin * 2
-        const cardH = canvasH - cardMargin * 2
-        const cardRadius = 32
+        // 2. Kartu Glassmorphism Container
+        const padX = aspectRatio === '16:9' ? 60 : 48
+        const padY = aspectRatio === '16:9' ? 45 : 48
+        const cardW = canvasW - padX * 2
+        const cardH = canvasH - padY * 2
+        const cardR = 28
 
         ctx.save()
-        if (isTransparentMode) {
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.90)'
-            ctx.strokeStyle = `${accent}66`
-            ctx.lineWidth = 2.5
-        } else {
-            ctx.fillStyle = 'rgba(10, 15, 29, 0.72)'
-            ctx.strokeStyle = bg.border
-            ctx.lineWidth = 1.5
-        }
         ctx.beginPath()
-        ctx.roundRect(cardX, cardY, cardW, cardH, cardRadius)
+        ctx.roundRect(padX, padY, cardW, cardH, cardR)
+        ctx.fillStyle = isTransparentMode ? 'rgba(10, 15, 30, 0.94)' : 'rgba(15, 23, 42, 0.72)'
         ctx.fill()
+        ctx.strokeStyle = `${accent}55`
+        ctx.lineWidth = 2
         ctx.stroke()
         ctx.restore()
 
-        const cx = cardX + 48
-        const cw = cardW - 96
-        let curY = cardY + 54
-
-        // A. Header: Branding + Exchange Badge + Referral
+        // 3. Header Branding & Periode
         ctx.save()
-        ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+        const headerY = padY + 48
+        ctx.font = 'bold 34px sans-serif'
         ctx.fillStyle = accent
-        ctx.fillText(brandTitle, cx, curY)
-        const brandW = ctx.measureText(brandTitle).width
+        ctx.fillText(brandTitle, padX + 36, headerY)
 
-        ctx.font = '300 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
-        ctx.fillText(` ${brandSubtitle}`, cx + brandW, curY)
+        const titleWidth = ctx.measureText(brandTitle).width
+        ctx.font = '300 24px sans-serif'
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.65)'
+        ctx.fillText(brandSubtitle, padX + 36 + titleWidth + 12, headerY)
 
-        // Exchange Badge
-        const exBadgeText = selectedExchange.toUpperCase()
-        ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        const exTextW = ctx.measureText(exBadgeText).width
-        const exBadgeW = exTextW + 36
-        const exBadgeH = 44
-        const exBadgeX = cardX + cardW - 48 - exBadgeW
-        const exBadgeY = curY - 34
+        ctx.font = '500 18px sans-serif'
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.55)'
+        ctx.fillText(periodLabel, padX + 36, headerY + 28)
 
-        ctx.fillStyle = `${accent}22`
+        // Badge Exchange & Referral di Kanan Atas
+        const badgeText = selectedExchange.toUpperCase()
+        ctx.font = 'bold 18px sans-serif'
+        const badgeW = ctx.measureText(badgeText).width + 24
+        const badgeH = 34
+        const badgeX = padX + cardW - 36 - badgeW
+        const badgeY = padY + 28
+
+        ctx.beginPath()
+        ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 10)
+        ctx.fillStyle = `${accent}28`
+        ctx.fill()
         ctx.strokeStyle = `${accent}88`
         ctx.lineWidth = 1.5
-        ctx.beginPath()
-        ctx.roundRect(exBadgeX, exBadgeY, exBadgeW, exBadgeH, 12)
-        ctx.fill()
         ctx.stroke()
 
-        ctx.fillStyle = accent
-        ctx.fillText(exBadgeText, exBadgeX + 18, exBadgeY + 30)
+        ctx.fillStyle = '#ffffff'
+        ctx.fillText(badgeText, badgeX + 12, badgeY + 24)
 
-        // Referral Code jika ada
         if (showReferral && activeReferral) {
             const refText = `REF: ${activeReferral}`
-            ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+            ctx.font = 'bold 16px sans-serif'
+            const refW = ctx.measureText(refText).width + 20
+            const refX = badgeX - refW - 12
+            ctx.beginPath()
+            ctx.roundRect(refX, badgeY, refW, badgeH, 10)
+            ctx.fillStyle = 'rgba(56, 189, 248, 0.15)'
+            ctx.fill()
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)'
+            ctx.lineWidth = 1.5
+            ctx.stroke()
             ctx.fillStyle = '#38bdf8'
-            const refW = ctx.measureText(refText).width
-            ctx.fillText(refText, exBadgeX - refW - 16, curY - 4)
+            ctx.fillText(refText, refX + 10, badgeY + 23)
         }
         ctx.restore()
 
-        curY += 60
+        // 4. Hero Section: Total PnL & Win Rate
+        const heroY = headerY + 60
+        const heroH = aspectRatio === '16:9' ? 120 : 130
+        const heroW = cardW - 72
+        const heroX = padX + 36
 
-        // Subheader: Periode Badge
         ctx.save()
-        ctx.font = '500 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        ctx.fillStyle = bg.textSub
-        ctx.fillText(periodLabel, cx, curY)
-        ctx.restore()
-
-        curY += 40
-
-        // B. Hero Stat Box (Net Profit / ROI & Win Rate)
-        const heroBoxH = 220
-        ctx.save()
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.03)'
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
-        ctx.lineWidth = 1
         ctx.beginPath()
-        ctx.roundRect(cx, curY, cw, heroBoxH, 20)
+        ctx.roundRect(heroX, heroY, heroW, heroH, 18)
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'
         ctx.fill()
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'
+        ctx.lineWidth = 1
         ctx.stroke()
 
-        // Label Hero
-        ctx.font = '22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        ctx.fillStyle = bg.textSub
-        ctx.fillText('TOTAL NET PROFIT', cx + 32, curY + 46)
+        // Label Total Net PnL
+        ctx.font = '600 16px sans-serif'
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'
+        ctx.fillText('TOTAL NET REALIZED P&L', heroX + 24, heroY + 36)
 
-        // Value Hero
-        ctx.font = 'bold 68px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+        // Nilai PnL
+        ctx.font = '900 44px monospace'
         ctx.fillStyle = isProfit ? '#4ade80' : '#f87171'
-        const heroPnlText = hideNominal
+        const pnlText = hideNominal
             ? (isProfit ? '+★★★★★' : '-★★★★★')
             : `${isProfit ? '+' : ''}${formatPnl(summary.netPnlTotal)} USDT`
-        ctx.fillText(heroPnlText, cx + 32, curY + 128)
+        ctx.fillText(pnlText, heroX + 24, heroY + 86)
 
-        // Win Rate Pill di kanan hero box
-        const wrPillW = 200
-        const wrPillH = 90
-        const wrPillX = cx + cw - wrPillW - 32
-        const wrPillY = curY + 55
+        // Box Win Rate di Kanan Hero
+        const winBoxW = 170
+        const winBoxH = heroH - 24
+        const winBoxX = heroX + heroW - winBoxW - 12
+        const winBoxY = heroY + 12
 
-        ctx.fillStyle = `${accent}18`
+        ctx.beginPath()
+        ctx.roundRect(winBoxX, winBoxY, winBoxW, winBoxH, 14)
+        ctx.fillStyle = `${accent}22`
+        ctx.fill()
         ctx.strokeStyle = `${accent}55`
         ctx.lineWidth = 1.5
-        ctx.beginPath()
-        ctx.roundRect(wrPillX, wrPillY, wrPillW, wrPillH, 16)
-        ctx.fill()
         ctx.stroke()
 
-        ctx.font = '20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        ctx.fillStyle = bg.textSub
-        ctx.fillText('WIN RATE', wrPillX + 24, wrPillY + 34)
+        ctx.font = 'bold 15px sans-serif'
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
+        ctx.fillText('WIN RATE', winBoxX + 20, winBoxY + 30)
 
-        ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+        ctx.font = '900 34px sans-serif'
         ctx.fillStyle = accent
-        const winRateStr = summary.winRate !== null ? `${(summary.winRate * 100).toFixed(1)}%` : '—'
-        ctx.fillText(winRateStr, wrPillX + 24, wrPillY + 74)
+        const winRateStr = summary.winRate !== null ? (summary.winRate * 100).toFixed(1) : '0.0'
+        ctx.fillText(`${winRateStr}%`, winBoxX + 20, winBoxY + 70)
         ctx.restore()
 
-        curY += heroBoxH + 28
-
-        // C. Equity Curve Chart Box
+        // 5. Kurva Ekuitas (Chart)
+        let curY = heroY + heroH + 20
         if (showChart && curve.length >= 2) {
-            const chartBoxH = 260
+            const chartH = aspectRatio === '16:9' ? 140 : 180
+            const chartW = heroW
+            const chartX = heroX
+
             ctx.save()
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.45)'
+            ctx.beginPath()
+            ctx.roundRect(chartX, curY, chartW, chartH, 16)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.35)'
+            ctx.fill()
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
             ctx.lineWidth = 1
-            ctx.beginPath()
-            ctx.roundRect(cx, curY, cw, chartBoxH, 20)
-            ctx.fill()
             ctx.stroke()
 
-            // Judul Kurva
-            ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = bg.textSub
-            ctx.fillText('📈 PERFORMANCE EQUITY CURVE', cx + 24, curY + 36)
+            ctx.font = '600 15px sans-serif'
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.55)'
+            ctx.fillText('EQUITY GROWTH TRAJECTORY', chartX + 20, curY + 28)
 
-            const curvePoints = curve.map((c) => ({ x: c.time, y: c.equity }))
-            drawEquityCurveOnCanvas(ctx, curvePoints, cx + 24, curY + 54, cw - 48, chartBoxH - 74, accent)
+            ctx.font = '500 14px sans-serif'
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
+            ctx.fillText(`${curve.length} points`, chartX + chartW - 90, curY + 28)
+
+            drawEquityCurveOnCanvas(ctx, curve, chartX + 16, curY + 32, chartW - 32, chartH - 48, accent)
             ctx.restore()
 
-            curY += chartBoxH + 28
+            curY += chartH + 20
         }
 
-        // D. Bento Stats Grid (2 Baris x 3 Kolom)
-        const statsRowsH = 260
-        ctx.save()
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.03)'
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
-        ctx.lineWidth = 1
-        ctx.beginPath()
-        ctx.roundRect(cx, curY, cw, statsRowsH, 20)
-        ctx.fill()
-        ctx.stroke()
+        // 6. Bento Grid Stat Bar
+        const gridW = heroW
+        const gridCols = aspectRatio === '16:9' ? 6 : 3
+        const gridItemW = (gridW - (gridCols - 1) * 12) / gridCols
+        const gridItemH = 68
 
-        const colW = cw / 3
-        const rowH = statsRowsH / 2
-
-        const bentoStats = [
-            { label: 'Total Trades', val: `${summary.totalTrades} (${summary.wins}W / ${summary.losses}L)` },
-            { label: 'Profit Factor', val: summary.profitFactor !== Number.POSITIVE_INFINITY ? formatRatio(summary.profitFactor) : '∞' },
-            { label: 'Max Drawdown', val: `${formatPnl(drawdown.maxDrawdown)} USDT` },
-            { label: 'Expectancy', val: summary.expectancy !== null ? `${formatPnl(summary.expectancy)} USDT` : '—' },
-            { label: 'Avg Win / Loss', val: hideNominal ? '★★★ / ★★★' : `${formatPnl(summary.avgWin || 0)} / ${formatPnl(summary.avgLoss || 0)}` },
-            { label: 'Total Biaya / Fee', val: hideNominal ? '★★★ USDT' : `${formatPnl(summary.feeTotal + summary.fundingFeeTotal)} USDT` },
+        const metricsData = [
+            { label: 'TOTAL TRADES', value: `${summary.totalTrades} (${summary.wins}W/${summary.losses}L)` },
+            { label: 'PROFIT FACTOR', value: summary.profitFactor !== Number.POSITIVE_INFINITY ? formatRatio(summary.profitFactor) : '∞' },
+            { label: 'MAX DRAWDOWN', value: `${formatPnl(drawdown.maxDrawdown)} USDT` },
+            { label: 'EXPECTANCY', value: summary.expectancy !== null ? `${formatPnl(summary.expectancy)} USDT` : '—' },
+            { label: 'AVG WIN / LOSS', value: hideNominal ? '★★★ / ★★★' : `${formatPnl(summary.avgWin || 0)} / ${formatPnl(summary.avgLoss || 0)}` },
+            { label: 'FEE & FUNDING', value: hideNominal ? '★★★' : `${formatPnl(summary.feeTotal + summary.fundingFeeTotal)} USDT` }
         ]
 
-        bentoStats.forEach((st, idx) => {
-            const rIdx = Math.floor(idx / 3)
-            const cIdx = idx % 3
-            const cellX = cx + cIdx * colW + 28
-            const cellY = curY + rIdx * rowH + 42
+        ctx.save()
+        metricsData.forEach((item, idx) => {
+            const row = Math.floor(idx / gridCols)
+            const col = idx % gridCols
+            const gx = heroX + col * (gridItemW + 12)
+            const gy = curY + row * (gridItemH + 12)
 
-            ctx.font = '20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = bg.textSub
-            ctx.fillText(st.label, cellX, cellY)
-
-            ctx.font = 'bold 26px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = '#ffffff'
-            ctx.fillText(st.val, cellX, cellY + 44)
-        })
-
-        // Grid dividers
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
-        ctx.beginPath()
-        // Horizontal divider
-        ctx.moveTo(cx, curY + rowH); ctx.lineTo(cx + cw, curY + rowH)
-        // Vertical dividers
-        ctx.moveTo(cx + colW, curY + 20); ctx.lineTo(cx + colW, curY + statsRowsH - 20)
-        ctx.moveTo(cx + colW * 2, curY + 20); ctx.lineTo(cx + colW * 2, curY + statsRowsH - 20)
-        ctx.stroke()
-        ctx.restore()
-
-        curY += statsRowsH + 34
-
-        // E. Footer: Profile Avatar + Trader Handle + Watermark
-        if (showProfile || showWatermark) {
-            ctx.save()
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'
-            ctx.lineWidth = 1
             ctx.beginPath()
-            ctx.moveTo(cx, curY)
-            ctx.lineTo(cx + cw, curY)
+            ctx.roundRect(gx, gy, gridItemW, gridItemH, 12)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.04)'
+            ctx.fill()
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
+            ctx.lineWidth = 1
             ctx.stroke()
 
-            curY += 28
+            ctx.font = '600 12px sans-serif'
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
+            ctx.fillText(item.label, gx + 14, gy + 24)
 
-            if (showProfile) {
-                const avatarSize = 58
-                const avatarX = cx
-                const avatarY = curY
+            ctx.font = 'bold 17px monospace'
+            ctx.fillStyle = '#ffffff'
+            ctx.fillText(item.value, gx + 14, gy + 50)
+        })
+        ctx.restore()
 
-                if (avatarImgRef.current && avatarImgRef.current.complete) {
-                    ctx.save()
-                    ctx.beginPath()
-                    ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2)
-                    ctx.closePath()
-                    ctx.clip()
-                    ctx.drawImage(avatarImgRef.current, avatarX, avatarY, avatarSize, avatarSize)
-                    ctx.restore()
+        const numRows = Math.ceil(metricsData.length / gridCols)
+        curY += numRows * (gridItemH + 12) + 8
 
-                    ctx.save()
-                    ctx.strokeStyle = accent
-                    ctx.lineWidth = 2.5
-                    ctx.beginPath()
-                    ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2)
-                    ctx.stroke()
-                    ctx.restore()
-                } else {
-                    ctx.save()
-                    ctx.fillStyle = `${accent}33`
-                    ctx.strokeStyle = accent
-                    ctx.lineWidth = 2
-                    ctx.beginPath()
-                    ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2)
-                    ctx.fill()
-                    ctx.stroke()
+        // Catatan Trader Kustom (jika ada)
+        if (customTraderNote.trim()) {
+            ctx.save()
+            const noteLines = wrapCanvasText(ctx, `“${customTraderNote.trim()}”`, heroW - 40)
+            const noteH = noteLines.length * 24 + 20
+            ctx.beginPath()
+            ctx.roundRect(heroX, curY, heroW, noteH, 10)
+            ctx.fillStyle = `${accent}12`
+            ctx.fill()
+            ctx.strokeStyle = `${accent}33`
+            ctx.lineWidth = 1
+            ctx.stroke()
 
-                    ctx.fillStyle = '#ffffff'
-                    ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                    const initText = traderHandle.replace('@', '').slice(0, 2).toUpperCase() || 'TR'
-                    const initW = ctx.measureText(initText).width
-                    ctx.fillText(initText, avatarX + (avatarSize - initW) / 2, avatarY + 38)
-                    ctx.restore()
-                }
-
-                ctx.save()
-                ctx.font = 'bold 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                ctx.fillStyle = '#ffffff'
-                ctx.fillText(traderHandle, avatarX + avatarSize + 18, avatarY + 28)
-
-                ctx.font = '20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                ctx.fillStyle = bg.textSub
-                ctx.fillText('Verified Trader Stats', avatarX + avatarSize + 18, avatarY + 54)
-                ctx.restore()
-            }
-
-            if (showWatermark) {
-                ctx.save()
-                ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.45)'
-                const wmText = `${brandTitle} • ${formatDate(Date.now())}`
-                const wmW = ctx.measureText(wmText).width
-                ctx.fillText(wmText, cx + cw - wmW, curY + 36)
-                ctx.restore()
-            }
+            ctx.font = 'italic 16px sans-serif'
+            ctx.fillStyle = '#ffffff'
+            noteLines.forEach((line, i) => {
+                ctx.fillText(line, heroX + 20, curY + 26 + i * 24)
+            })
             ctx.restore()
         }
+
+        // 7. Footer: Profil Trader & Watermark
+        const footerY = padY + cardH - 32
+        ctx.save()
+        if (showProfile) {
+            const avatarX = padX + 36
+            const avatarY = footerY - 14
+
+            if (avatarImgRef.current && avatarImgRef.current.complete) {
+                ctx.save()
+                ctx.beginPath()
+                ctx.arc(avatarX + 18, avatarY + 18, 18, 0, Math.PI * 2)
+                ctx.clip()
+                ctx.drawImage(avatarImgRef.current, avatarX, avatarY, 36, 36)
+                ctx.restore()
+                ctx.beginPath()
+                ctx.arc(avatarX + 18, avatarY + 18, 18, 0, Math.PI * 2)
+                ctx.strokeStyle = accent
+                ctx.lineWidth = 2
+                ctx.stroke()
+            } else {
+                ctx.beginPath()
+                ctx.arc(avatarX + 18, avatarY + 18, 18, 0, Math.PI * 2)
+                ctx.fillStyle = `${accent}33`
+                ctx.fill()
+                ctx.strokeStyle = accent
+                ctx.lineWidth = 2
+                ctx.stroke()
+
+                ctx.font = 'bold 15px sans-serif'
+                ctx.fillStyle = '#ffffff'
+                const initials = traderHandle.replace('@', '').slice(0, 2).toUpperCase() || 'TR'
+                ctx.fillText(initials, avatarX + 8, avatarY + 24)
+            }
+
+            ctx.font = 'bold 18px sans-serif'
+            ctx.fillStyle = '#ffffff'
+            ctx.fillText(traderHandle, avatarX + 46, avatarY + 16)
+
+            ctx.font = '500 13px sans-serif'
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
+            ctx.fillText('Verified Trader • nitirekso.app', avatarX + 46, avatarY + 34)
+        }
+
+        if (showWatermark) {
+            ctx.font = '500 15px sans-serif'
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
+            const wm = `${brandTitle} • ${formatDate(Date.now())}`
+            const wmW = ctx.measureText(wm).width
+            ctx.fillText(wm, padX + cardW - 36 - wmW, footerY + 12)
+        }
+        ctx.restore()
 
         return canvas
     }, [
-        bg, accent, isCustomBgActive, bgDimming, brandTitle, brandSubtitle,
-        selectedExchange, activeReferral, showReferral, periodLabel, summary,
-        drawdown, curve, showChart, hideNominal, showProfile, showWatermark,
-        traderHandle
+        aspectRatio, isCustomBgActive, bg, accent, isProfit, customTraderNote,
+        bgDimming, brandTitle, brandSubtitle, periodLabel, selectedExchange,
+        showReferral, activeReferral, hideNominal, summary, drawdown, showChart,
+        curve, showProfile, avatarUrl, traderHandle, showWatermark
     ])
 
-    // Update canvas render saat state berubah
+    // Update canvas render saat dependencies berubah
     useEffect(() => {
         renderCanvas()
     }, [renderCanvas])
@@ -591,8 +756,15 @@ function ShareAnalyticsModalContent({ trades, onClose }: { trades: TradeDetail[]
         const pnlStr = hideNominal ? 'Profitable' : `${isProfit ? '+' : ''}${formatPnl(summary.netPnlTotal)} USDT`
         const winRateStr = summary.winRate !== null ? (summary.winRate * 100).toFixed(1) : '0.0'
         const pfStr = summary.profitFactor !== Number.POSITIVE_INFINITY ? formatRatio(summary.profitFactor) : '∞'
-        const text = `📊 Performance Update: ${pnlStr} | ${winRateStr}% Win Rate (${summary.totalTrades} Trades)\nMax Drawdown: ${formatPnl(drawdown.maxDrawdown)} USDT | Profit Factor: ${pfStr}${refStr}\n\n#TradingJournal #Crypto #${brandTitle} ${traderHandle}`
-        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank')
+        const noteStr = customTraderNote ? `\n\n"${customTraderNote}"` : ''
+        const text = `📊 Performance Report (${periodLabel}):\nNet P&L: ${pnlStr} | ${winRateStr}% Win Rate (${summary.totalTrades} Trades)\nMax Drawdown: ${formatPnl(drawdown.maxDrawdown)} USDT | Profit Factor: ${pfStr}${refStr}${noteStr}\n\n#TradingJournal #Crypto #${brandTitle} ${traderHandle}`
+
+        const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`
+        if (window.api?.openExternalUrl) {
+            void window.api.openExternalUrl(tweetUrl)
+        } else {
+            window.open(tweetUrl, '_blank')
+        }
     }
 
     return (
@@ -602,10 +774,102 @@ function ShareAnalyticsModalContent({ trades, onClose }: { trades: TradeDetail[]
             title="📊 Pamer Analytics (Performance Card)"
             size="xl"
         >
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3.5 max-h-[85vh] overflow-y-auto pr-1">
+                {/* ── BAR TEMPLATE KARTU ── */}
+                <div className="flex items-center justify-between flex-wrap gap-2 px-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-semibold text-muted-foreground mr-1 flex items-center gap-1">
+                            <span>📋</span>
+                            <span>Template:</span>
+                        </span>
+                        {templates.map((tpl) => {
+                            const isActive = tpl.id === activeTemplateId
+                            return (
+                                <button
+                                    key={tpl.id}
+                                    type="button"
+                                    onClick={() => handleApplyTemplate(tpl)}
+                                    className={`group flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                                        isActive
+                                            ? 'border-primary bg-primary/20 text-foreground font-bold shadow-xs ring-1 ring-primary/50'
+                                            : 'border-border/60 bg-muted/20 text-muted-foreground hover:text-foreground hover:border-border'
+                                    }`}
+                                >
+                                    <span>{tpl.name}</span>
+                                    {!tpl.isBuiltin && (
+                                        <span
+                                            onClick={(e) => handleDeleteTemplate(tpl.id, e)}
+                                            className="text-[11px] text-muted-foreground hover:text-destructive transition-colors ml-0.5"
+                                            title="Hapus template kustom"
+                                        >
+                                            ✕
+                                        </span>
+                                    )}
+                                </button>
+                            )
+                        })}
+
+                        {!isSavingTemplate ? (
+                            <button
+                                type="button"
+                                onClick={() => setIsSavingTemplate(true)}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border border-dashed border-border bg-muted/20 text-muted-foreground hover:text-primary hover:border-primary/60 transition-all"
+                            >
+                                <span>+ Simpan Template</span>
+                            </button>
+                        ) : (
+                            <div className="flex items-center gap-1.5 bg-muted/30 p-1 rounded-lg border border-border">
+                                <input
+                                    type="text"
+                                    value={newTemplateName}
+                                    onChange={(e) => setNewTemplateName(e.target.value)}
+                                    placeholder="Nama Template..."
+                                    className="px-2 py-0.5 text-xs bg-background border border-border/60 rounded focus:border-primary focus:outline-none"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleSaveNewTemplate}
+                                    className="px-2 py-0.5 text-xs font-bold bg-primary text-primary-foreground rounded hover:opacity-90"
+                                >
+                                    Simpan
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsSavingTemplate(false)}
+                                    className="px-1 text-xs text-muted-foreground hover:text-foreground"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Selector Rasio Kartu */}
+                    <div className="flex items-center gap-1 bg-muted/30 p-0.5 rounded-lg border border-border/50 text-xs">
+                        <span className="text-[11px] font-medium text-muted-foreground px-1.5">Rasio:</span>
+                        {(['16:9', '1:1', '4:5'] as CardAspectRatio[]).map((r) => (
+                            <button
+                                key={r}
+                                type="button"
+                                onClick={() => setAspectRatio(r)}
+                                className={`px-2 py-0.5 rounded font-semibold transition-all ${
+                                    aspectRatio === r
+                                        ? 'bg-primary text-primary-foreground shadow-xs'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                            >
+                                {r}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
                 {/* ── CARD PREVIEW CONTAINER ── */}
                 <div className="flex flex-col items-center justify-center rounded-2xl border border-border/60 bg-muted/20 p-4">
-                    <div className="w-full max-w-[540px]">
+                    <div className={cn(
+                        "w-full transition-all duration-200",
+                        aspectRatio === '16:9' ? 'max-w-[580px]' : aspectRatio === '1:1' ? 'max-w-[480px]' : 'max-w-[420px]'
+                    )}>
                         <AnalyticsCardPreview
                             summary={summary}
                             curve={curve}
@@ -620,7 +884,7 @@ function ShareAnalyticsModalContent({ trades, onClose }: { trades: TradeDetail[]
                             activeReferral={activeReferral}
                             avatarUrl={avatarUrl}
                             isCustomBgActive={isCustomBgActive}
-                            customBgUrl={customBgUrl}
+                            customBgUrl={activeCustomBgUrl}
                             bgDimming={bgDimming}
                             showProfile={showProfile}
                             showWatermark={showWatermark}
@@ -628,6 +892,8 @@ function ShareAnalyticsModalContent({ trades, onClose }: { trades: TradeDetail[]
                             hideNominal={hideNominal}
                             showReferral={showReferral}
                             periodLabel={periodLabel}
+                            customTraderNote={customTraderNote}
+                            aspectRatio={aspectRatio}
                         />
                     </div>
                 </div>
@@ -635,56 +901,141 @@ function ShareAnalyticsModalContent({ trades, onClose }: { trades: TradeDetail[]
                 {/* Canvas tersembunyi untuk ekspor kualitas tinggi */}
                 <canvas ref={canvasRef} className="hidden" />
 
-                {/* ── BACKGROUND PRESET SELECTOR ── */}
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/40 px-2 pt-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-muted-foreground font-medium">Tema:</span>
-                        {BG_TEMPLATES.map((tmpl, idx) => (
-                            <button
-                                key={tmpl.id}
-                                type="button"
-                                onClick={() => {
-                                    setSelectedBgIdx(idx)
-                                    setIsCustomBgActive(false)
-                                }}
-                                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-all ${
-                                    !isCustomBgActive && selectedBgIdx === idx
-                                        ? 'ring-2 font-semibold text-foreground'
-                                        : 'text-muted-foreground hover:text-foreground'
-                                }`}
-                                style={{
-                                    background: tmpl.bg,
-                                    boxShadow: !isCustomBgActive && selectedBgIdx === idx ? `0 0 0 2px ${tmpl.accentProfit}` : undefined
-                                }}
-                            >
-                                <span className="h-2 w-2 rounded-full" style={{ background: tmpl.accentProfit }} />
-                                <span className="text-[11px] text-white">{tmpl.label}</span>
-                            </button>
-                        ))}
+                {/* ── BACKGROUND & WALLPAPER SELECTOR (SINKRON DENGAN SHARE PNL) ── */}
+                <div className="border-t border-border/40 px-3 py-2.5 bg-card/30 rounded-xl flex flex-col gap-2">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                        {/* Grup 1: Skema Warna (Aksen & Teks) */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-semibold text-muted-foreground mr-1 flex items-center gap-1">
+                                <span>🎨</span>
+                                <span>Skema Warna:</span>
+                            </span>
+                            {BG_TEMPLATES.map((t, i) => {
+                                const isColorSelected = selectedBgIdx === i
+                                return (
+                                    <button
+                                        key={t.id}
+                                        type="button"
+                                        onClick={() => setSelectedBgIdx(i)}
+                                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                                            isColorSelected
+                                                ? isCustomBgActive
+                                                    ? 'border-primary/80 bg-primary/15 text-foreground font-semibold shadow-xs ring-1 ring-primary/50'
+                                                    : 'border-primary bg-primary/20 text-foreground font-bold shadow-xs ring-2 ring-primary/60'
+                                                : 'border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground'
+                                        }`}
+                                        title={
+                                            isCustomBgActive
+                                                ? `${t.label} (Aktif sebagai warna aksen & teks kartu)`
+                                                : `${t.label} (Aktif sebagai background & warna aksen)`
+                                        }
+                                    >
+                                        <span
+                                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                            style={{
+                                                background: t.isTransparent ? 'linear-gradient(45deg, #38bdf8 0%, #a855f7 100%)' : t.accentProfit,
+                                            }}
+                                        />
+                                        <span>{t.label}</span>
+                                        {isColorSelected && (
+                                            <span className="text-[10px] opacity-75 font-mono">
+                                                {isCustomBgActive ? '(Aksen)' : '✓'}
+                                            </span>
+                                        )}
+                                    </button>
+                                )
+                            })}
+                        </div>
 
-                        {customBgUrl && (
-                            <button
-                                type="button"
-                                onClick={() => setIsCustomBgActive(true)}
-                                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-all border ${
-                                    isCustomBgActive
-                                        ? 'border-primary ring-2 ring-primary font-semibold text-foreground bg-primary/20'
-                                        : 'border-border text-muted-foreground hover:text-foreground bg-muted/40'
-                                }`}
-                            >
-                                <span>🖼️ Custom BG</span>
-                            </button>
-                        )}
+                        <span className="text-[11px] text-muted-foreground hidden sm:inline">
+                            ⚙️ Brand & Reff di <span className="font-medium text-foreground">Settings</span>
+                        </span>
                     </div>
 
-                    <span className="text-[11px] text-muted-foreground">
-                        ⚙️ Avatar, Wallpaper & Reff diatur di <span className="font-medium text-foreground">Settings</span>
-                    </span>
+                    {/* Grup 2: Galeri Wallpaper Kustom */}
+                    <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-border/20">
+                        <span className="text-xs font-semibold text-muted-foreground mr-1 flex items-center gap-1">
+                            <span>🖼️</span>
+                            <span>Wallpaper:</span>
+                        </span>
+
+                        {/* Opsi Polos (Gunakan Warna Tema Saja) */}
+                        <button
+                            type="button"
+                            onClick={() => setIsCustomBgActive(false)}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
+                                !isCustomBgActive
+                                    ? 'border-primary bg-primary/20 text-foreground font-bold shadow-xs ring-1 ring-primary/50'
+                                    : 'border-border/60 bg-muted/20 text-muted-foreground hover:text-foreground hover:border-border'
+                            }`}
+                            title="Gunakan latar belakang warna solid/gradien dari tema di atas"
+                        >
+                            <span>🚫</span>
+                            <span>Warna Tema Polos</span>
+                        </button>
+
+                        {customBgList.map((bgItem) => {
+                            const isSelected = isCustomBgActive && selectedCustomBgId === bgItem.id
+                            return (
+                                <button
+                                    key={bgItem.id}
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedCustomBgId(bgItem.id)
+                                        setIsCustomBgActive(true)
+                                    }}
+                                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
+                                        isSelected
+                                            ? 'border-primary bg-primary/20 text-foreground font-bold shadow-xs ring-1 ring-primary/50'
+                                            : 'border-border/60 bg-muted/20 text-muted-foreground hover:text-foreground hover:border-border'
+                                    }`}
+                                >
+                                    <img
+                                        src={bgItem.dataUrl}
+                                        alt={bgItem.name}
+                                        className="w-4 h-4 rounded object-cover border border-white/20"
+                                    />
+                                    <span className="truncate max-w-[100px]">{bgItem.name}</span>
+                                </button>
+                            )
+                        })}
+
+                        {/* Hidden input file untuk upload */}
+                        <input
+                            ref={uploadBgModalInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                                handleUploadNewBg(e.target.files?.[0])
+                                if (uploadBgModalInputRef.current) uploadBgModalInputRef.current.value = ''
+                            }}
+                            className="hidden"
+                        />
+
+                        {/* Tombol Upload Cepat Langsung di Modal */}
+                        <button
+                            type="button"
+                            onClick={() => uploadBgModalInputRef.current?.click()}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border border-dashed border-border bg-muted/30 text-muted-foreground hover:text-primary hover:border-primary/60 transition-all"
+                            title="Upload gambar wallpaper baru ke koleksi Anda"
+                        >
+                            <span>+ Upload BG</span>
+                        </button>
+                    </div>
+
+                    <div className="text-[11px] text-muted-foreground/80 italic flex items-center gap-1">
+                        <span>💡</span>
+                        <span>
+                            {isCustomBgActive
+                                ? `Wallpaper kustom aktif. Skema warna '${bg.label}' mengatur warna aksen PnL & teks.`
+                                : `Menggunakan latar belakang warna murni '${bg.label}'.`}
+                        </span>
+                    </div>
                 </div>
 
-                {/* ── TOGGLE OPTIONS & CONTROLS ── */}
-                <div className="border-t border-border/40 px-2 pt-3">
-                    <div className="flex flex-wrap gap-x-5 gap-y-2.5">
+                {/* ── TOGGLE OPTIONS & CATATAN TRADER ── */}
+                <div className="border-t border-border/40 px-2 pt-2.5 flex flex-col gap-2.5">
+                    <div className="flex flex-wrap gap-x-5 gap-y-2">
                         {([
                             ['Profil Trader', showProfile, setShowProfile],
                             ['Watermark', showWatermark, setShowWatermark],
@@ -712,21 +1063,33 @@ function ShareAnalyticsModalContent({ trades, onClose }: { trades: TradeDetail[]
                         ))}
                     </div>
 
-                    {/* Edit Periode Label */}
-                    <div className="mt-3 flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">Label Periode:</span>
-                        <input
-                            type="text"
-                            value={periodLabel}
-                            onChange={(e) => setPeriodLabel(e.target.value)}
-                            placeholder="All-Time Performance"
-                            className="rounded-md border border-border/60 bg-background px-2.5 py-1 text-xs text-foreground focus:border-primary focus:outline-none"
-                        />
+                    {/* Baris Input Label Periode & Catatan Trader */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">Label Periode:</span>
+                            <input
+                                type="text"
+                                value={periodLabel}
+                                onChange={(e) => setPeriodLabel(e.target.value)}
+                                placeholder="All-Time Performance"
+                                className="w-full rounded-md border border-border/60 bg-background px-2.5 py-1 text-xs text-foreground focus:border-primary focus:outline-none"
+                            />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">Catatan/Quote:</span>
+                            <input
+                                type="text"
+                                value={customTraderNote}
+                                onChange={(e) => setCustomTraderNote(e.target.value)}
+                                placeholder="Contoh: Disiplin pada trading plan..."
+                                className="w-full rounded-md border border-border/60 bg-background px-2.5 py-1 text-xs text-foreground focus:border-primary focus:outline-none"
+                            />
+                        </div>
                     </div>
                 </div>
 
                 {/* ── EXCHANGE SELECTOR BAR (MEXC & BITUNIX) ── */}
-                <div className="flex items-center justify-between gap-3 px-2 py-2 border-t border-border/40 bg-card/20 rounded-lg">
+                <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-border/40 bg-card/20 rounded-lg">
                     <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs text-muted-foreground font-medium">Exchange:</span>
                         {EXCHANGES.map((ex) => (
@@ -842,13 +1205,15 @@ interface AnalyticsCardPreviewProps {
     hideNominal: boolean
     showReferral: boolean
     periodLabel: string
+    customTraderNote?: string
+    aspectRatio: CardAspectRatio
 }
 
 function AnalyticsCardPreview({
     summary, curve, drawdown, bg, accent, isProfit, selectedExchange,
     traderHandle, brandTitle, brandSubtitle, activeReferral, avatarUrl,
     isCustomBgActive, customBgUrl, bgDimming, showProfile, showWatermark,
-    showChart, hideNominal, showReferral, periodLabel
+    showChart, hideNominal, showReferral, periodLabel, customTraderNote, aspectRatio
 }: AnalyticsCardPreviewProps): React.JSX.Element {
     const isTransparentMode = !isCustomBgActive && bg.isTransparent
 
@@ -859,7 +1224,7 @@ function AnalyticsCardPreview({
         const maxPnl = Math.max(...curve.map((p) => p.equity))
         const range = maxPnl - minPnl || 1
         const w = 440
-        const h = 80
+        const h = 75
 
         return curve
             .map((p, i) => {
@@ -872,10 +1237,13 @@ function AnalyticsCardPreview({
 
     return (
         <div
-            className="relative overflow-hidden transition-all duration-200 select-none text-white font-sans"
+            className={cn(
+                "relative overflow-hidden transition-all duration-200 select-none text-white font-sans",
+                aspectRatio === '16:9' ? 'aspect-[16/9]' : aspectRatio === '1:1' ? 'aspect-square' : 'aspect-[4/5]'
+            )}
             style={{
-                borderRadius: 24,
-                padding: '24px 28px 20px',
+                borderRadius: 22,
+                padding: aspectRatio === '16:9' ? '20px 24px 16px' : '22px 24px 18px',
                 background: isCustomBgActive
                     ? 'transparent'
                     : isTransparentMode
@@ -900,29 +1268,29 @@ function AnalyticsCardPreview({
                 </>
             )}
 
-            <div className="relative z-10 flex flex-col gap-4">
+            <div className="relative z-10 flex flex-col justify-between h-full gap-2">
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>
                         <div className="flex items-baseline gap-1.5">
-                            <span className="text-xl font-black tracking-wider" style={{ color: accent }}>
+                            <span className="text-lg font-black tracking-wider" style={{ color: accent }}>
                                 {brandTitle}
                             </span>
-                            <span className="text-sm font-light text-white/60 tracking-wider">
+                            <span className="text-xs font-light text-white/60 tracking-wider">
                                 {brandSubtitle}
                             </span>
                         </div>
-                        <p className="text-[11px] text-white/50">{periodLabel}</p>
+                        <p className="text-[10px] text-white/50">{periodLabel}</p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                         {showReferral && activeReferral && (
-                            <span className="text-[10px] font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-400/30">
+                            <span className="text-[9px] font-bold text-sky-400 bg-sky-500/15 px-2 py-0.5 rounded border border-sky-400/30">
                                 REF: {activeReferral}
                             </span>
                         )}
                         <span
-                            className="rounded-lg px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-white"
+                            className="rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white"
                             style={{ background: `${accent}33`, border: `1px solid ${accent}88` }}
                         >
                             {selectedExchange}
@@ -931,21 +1299,21 @@ function AnalyticsCardPreview({
                 </div>
 
                 {/* Hero Stat Box */}
-                <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4 flex items-center justify-between">
+                <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3 flex items-center justify-between">
                     <div>
-                        <span className="text-[10px] uppercase font-semibold text-white/50 tracking-wider">Total Net Profit</span>
-                        <div className="text-2xl font-black tabular-nums mt-0.5" style={{ color: isProfit ? '#4ade80' : '#f87171' }}>
+                        <span className="text-[9px] uppercase font-semibold text-white/50 tracking-wider">Total Net Profit</span>
+                        <div className="text-xl font-black tabular-nums mt-0.5" style={{ color: isProfit ? '#4ade80' : '#f87171' }}>
                             {hideNominal
                                 ? (isProfit ? '+★★★★★' : '-★★★★★')
                                 : `${isProfit ? '+' : ''}${formatPnl(summary.netPnlTotal)} USDT`}
                         </div>
                     </div>
                     <div
-                        className="rounded-xl p-2.5 text-center border"
+                        className="rounded-lg p-2 text-center border"
                         style={{ background: `${accent}18`, borderColor: `${accent}44` }}
                     >
                         <span className="text-[9px] uppercase font-bold text-white/60 block">Win Rate</span>
-                        <span className="text-lg font-black" style={{ color: accent }}>
+                        <span className="text-base font-black" style={{ color: accent }}>
                             {summary.winRate !== null ? (summary.winRate * 100).toFixed(1) : '0.0'}%
                         </span>
                     </div>
@@ -953,12 +1321,12 @@ function AnalyticsCardPreview({
 
                 {/* Kurva Ekuitas Mini */}
                 {showChart && curve.length >= 2 && (
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                        <div className="flex items-center justify-between mb-1 text-[10px] text-white/50 font-semibold">
+                    <div className="rounded-xl border border-white/10 bg-black/20 p-2">
+                        <div className="flex items-center justify-between mb-0.5 text-[9px] text-white/50 font-semibold">
                             <span>EQUITY GROWTH</span>
                             <span>{curve.length} points</span>
                         </div>
-                        <svg viewBox="0 0 440 80" className="w-full h-16 overflow-visible">
+                        <svg viewBox="0 0 440 75" className="w-full h-12 overflow-visible">
                             <path
                                 d={svgCurvePath}
                                 fill="none"
@@ -972,62 +1340,72 @@ function AnalyticsCardPreview({
                 )}
 
                 {/* Bento Grid Stats */}
-                <div className="grid grid-cols-3 gap-2 text-left">
-                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-2">
-                        <span className="text-[9px] text-white/50 uppercase block">Total Trades</span>
-                        <span className="text-xs font-bold text-white">{summary.totalTrades} ({summary.wins}W/{summary.losses}L)</span>
+                <div className={cn(
+                    "grid gap-1.5 text-left",
+                    aspectRatio === '16:9' ? "grid-cols-6" : "grid-cols-3"
+                )}>
+                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
+                        <span className="text-[8px] text-white/50 uppercase block">Total Trades</span>
+                        <span className="text-[11px] font-bold text-white">{summary.totalTrades} ({summary.wins}W/{summary.losses}L)</span>
                     </div>
-                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-2">
-                        <span className="text-[9px] text-white/50 uppercase block">Profit Factor</span>
-                        <span className="text-xs font-bold text-white">{summary.profitFactor !== Number.POSITIVE_INFINITY ? formatRatio(summary.profitFactor) : '∞'}</span>
+                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
+                        <span className="text-[8px] text-white/50 uppercase block">Profit Factor</span>
+                        <span className="text-[11px] font-bold text-white">{summary.profitFactor !== Number.POSITIVE_INFINITY ? formatRatio(summary.profitFactor) : '∞'}</span>
                     </div>
-                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-2">
-                        <span className="text-[9px] text-white/50 uppercase block">Max Drawdown</span>
-                        <span className="text-xs font-bold text-white">{formatPnl(drawdown.maxDrawdown)} USDT</span>
+                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
+                        <span className="text-[8px] text-white/50 uppercase block">Max Drawdown</span>
+                        <span className="text-[11px] font-bold text-white">{formatPnl(drawdown.maxDrawdown)}</span>
                     </div>
-                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-2">
-                        <span className="text-[9px] text-white/50 uppercase block">Expectancy</span>
-                        <span className="text-xs font-bold text-white">{summary.expectancy !== null ? `${formatPnl(summary.expectancy)} USDT` : '—'}</span>
+                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
+                        <span className="text-[8px] text-white/50 uppercase block">Expectancy</span>
+                        <span className="text-[11px] font-bold text-white">{summary.expectancy !== null ? `${formatPnl(summary.expectancy)}` : '—'}</span>
                     </div>
-                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-2">
-                        <span className="text-[9px] text-white/50 uppercase block">Avg Win / Loss</span>
-                        <span className="text-xs font-bold text-white">{hideNominal ? '★★★ / ★★★' : `${formatPnl(summary.avgWin || 0)} / ${formatPnl(summary.avgLoss || 0)}`}</span>
+                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
+                        <span className="text-[8px] text-white/50 uppercase block">Avg Win / Loss</span>
+                        <span className="text-[11px] font-bold text-white">{hideNominal ? '★★★' : `${formatPnl(summary.avgWin || 0)} / ${formatPnl(summary.avgLoss || 0)}`}</span>
                     </div>
-                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-2">
-                        <span className="text-[9px] text-white/50 uppercase block">Total Biaya</span>
-                        <span className="text-xs font-bold text-white">{hideNominal ? '★★★' : `${formatPnl(summary.feeTotal + summary.fundingFeeTotal)} USDT`}</span>
+                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
+                        <span className="text-[8px] text-white/50 uppercase block">Total Biaya</span>
+                        <span className="text-[11px] font-bold text-white">{hideNominal ? '★★★' : `${formatPnl(summary.feeTotal + summary.fundingFeeTotal)}`}</span>
                     </div>
                 </div>
 
+                {/* Catatan Trader Kustom (jika ada) */}
+                {customTraderNote && (
+                    <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[10px] text-white/80 italic">
+                        "{customTraderNote}"
+                    </div>
+                )}
+
                 {/* Footer Profile & Watermark */}
                 {(showProfile || showWatermark) && (
-                    <div className="flex items-center justify-between border-t border-white/10 pt-3 mt-1">
+                    <div className="flex items-center justify-between border-t border-white/10 pt-2">
                         {showProfile ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
                                 {avatarUrl ? (
                                     <img
                                         src={avatarUrl}
                                         alt="Avatar"
-                                        className="h-8 w-8 rounded-full object-cover"
+                                        className="h-6 w-6 rounded-full object-cover"
                                         style={{ border: `1.5px solid ${accent}` }}
                                     />
                                 ) : (
                                     <div
-                                        className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white"
+                                        className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
                                         style={{ background: `${accent}33`, border: `1.5px solid ${accent}` }}
                                     >
                                         {traderHandle.replace('@', '').slice(0, 2).toUpperCase() || 'TR'}
                                     </div>
                                 )}
                                 <div>
-                                    <div className="text-xs font-bold text-white">{traderHandle}</div>
-                                    <div className="text-[9px] text-white/50">Verified Trader</div>
+                                    <div className="text-[11px] font-bold text-white leading-tight">{traderHandle}</div>
+                                    <div className="text-[8px] text-white/50 leading-tight">Verified Trader</div>
                                 </div>
                             </div>
                         ) : <div />}
 
                         {showWatermark && (
-                            <span className="text-[10px] text-white/40 font-medium">
+                            <span className="text-[9px] text-white/40 font-medium">
                                 {brandTitle} • {formatDate(Date.now())}
                             </span>
                         )}

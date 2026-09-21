@@ -3,6 +3,42 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.4.0] - 2026-09-22
+
+### 🚀 Fitur Baru
+- **Menu & Halaman About Komprehensif**:
+  - Identitas aplikasi dan nomor versi dinamis melalui IPC `getAppVersion`.
+  - Pemeriksa pembaruan otomatis via IPC `checkForUpdates` langsung ke GitHub Releases API dengan pratinjau changelog rilis terbaru.
+  - Tautan langsung ke repositori GitHub proyek.
+  - Kartu donasi kopi via Saweria (`https://saweria.co/arthex1204`) dengan QR visual dan tombol buka di browser eksternal.
+  - Tombol cepat donasi *"☕ Beliin Aku Kopi"* di footer navigasi sidebar `AppShell`.
+  - Jaminan privasi 100% lokal (*zero telemetry, zero tracking*).
+  - Pintasan keyboard global `Ctrl+1` s.d. `Ctrl+6` untuk navigasi cepat antar halaman.
+- **Preset Periode Cepat di Halaman Analytics**:
+  - Filter rentang waktu instan: Hari Ini, 7 Hari Terakhir, 30 Hari Terakhir, Bulan Ini, Bulan Lalu, dan Semua Periode.
+  - Tampilan ringkasan statistik dan badge tanggal aktif yang dinamis.
+  - Label periode otomatis terintegrasi dan dikirim ke kartu ekspor Share Analytics.
+- **Modernisasi Share Analytics (Paritas Penuh dengan Share PnL)**:
+  - 6 Preset tema visual bawaan (*Default Pro, Neon Cyber, Minimal Light, Sunset Orange, Obsidian Gold, Pastel Mint*).
+  - Fitur simpan kombinasi kustom sebagai template pribadi dan hapus template.
+  - Galeri gambar latar (*wallpaper*) multi-background serta dukungan unggah gambar lokal.
+  - Pengalih rasio aspek fleksibel: 16:9 (Landscape), 1:1 (Square), dan 4:5 (Feed/Story).
+  - Slot input kutipan / catatan evaluasi trader.
+  - Render canvas resolusi tinggi Retina 2x untuk hasil ekspor tajam tanpa blur.
+  - Integrasi salin clipboard, simpan PNG, dan bagikan langsung ke X (Twitter).
+
+### 🐛 Perbaikan Bug & Peningkatan UX
+- **Perbaikan Berbagi ke X (Twitter)**:
+  - Memperbaiki kegagalan pembukaan URL Twitter pada modal Share PnL dan Share Analytics akibat pembatasan sandbox Electron. Menggunakan IPC handler `openExternalUrl` berbasis `shell.openExternal` dengan validasi aman skema URL.
+- **Kejelasan UI/UX Indikator Skema Warna vs Wallpaper**:
+  - Tombol skema warna kini tetap menampilkan *ring highlight* aktif dan badge `(Aksen)` / `✓` meskipun wallpaper latar sedang menyala.
+  - Menambahkan tombol **"Warna Tema Polos"** untuk mempermudah mengembalikan latar ke gradien tema asli.
+  - Menambahkan tip panduan kontekstual di studio kustomisasi.
+- **Instalasi & Eksekusi Tanpa Run as Administrator**:
+  - Mengubah konfigurasi NSIS pada `electron-builder.yml` (`perMachine: false`, `allowElevation: false`, `requestedExecutionLevel: asInvoker`) sehingga installer dan aplikasi berjalan normal pada ruang pengguna (`%LOCALAPPDATA%\Programs`) tanpa perlu meminta hak akses Administrator / UAC prompt saat dibuka pertama kali.
+
+---
+
 ## [1.3.0] - 2026-09-20
 
 ### 🚀 Rebranding Menyeluruh & Ekosistem nitirekso

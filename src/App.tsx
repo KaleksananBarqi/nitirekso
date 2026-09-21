@@ -14,6 +14,7 @@ import { JournalEntry } from './routes/JournalEntry'
 import { Settings } from './routes/Settings'
 import { TradeEditor } from './routes/TradeEditor'
 import { TradeLog } from './routes/TradeLog'
+import { About } from './routes/About'
 
 /**
  * Orkestrator aplikasi.
@@ -92,6 +93,48 @@ export default function App(): React.JSX.Element {
     }, [reload])
 
     const isEditing = creating || editing !== null
+
+    // Shortcut Navigasi Keyboard (Ctrl+1 s/d Ctrl+6)
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Hindari memicu shortcut saat user sedang mengetik di input / textarea
+            const target = e.target as HTMLElement | null
+            if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+                return
+            }
+
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+                switch (e.key) {
+                    case '1':
+                        e.preventDefault()
+                        setRoute('dashboard')
+                        break
+                    case '2':
+                        e.preventDefault()
+                        setRoute('trades')
+                        break
+                    case '3':
+                        e.preventDefault()
+                        setRoute('journal')
+                        break
+                    case '4':
+                        e.preventDefault()
+                        setRoute('analytics')
+                        break
+                    case '5':
+                        e.preventDefault()
+                        setRoute('settings')
+                        break
+                    case '6':
+                        e.preventDefault()
+                        setRoute('about')
+                        break
+                }
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [])
 
     const closeEditor = useCallback(() => {
         setCreating(false)
@@ -226,6 +269,8 @@ export default function App(): React.JSX.Element {
                     onChecklistTemplateSaved={reload}
                     onDataChanged={reload}
                 />
+            ) : route === 'about' ? (
+                <About />
             ) : (
                 <ErrorLog />
             )}
