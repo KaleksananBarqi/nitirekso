@@ -140,9 +140,19 @@ export function About(): React.JSX.Element {
                     )}
 
                     {updateStatus === 'error' && (
-                        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive flex items-center gap-2">
-                            <span>⚠️</span>
-                            <span>{errorMessage}</span>
+                        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive flex items-center justify-between gap-3 flex-wrap">
+                            <div className="flex items-center gap-2">
+                                <span>⚠️</span>
+                                <span>{errorMessage}</span>
+                            </div>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs text-destructive hover:bg-destructive/10"
+                                onClick={() => openLink('https://github.com/KaleksananBarqi/nitirekso/releases')}
+                            >
+                                Periksa di GitHub ↗
+                            </Button>
                         </div>
                     )}
                 </div>

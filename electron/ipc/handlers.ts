@@ -411,35 +411,8 @@ export function registerIpcHandlers(): void {
         async (): Promise<MutationResult<AppUpdateInfo>> => {
             try {
                 const currentVersion = app.getVersion()
-                const res = await fetch(
-                    'https://api.github.com/repos/KaleksananBarqi/nitirekso/releases/latest',
-                    {
-                        headers: {
-                            'User-Agent': `nitirekso-desktop/${currentVersion}`,
-                            Accept: 'application/vnd.github.v3+json'
-                        }
-                    }
-                )
 
-                if (!res.ok) {
-                    return {
-                        ok: false,
-                        error: `Gagal memeriksa pembaruan (HTTP ${res.status}: ${res.statusText})`
-                    }
-                }
-
-                const data = (await res.json()) as {
-                    tag_name?: string
-                    html_url?: string
-                    body?: string
-                    published_at?: string
-                }
-
-                const latestTag = data.tag_name ? data.tag_name.replace(/^v/, '') : currentVersion
-                const releaseUrl = data.html_url || 'https://github.com/KaleksananBarqi/nitirekso/releases'
-                const releaseNotes = data.body || ''
-                const publishedAt = data.published_at
-
+                // Fungsi pembanding versi semver (misal 1.4.0 vs 1.3.0)
                 const isNewerVersion = (latest: string, current: string): boolean => {
                     const cleanL = latest.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0)
                     const cleanC = current.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0)
@@ -452,18 +425,88 @@ export function registerIpcHandlers(): void {
                     return false
                 }
 
-                const hasUpdate = isNewerVersion(latestTag, currentVersion)
+                // 1. Coba lewat GitHub REST API untuk mengambil metadata lengkap (notes, tanggal rilis, dsb)
+                try {
+                    const res = await fetch(
+                        'https://api.github.com/repos/KaleksananBarqi/nitirekso/releases/latest',
+                        {
+                            headers: {
+                                'User-Agent': `nitirekso-desktop/${currentVersion}`,
+                                Accept: 'application/vnd.github.v3+json'
+                            }
+                        }
+                    )
+
+                    if (res.ok) {
+                        const data = (await res.json()) as {
+                            tag_name?: string
+                            html_url?: string
+                            body?: string
+                            published_at?: string
+                        }
+
+                        const latestTag = data.tag_name ? data.tag_name.replace(/^v/, '') : currentVersion
+                        const releaseUrl = data.html_url || 'https://github.com/KaleksananBarqi/nitirekso/releases'
+                        const releaseNotes = data.body || ''
+                        const publishedAt = data.published_at
+                        const hasUpdate = isNewerVersion(latestTag, currentVersion)
+
+                        return {
+                            ok: true,
+                            data: {
+                                hasUpdate,
+                                currentVersion,
+                                latestVersion: latestTag,
+                                releaseUrl,
+                                releaseNotes,
+                                publishedAt
+                            }
+                        }
+                    }
+
+                    logger.warn(`[ipc] GitHub API merespons HTTP ${res.status}: ${res.statusText}. Beralih ke fallback rilis web...`)
+                } catch (apiErr) {
+                    logger.warn('[ipc] Gagal memanggil GitHub REST API, mencoba fallback web:', apiErr)
+                }
+
+                // 2. Fallback: Menggunakan redirect URL rilis web resmi GitHub (kebal limit 60 req/jam API publik)
+                const fallbackRes = await fetch(
+                    'https://github.com/KaleksananBarqi/nitirekso/releases/latest',
+                    {
+                        method: 'GET',
+                        redirect: 'manual',
+                        headers: {
+                            'User-Agent': `nitirekso-desktop/${currentVersion}`
+                        }
+                    }
+                )
+
+                // Ambil target URL dari header Location (HTTP 302/301) atau url jika dialihkan otomatis
+                const targetUrl = fallbackRes.headers.get('location') || fallbackRes.url || ''
+                const tagMatch = targetUrl.match(/\/releases\/tag\/(?:v)?([0-9a-zA-Z.-]+)/)
+
+                if (tagMatch && tagMatch[1]) {
+                    const latestTag = tagMatch[1].replace(/^v/, '')
+                    const releaseUrl = targetUrl.startsWith('http')
+                        ? targetUrl
+                        : `https://github.com/KaleksananBarqi/nitirekso/releases/tag/v${latestTag}`
+                    const hasUpdate = isNewerVersion(latestTag, currentVersion)
+
+                    return {
+                        ok: true,
+                        data: {
+                            hasUpdate,
+                            currentVersion,
+                            latestVersion: latestTag,
+                            releaseUrl,
+                            releaseNotes: 'Catatan rilis lengkap dan berkas unduhan dapat diakses langsung pada halaman GitHub Releases.'
+                        }
+                    }
+                }
 
                 return {
-                    ok: true,
-                    data: {
-                        hasUpdate,
-                        currentVersion,
-                        latestVersion: latestTag,
-                        releaseUrl,
-                        releaseNotes,
-                        publishedAt
-                    }
+                    ok: false,
+                    error: 'Gagal memeriksa pembaruan: Kuota GitHub API terbatas dan URL rilis web tidak dapat dijangkau.'
                 }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
