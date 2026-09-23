@@ -3,6 +3,21 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.5.1] - 2026-09-23
+
+### 🐛 Perbaikan Bug & Peningkatan Stabilitas
+- **Pemulihan Kolom Skema Sinkronisasi (Migrasi Database 006)**:
+  - Mengembalikan kolom yang sempat terlewat pasca migrasi exchange baru: `trades.raw_payload`, `sync_state.positions_synced`, `sync_state.fills_synced`, dan `sync_state.funding_synced`.
+  - Mencegah *silent error* dan *rollback* SQLite saat proses sinkronisasi menyimpan status riwayat trade.
+- **Normalisasi Mapping & Penentuan Harga Bitunix Futures**:
+  - Memperbaiki parsing arah posisi (`side`) Bitunix agar mendukung nilai `BUY`/`SELL` di samping `LONG`/`SHORT`.
+  - Memperbaiki pemetaan harga eksekusi fill untuk order bertipe `MARKET` (mengambil `avgPrice` sebelum `price`) sehingga harga entry/exit dan perhitungan PnL akurat serta tidak bernilai 0.
+- **Peningkatan Observabilitas & Logging Sinkronisasi**:
+  - Menambahkan logging diagnostik komprehensif pada level IPC dan engine sinkronisasi per-exchange.
+  - Membungkus pembaruan `sync_state` dalam blok penanganan error khusus agar kegagalan parsial tetap melaporkan alasan error secara transparan ke user interface dan log file.
+
+---
+
 ## [1.5.0] - 2026-09-23
 
 ### 🚀 Fitur Baru

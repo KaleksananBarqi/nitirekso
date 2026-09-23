@@ -4,6 +4,7 @@ import migration002 from './migrations/002_sync_support.sql?raw'
 import migration003 from './migrations/003_custom_tags.sql?raw'
 import migration004 from './migrations/004_account_balances.sql?raw'
 import migration005 from './migrations/005_add_exchanges.sql?raw'
+import migration006 from './migrations/006_restore_sync_columns.sql?raw'
 
 /**
  * Runner migrasi.
@@ -30,7 +31,8 @@ const MIGRATIONS: Migration[] = [
     { version: 2, name: '002_sync_support', sql: migration002 },
     { version: 3, name: '003_custom_tags', sql: migration003 },
     { version: 4, name: '004_account_balances', sql: migration004 },
-    { version: 5, name: '005_add_exchanges', sql: migration005 }
+    { version: 5, name: '005_add_exchanges', sql: migration005 },
+    { version: 6, name: '006_restore_sync_columns', sql: migration006 }
 ]
 
 

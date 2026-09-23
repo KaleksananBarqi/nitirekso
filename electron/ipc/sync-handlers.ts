@@ -232,6 +232,16 @@ export function registerSyncHandlers(getWindow: () => BrowserWindow | null): voi
 
             const { results, status } = await syncAll(getDb(), adapters, { onProgress })
 
+            for (const res of results) {
+                if (res.status === 'error') {
+                    logger.error(`[ipc:sync] ${res.exchange} sync gagal: ${res.error ?? 'Error tidak diketahui'}`)
+                } else if (res.status === 'partial') {
+                    logger.warn(`[ipc:sync] ${res.exchange} sync selesai sebagian: ${res.error ?? 'Peringatan'}`)
+                } else {
+                    logger.info(`[ipc:sync] ${res.exchange} sync sukses: +${res.positions.inserted} posisi, +${res.fills.inserted} fills (${(res.durationMs / 1000).toFixed(1)}s)`)
+                }
+            }
+
             const payload: SyncRunResult = {
                 status,
                 exchanges: results.map((result) => ({

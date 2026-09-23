@@ -91,13 +91,13 @@ function normalizeSymbol(raw: string): string {
 /**
  * Normalisasi arah posisi.
  *
- * Bitunix memakai `side` dengan nilai LONG/SHORT (huruf besar) pada posisi,
- * berbeda dari `side` BUY/SELL pada order. Dicek case-insensitive supaya
- * variasi kapitalisasi tidak menghasilkan arah yang salah.
+ * Bitunix memakai `side` dengan nilai BUY/SELL atau LONG/SHORT (huruf besar) pada posisi.
+ * BUY / LONG -> 'long'
+ * SELL / SHORT -> 'short'
  */
 function parseDirection(value: unknown): 'long' | 'short' {
     const text = String(value ?? '').toUpperCase()
-    return text === 'SHORT' ? 'short' : 'long'
+    return text === 'SHORT' || text === 'SELL' ? 'short' : 'long'
 }
 
 /**
@@ -179,7 +179,9 @@ export function mapFill(raw: Record<string, unknown>): RawFill | null {
         symbol: normalizeSymbol(rawSymbol),
         // Bitunix memakai BUY/SELL untuk eksekusi.
         side: sideText.includes('SELL') ? 'sell' : 'buy',
-        price: toNumber(pick(raw, ['price', 'fillPrice', 'avgPrice', 'filledPrice'])),
+        // Mengutamakan avgPrice/fillPrice/filledPrice sebelum price, karena order tipe
+        // MARKET di Bitunix mengirim field price bernilai string "MARKET" dan harga eksekusi di avgPrice.
+        price: toNumber(pick(raw, ['avgPrice', 'fillPrice', 'filledPrice', 'price'])),
         qty: toNumber(pick(raw, ['qty', 'quantity', 'amount', 'size', 'filledQty'])),
         fee: toNumber(pick(raw, ['fee', 'commission', 'feeAmount'])),
         // null (bukan false) bila exchange tidak memberi tahu.

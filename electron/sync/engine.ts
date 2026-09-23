@@ -136,11 +136,16 @@ export async function syncExchange(
         })
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        updateSyncState(db, exchange, {
-            lastSyncAt: Date.now(),
-            lastStatus: 'error',
-            lastError: message
-        })
+        logger.error(`[sync:${exchange}] Posisi gagal: ${message}`, error)
+        try {
+            updateSyncState(db, exchange, {
+                lastSyncAt: Date.now(),
+                lastStatus: 'error',
+                lastError: message
+            })
+        } catch (dbErr) {
+            logger.error(`[sync:${exchange}] Gagal memperbarui sync_state:`, dbErr)
+        }
         return {
             exchange,
             status: 'error',
@@ -284,6 +289,8 @@ export async function syncAll(
                     : error instanceof Error
                         ? error.message
                         : String(error)
+
+            logger.error(`[syncAll] Gagal menjalankan sync untuk ${adapter.id}: ${message}`, error)
 
             results.push({
                 exchange: adapter.id,
