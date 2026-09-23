@@ -23,6 +23,9 @@ import {
 } from '../credentials/keystore'
 import { MexcAdapter } from '../exchanges/mexc/index'
 import { BitunixAdapter } from '../exchanges/bitunix/index'
+import { BybitAdapter } from '../exchanges/bybit/index'
+import { BinanceAdapter } from '../exchanges/binance/index'
+import { BingxAdapter } from '../exchanges/bingx/index'
 import { syncAll } from '../sync/engine'
 import type { ExchangeAdapter, SupportedExchange } from '../exchanges/types'
 import { logger } from '../utils/logger'
@@ -49,10 +52,7 @@ import { logger } from '../utils/logger'
  * Buat adapter untuk exchange yang punya kredensial.
  *
  * Exchange tanpa kredensial DILEWATI, bukan digagalkan — user mungkin hanya
- * memakai MEXC dulu dan Bitunix menyusul.
- *
- * Fase 2: hanya MEXC. Fase 3 menambahkan Bitunix di sini, dan sync engine
- * TIDAK perlu diubah.
+ * memakai sebagian exchange.
  */
 function buildAdapters(): { adapters: ExchangeAdapter[]; skipped: SupportedExchange[] } {
     const adapters: ExchangeAdapter[] = []
@@ -76,6 +76,30 @@ function buildAdapters(): { adapters: ExchangeAdapter[]; skipped: SupportedExcha
         )
     } else {
         skipped.push('bitunix')
+    }
+
+    // --- Bybit ---
+    const bybitCreds = loadCredentials('bybit')
+    if (bybitCreds) {
+        adapters.push(new BybitAdapter(bybitCreds))
+    } else {
+        skipped.push('bybit')
+    }
+
+    // --- Binance ---
+    const binanceCreds = loadCredentials('binance')
+    if (binanceCreds) {
+        adapters.push(new BinanceAdapter(binanceCreds))
+    } else {
+        skipped.push('binance')
+    }
+
+    // --- BingX ---
+    const bingxCreds = loadCredentials('bingx')
+    if (bingxCreds) {
+        adapters.push(new BingxAdapter(bingxCreds))
+    } else {
+        skipped.push('bingx')
     }
 
     return { adapters, skipped }
@@ -111,7 +135,8 @@ export function registerSyncHandlers(getWindow: () => BrowserWindow | null): voi
         (_event, payload: CredentialSavePayload): MutationResult<void> => {
             try {
                 // Validasi bentuk payload sebelum menyentuh safeStorage.
-                if (payload.exchange !== 'mexc' && payload.exchange !== 'bitunix') {
+                const validExchanges: SyncableExchange[] = ['mexc', 'bitunix', 'bybit', 'binance', 'bingx']
+                if (!validExchanges.includes(payload.exchange)) {
                     throw new Error(`Exchange tidak dikenal: ${String(payload.exchange)}`)
                 }
                 if (typeof payload.apiKey !== 'string' || typeof payload.apiSecret !== 'string') {

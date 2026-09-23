@@ -8,7 +8,7 @@
  */
 
 /** Asal data trade. `'manual'` untuk entry tangan, di luar sync exchange. */
-export type ExchangeId = 'mexc' | 'bitunix' | 'manual'
+export type ExchangeId = 'mexc' | 'bitunix' | 'bybit' | 'binance' | 'bingx' | 'manual'
 
 export type TradeDirection = 'long' | 'short'
 

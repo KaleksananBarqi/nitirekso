@@ -4,6 +4,7 @@ import { Badge, Button, Card, ErrorNote } from './ui'
 import { formatDateTime, formatPnl, pnlColorClass } from '../lib/format'
 import { PnlValue } from './PnlValue'
 import { cn } from '../lib/utils'
+import { getExchangeDefaultLogo, getExchangeDisplayName } from '../lib/exchangeAssets'
 
 interface AccountBalanceWidgetProps {
     hidePnl?: boolean
@@ -37,19 +38,38 @@ export function AccountBalanceWidget({
         void loadBalances()
     }, [loadBalances])
 
-    const handleSyncBalances = async () => {
+    // Dengarkan progress dan event sinkronisasi global terpadu
+    useEffect(() => {
+        const unsubscribe = window.api.onSyncProgress(() => {
+            setSyncing(true)
+        })
+        const handleSyncComplete = () => {
+            setSyncing(false)
+            void loadBalances()
+        }
+        window.addEventListener('app:sync-complete', handleSyncComplete)
+
+        return () => {
+            unsubscribe()
+            window.removeEventListener('app:sync-complete', handleSyncComplete)
+        }
+    }, [loadBalances])
+
+    /**
+     * Sinkronisasi terpadu: menarik trade baru DAN saldo exchange secara bersamaan.
+     */
+    const handleUnifiedSync = async () => {
         setSyncing(true)
         setError(null)
         try {
-            const res = await window.api.syncBalances()
+            const res = await window.api.runSync()
             if (!res.ok) {
-                setError(res.error ?? 'Gagal menyinkronkan saldo exchange.')
+                setError(res.error ?? 'Gagal menyinkronkan data exchange.')
                 return
             }
-            if (res.data) {
-                setBalances(res.data)
-                onBalancesUpdated?.()
-            }
+            await loadBalances()
+            onBalancesUpdated?.()
+            window.dispatchEvent(new CustomEvent('app:sync-complete'))
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
         } finally {
@@ -64,9 +84,6 @@ export function AccountBalanceWidget({
     const latestUpdate = balances.length > 0
         ? Math.max(...balances.map((b) => b.updatedAt))
         : null
-
-    const mexcBalance = balances.find((b) => b.exchange === 'mexc')
-    const bitunixBalance = balances.find((b) => b.exchange === 'bitunix')
 
     return (
         <Card className={cn('overflow-hidden border border-border/80 bg-card/60 backdrop-blur-sm', className)}>
@@ -85,11 +102,12 @@ export function AccountBalanceWidget({
                     <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => void handleSyncBalances()}
+                        onClick={() => void handleUnifiedSync()}
                         disabled={syncing || loading}
                         className="h-7 text-xs"
+                        title="Sinkronkan seluruh trade dan saldo terkini dari exchange yang aktif"
                     >
-                        {syncing ? 'Menyinkronkan…' : '↻ Sinkron Saldo'}
+                        {syncing ? 'Menyinkronkan…' : '↻ Sinkron Sekarang'}
                     </Button>
                 </div>
 
@@ -97,7 +115,7 @@ export function AccountBalanceWidget({
 
                 {balances.length === 0 && !loading ? (
                     <div className="rounded-md border border-dashed border-border p-3 text-center text-xs text-muted-foreground">
-                        Belum ada data saldo. Pastikan API key exchange sudah disimpan di Settings lalu klik &quot;Sinkron Saldo&quot;.
+                        Belum ada data saldo. Pastikan API key exchange sudah disimpan di Settings lalu klik &quot;Sinkron Sekarang&quot;.
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -144,48 +162,43 @@ export function AccountBalanceWidget({
                 {balances.length > 0 && (
                     <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border/40 text-xs">
                         <span className="text-[11px] text-muted-foreground">Rincian Akun:</span>
-                        {mexcBalance && (
-                            <div className="flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2.5 py-0.5 text-[11px]">
-                                <Badge tone="muted" className="px-1.5 py-0 text-[10px] font-bold">MEXC</Badge>
-                                <span className="tabular font-medium">
-                                    <PnlValue
-                                        value={`$${mexcBalance.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                                        hide={hidePnl}
-                                    />
-                                </span>
-                                {mexcBalance.total - mexcBalance.available > 0.01 && (
-                                    <span className="inline-flex items-center text-[10px] text-muted-foreground">
-                                        (Avail:&nbsp;
+                        {balances.map((b) => {
+                            const logo = getExchangeDefaultLogo(b.exchange)
+                            const name = getExchangeDisplayName(b.exchange)
+                            return (
+                                <div
+                                    key={b.exchange}
+                                    className="flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2.5 py-0.5 text-[11px]"
+                                >
+                                    {logo && (
+                                        <img
+                                            src={logo}
+                                            alt={name}
+                                            className="h-3.5 w-3.5 rounded-full object-contain"
+                                        />
+                                    )}
+                                    <Badge tone="muted" className="px-1.5 py-0 text-[10px] font-bold">
+                                        {b.exchange.toUpperCase()}
+                                    </Badge>
+                                    <span className="tabular font-medium">
                                         <PnlValue
-                                            value={`$${mexcBalance.available.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                            value={`$${b.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                                             hide={hidePnl}
                                         />
-                                        )
                                     </span>
-                                )}
-                            </div>
-                        )}
-                        {bitunixBalance && (
-                            <div className="flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2.5 py-0.5 text-[11px]">
-                                <Badge tone="muted" className="px-1.5 py-0 text-[10px] font-bold">Bitunix</Badge>
-                                <span className="tabular font-medium">
-                                    <PnlValue
-                                        value={`$${bitunixBalance.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                                        hide={hidePnl}
-                                    />
-                                </span>
-                                {bitunixBalance.total - bitunixBalance.available > 0.01 && (
-                                    <span className="inline-flex items-center text-[10px] text-muted-foreground">
-                                        (Avail:&nbsp;
-                                        <PnlValue
-                                            value={`$${bitunixBalance.available.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                                            hide={hidePnl}
-                                        />
-                                        )
-                                    </span>
-                                )}
-                            </div>
-                        )}
+                                    {b.total - b.available > 0.01 && (
+                                        <span className="inline-flex items-center text-[10px] text-muted-foreground">
+                                            (Avail:&nbsp;
+                                            <PnlValue
+                                                value={`$${b.available.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                                hide={hidePnl}
+                                            />
+                                            )
+                                        </span>
+                                    )}
+                                </div>
+                            )
+                        })}
                     </div>
                 )}
             </div>

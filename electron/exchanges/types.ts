@@ -10,7 +10,7 @@
  * lapisan DB.
  */
 
-export type SupportedExchange = 'mexc' | 'bitunix'
+export type SupportedExchange = 'mexc' | 'bitunix' | 'bybit' | 'binance' | 'bingx'
 
 /** Satu posisi tertutup yang sudah dinormalisasi. */
 export interface RawClosedPosition {

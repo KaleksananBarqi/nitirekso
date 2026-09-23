@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { CredentialStatusPayload, SyncableExchange } from '@shared/ipc-contract'
 import { Badge, Button, ErrorNote, Field, TextInput } from './ui'
 import { formatDateTime } from '../lib/format'
+import { getExchangeDefaultLogo } from '../lib/exchangeAssets'
 
 /**
  * Form kredensial exchange + wizard instruksi API key read-only.
@@ -69,8 +70,45 @@ const EXCHANGES: ExchangeConfig[] = [
         note:
             'Keterbatasan: Bitunix tidak menyediakan endpoint riwayat biaya funding per akun. ' +
             'Kolom funding fee untuk trade Bitunix akan bernilai 0 sampai Bitunix menyediakan ' +
-            'endpoint tersebut. Aplikasi ini TIDAK mengira-ngira nilainya dari funding rate, ' +
-            'karena itu akan menghasilkan angka karangan yang terlihat seperti data resmi.'
+            'endpoint tersebut.'
+    },
+    {
+        id: 'bybit',
+        name: 'Bybit Futures',
+        keyUrl: 'https://www.bybit.com/app/user/api-management',
+        steps: [
+            'Masuk ke Bybit, buka halaman API Management (menu profil → API).',
+            'Pilih System-generated API Keys -> Read-Only.',
+            'PENTING: Aktifkan HANYA izin baca (Read-Only) pada Contract / Derivatives (Orders & Positions).',
+            'JANGAN aktifkan izin Trade, Transfers, atau Withdrawals.',
+            'Salin API Key dan Secret Key, tempel keduanya di form ini lalu klik Simpan.'
+        ],
+        note: 'Gunakan izin Read-Only untuk kontrak Linear / Derivatives demi keamanan maksimal.'
+    },
+    {
+        id: 'binance',
+        name: 'Binance Futures',
+        keyUrl: 'https://www.binance.com/en/my/settings/api-management',
+        steps: [
+            'Masuk ke Binance, buka menu API Management.',
+            'Buat API key baru (System generated).',
+            'PENTING: Berikan centang HANYA pada "Enable Reading" dan "Futures (Read)".',
+            'JANGAN aktifkan izin Futures Trading, Spot/Margin Trading, atau Withdrawals.',
+            'Salin API Key dan Secret Key, tempel keduanya di form ini lalu klik Simpan.'
+        ],
+        note: 'Pastikan akun Binance Anda sudah mengaktifkan fitur Futures USDT-M.'
+    },
+    {
+        id: 'bingx',
+        name: 'BingX Futures',
+        keyUrl: 'https://bingx.com/en-us/account/api/',
+        steps: [
+            'Masuk ke BingX, buka halaman API Management.',
+            'Buat API key baru.',
+            'PENTING: Aktifkan HANYA izin Read-Only. JANGAN aktifkan Trade atau Transfer.',
+            'Salin API Key dan Secret Key, tempel keduanya di form ini lalu klik Simpan.'
+        ],
+        note: 'Mendukung sinkronisasi posisi dan saldo Perpetual Swap USDT.'
     }
 ]
 
@@ -91,7 +129,10 @@ export function ExchangeCredentials({
         Record<SyncableExchange, { apiKey: string; apiSecret: string }>
     >({
         mexc: { apiKey: '', apiSecret: '' },
-        bitunix: { apiKey: '', apiSecret: '' }
+        bitunix: { apiKey: '', apiSecret: '' },
+        bybit: { apiKey: '', apiSecret: '' },
+        binance: { apiKey: '', apiSecret: '' },
+        bingx: { apiKey: '', apiSecret: '' }
     })
 
     const loadStatuses = useCallback(async (): Promise<void> => {
@@ -176,7 +217,14 @@ export function ExchangeCredentials({
                     <div key={config.id} className="rounded-md border border-border bg-background p-3">
                         <div className="flex items-start justify-between gap-3">
                             <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium">{config.name}</span>
+                                {getExchangeDefaultLogo(config.id) && (
+                                    <img
+                                        src={getExchangeDefaultLogo(config.id)!}
+                                        alt={config.name}
+                                        className="h-5 w-auto max-w-[80px] object-contain rounded"
+                                    />
+                                )}
+                                <span className="text-sm font-semibold">{config.name}</span>
                                 {status?.configured ? (
                                     <Badge tone="profit">terkonfigurasi</Badge>
                                 ) : (

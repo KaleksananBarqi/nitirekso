@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Card, CardHeader, Field } from './ui'
 import {
     BG_TEMPLATES,
+    EXCHANGES,
     loadShareSettings,
     saveShareSettings,
     loadCustomBgList,
@@ -17,6 +18,7 @@ import {
     type ShareCardTemplate,
     type CustomBgItem
 } from '../lib/shareSettings'
+import { getExchangeDefaultLogo, getExchangeDisplayName } from '../lib/exchangeAssets'
 
 export function ShareBrandingSettings(): React.JSX.Element {
     const [settings, setSettings] = useState<ShareSettings>(loadShareSettings)
@@ -28,13 +30,11 @@ export function ShareBrandingSettings(): React.JSX.Element {
     const [activeExchangeTab, setActiveExchangeTab] = useState<ExchangeName>('mexc')
     const [avatarFileError, setAvatarFileError] = useState<string | null>(null)
     const [bgFileError, setBgFileError] = useState<string | null>(null)
-    const [mexcLogoError, setMexcLogoError] = useState<string | null>(null)
-    const [bitunixLogoError, setBitunixLogoError] = useState<string | null>(null)
+    const [exchangeLogoError, setExchangeLogoError] = useState<string | null>(null)
 
     const avatarInputRef = useRef<HTMLInputElement>(null)
     const bgInputRef = useRef<HTMLInputElement>(null)
-    const mexcLogoInputRef = useRef<HTMLInputElement>(null)
-    const bitunixLogoInputRef = useRef<HTMLInputElement>(null)
+    const exchangeLogoInputRef = useRef<HTMLInputElement>(null)
 
     const currentTemplate = BG_TEMPLATES.find((t) => t.id === settings.bgPresetId) || BG_TEMPLATES[0]!
 
@@ -179,9 +179,9 @@ export function ShareBrandingSettings(): React.JSX.Element {
                         </label>
                     </div>
 
-                    {/* Tabs Exchange: MEXC & Bitunix */}
-                    <div className="flex gap-2 mb-3">
-                        {(['mexc', 'bitunix'] as const).map((ex) => (
+                    {/* Tabs Exchange (5 Exchange Didukung) */}
+                    <div className="flex gap-2 mb-3 flex-wrap">
+                        {EXCHANGES.map((ex) => (
                             <button
                                 key={ex}
                                 type="button"
@@ -198,135 +198,87 @@ export function ShareBrandingSettings(): React.JSX.Element {
 
                     {/* Form Konfigurasi Exchange Aktif */}
                     <div className="rounded-xl border border-border/70 bg-card/40 p-4">
-                        {activeExchangeTab === 'mexc' ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field label="Logo MEXC" hint="PNG transparan disarankan (opsional)">
-                                    <div className="flex items-center gap-3 mt-1">
-                                        <input
-                                            ref={mexcLogoInputRef}
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={(e) =>
-                                                handleImageUpload(
-                                                    e.target.files?.[0],
-                                                    4,
-                                                    setMexcLogoError,
-                                                    (dataUrl) => updateSettings({ mexcLogoUrl: dataUrl })
-                                                )
-                                            }
-                                            className="hidden"
-                                        />
+                        {(() => {
+                            const ex = activeExchangeTab
+                            const customLogoKey = `${ex}LogoUrl` as keyof ShareSettings
+                            const refCodeKey = `${ex}ReferralCode` as keyof ShareSettings
+                            const customLogo = settings[customLogoKey] as string | null
+                            const defaultLogo = getExchangeDefaultLogo(ex)
+                            const displayLogo = customLogo || defaultLogo
+                            const refValue = (settings[refCodeKey] as string) || ''
 
-                                        {/* Preview Logo MEXC */}
-                                        <div
-                                            onClick={() => mexcLogoInputRef.current?.click()}
-                                            title="Klik untuk upload logo MEXC"
-                                            className="h-10 px-3 rounded-lg border border-border/80 flex items-center justify-center cursor-pointer bg-background/80 hover:opacity-85 transition-opacity"
-                                        >
-                                            {settings.mexcLogoUrl ? (
-                                                <img src={settings.mexcLogoUrl} alt="MEXC Logo" className="h-6 max-w-[100px] object-contain" />
-                                            ) : (
-                                                <span className="text-xs font-bold text-foreground/80 tracking-wider">MEXC</span>
-                                            )}
-                                        </div>
+                            return (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <Field
+                                        label={`Logo ${getExchangeDisplayName(ex)}`}
+                                        hint={customLogo ? 'Menggunakan logo kustom' : 'Menggunakan logo resmi bawaan aplikasi (otomatis)'}
+                                    >
+                                        <div className="flex items-center gap-3 mt-1">
+                                            <input
+                                                ref={exchangeLogoInputRef}
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(e) =>
+                                                    handleImageUpload(
+                                                        e.target.files?.[0],
+                                                        4,
+                                                        setExchangeLogoError,
+                                                        (dataUrl) => updateSettings({ [customLogoKey]: dataUrl })
+                                                    )
+                                                }
+                                                className="hidden"
+                                            />
 
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => mexcLogoInputRef.current?.click()}
-                                                className="rounded-md bg-primary/10 border border-primary/30 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+                                            {/* Preview Logo Exchange */}
+                                            <div
+                                                onClick={() => exchangeLogoInputRef.current?.click()}
+                                                title="Klik untuk upload logo kustom pengganti"
+                                                className="h-10 px-3 rounded-lg border border-border/80 flex items-center justify-center cursor-pointer bg-background/80 hover:opacity-85 transition-opacity"
                                             >
-                                                {settings.mexcLogoUrl ? 'Ganti Logo' : 'Upload Logo MEXC'}
-                                            </button>
-                                            {settings.mexcLogoUrl && (
+                                                {displayLogo ? (
+                                                    <img src={displayLogo} alt={`${ex} Logo`} className="h-6 max-w-[110px] object-contain" />
+                                                ) : (
+                                                    <span className="text-xs font-bold text-foreground/80 tracking-wider uppercase">{ex}</span>
+                                                )}
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
                                                 <button
                                                     type="button"
-                                                    onClick={() => updateSettings({ mexcLogoUrl: null })}
-                                                    className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                                                    onClick={() => exchangeLogoInputRef.current?.click()}
+                                                    className="rounded-md bg-primary/10 border border-primary/30 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
                                                 >
-                                                    Reset ke Teks
+                                                    {customLogo ? 'Ganti Logo Kustom' : 'Upload Kustom (Opsional)'}
                                                 </button>
-                                            )}
+                                                {customLogo && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => updateSettings({ [customLogoKey]: null })}
+                                                        className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                                                    >
+                                                        Kembalikan ke Logo Bawaan
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                    {mexcLogoError && <p className="text-[11px] text-destructive mt-1">{mexcLogoError}</p>}
-                                </Field>
+                                        {exchangeLogoError && <p className="text-[11px] text-destructive mt-1">{exchangeLogoError}</p>}
+                                    </Field>
 
-                                <Field label="Kode Referral MEXC" hint="Akan tampil di bawah logo exchange pada kartu">
-                                    <input
-                                        type="text"
-                                        value={settings.mexcReferralCode}
-                                        onChange={(e) => updateSettings({ mexcReferralCode: e.target.value.trim() })}
-                                        placeholder="Contoh: MEXC888"
-                                        className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus:border-primary focus:outline-none"
-                                    />
-                                </Field>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field label="Logo Bitunix" hint="PNG transparan disarankan (opsional)">
-                                    <div className="flex items-center gap-3 mt-1">
+                                    <Field
+                                        label={`Kode Referral ${getExchangeDisplayName(ex)}`}
+                                        hint="Cukup isi kode referral Anda di sini, logo exchange sudah otomatis disiapkan"
+                                    >
                                         <input
-                                            ref={bitunixLogoInputRef}
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={(e) =>
-                                                handleImageUpload(
-                                                    e.target.files?.[0],
-                                                    4,
-                                                    setBitunixLogoError,
-                                                    (dataUrl) => updateSettings({ bitunixLogoUrl: dataUrl })
-                                                )
-                                            }
-                                            className="hidden"
+                                            type="text"
+                                            value={refValue}
+                                            onChange={(e) => updateSettings({ [refCodeKey]: e.target.value.trim() })}
+                                            placeholder={`Contoh: ${ex.toUpperCase()}VIP88`}
+                                            className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm font-medium shadow-xs focus:border-primary focus:outline-none"
                                         />
-
-                                        {/* Preview Logo Bitunix */}
-                                        <div
-                                            onClick={() => bitunixLogoInputRef.current?.click()}
-                                            title="Klik untuk upload logo Bitunix"
-                                            className="h-10 px-3 rounded-lg border border-border/80 flex items-center justify-center cursor-pointer bg-background/80 hover:opacity-85 transition-opacity"
-                                        >
-                                            {settings.bitunixLogoUrl ? (
-                                                <img src={settings.bitunixLogoUrl} alt="Bitunix Logo" className="h-6 max-w-[100px] object-contain" />
-                                            ) : (
-                                                <span className="text-xs font-bold text-foreground/80 tracking-wider">BITUNIX</span>
-                                            )}
-                                        </div>
-
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => bitunixLogoInputRef.current?.click()}
-                                                className="rounded-md bg-primary/10 border border-primary/30 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
-                                            >
-                                                {settings.bitunixLogoUrl ? 'Ganti Logo' : 'Upload Logo Bitunix'}
-                                            </button>
-                                            {settings.bitunixLogoUrl && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => updateSettings({ bitunixLogoUrl: null })}
-                                                    className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-                                                >
-                                                    Reset ke Teks
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                    {bitunixLogoError && <p className="text-[11px] text-destructive mt-1">{bitunixLogoError}</p>}
-                                </Field>
-
-                                <Field label="Kode Referral Bitunix" hint="Akan tampil di bawah logo exchange pada kartu">
-                                    <input
-                                        type="text"
-                                        value={settings.bitunixReferralCode}
-                                        onChange={(e) => updateSettings({ bitunixReferralCode: e.target.value.trim() })}
-                                        placeholder="Contoh: BITUNIX100"
-                                        className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus:border-primary focus:outline-none"
-                                    />
-                                </Field>
-                            </div>
-                        )}
+                                    </Field>
+                                </div>
+                            )
+                        })()}
                     </div>
                 </div>
 

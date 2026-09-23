@@ -54,8 +54,16 @@ export function SyncPanel({
         const unsubscribe = window.api.onSyncProgress((payload: SyncProgressPayload) => {
             setProgress(payload.message)
         })
-        return unsubscribe
-    }, [])
+        const handleSyncComplete = () => {
+            void loadStates()
+        }
+        window.addEventListener('app:sync-complete', handleSyncComplete)
+
+        return () => {
+            unsubscribe()
+            window.removeEventListener('app:sync-complete', handleSyncComplete)
+        }
+    }, [loadStates])
 
     async function handleSync(): Promise<void> {
         setRunning(true)
@@ -96,6 +104,7 @@ export function SyncPanel({
 
             await loadStates()
             await onSyncComplete()
+            window.dispatchEvent(new CustomEvent('app:sync-complete'))
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
         } finally {

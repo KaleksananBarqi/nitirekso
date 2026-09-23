@@ -16,6 +16,7 @@ import {
 import type { TradeSavePayload, TradeMeta } from '@shared/ipc-contract'
 import { Button, Card, CardHeader, ErrorNote, Field, NumberInput, Select, TextArea, TextInput } from '../components/ui'
 import { fromDateTimeLocalInput, formatR, toDateTimeLocalInput } from '../lib/format'
+import { cn } from '../lib/utils'
 
 /**
  * Form trade + jurnal.
@@ -189,7 +190,7 @@ export function TradeEditor({
         return () => {
             isCurrent = false
         }
-    }, [detail, checklistTemplate])
+    }, [detail?.trade.id])
 
     // Fitur 1: Muat preview screenshot saat form punya screenshotPath.
     useEffect(() => {
@@ -641,17 +642,58 @@ export function TradeEditor({
                                     </datalist>
                                 </Field>
 
-                                <Field label="Tag Emosi" hint="Bebas — tambahkan sendiri bila perlu">
-                                    <TextInput
-                                        value={form.emotionTag}
-                                        onChange={(e) => update('emotionTag', e.target.value)}
-                                        list="emotion-suggestions"
-                                    />
+                                <Field label="Tag Emosi" hint="Pilih cepat pill di bawah atau ketik kustom">
+                                    <div className="relative">
+                                        <TextInput
+                                            value={form.emotionTag}
+                                            onChange={(e) => update('emotionTag', e.target.value)}
+                                            list="emotion-suggestions"
+                                            placeholder="mis. calm, fomo, sabar"
+                                            className="pr-8"
+                                        />
+                                        {form.emotionTag.trim() !== '' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => update('emotionTag', '')}
+                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs p-1 rounded transition-colors"
+                                                title="Hapus tag emosi"
+                                            >
+                                                ✕
+                                            </button>
+                                        )}
+                                    </div>
                                     <datalist id="emotion-suggestions">
                                         {[...new Set([...(meta?.emotionTags ?? []), ...DEFAULT_EMOTION_TAGS])].map((t) => (
                                             <option key={t} value={t} />
                                         ))}
                                     </datalist>
+                                    <div className="mt-1.5 flex flex-wrap gap-1">
+                                        {[
+                                            { id: 'calm', label: 'Calm', emoji: '😌' },
+                                            { id: 'fomo', label: 'FOMO', emoji: '⚡' },
+                                            { id: 'revenge', label: 'Revenge', emoji: '😤' },
+                                            { id: 'anxious', label: 'Anxious', emoji: '😰' },
+                                            { id: 'overconfident', label: 'Overconfident', emoji: '😎' }
+                                        ].map((item) => {
+                                            const isSelected = form.emotionTag.toLowerCase().trim() === item.id.toLowerCase()
+                                            return (
+                                                <button
+                                                    key={item.id}
+                                                    type="button"
+                                                    onClick={() => update('emotionTag', isSelected ? '' : item.id)}
+                                                    className={cn(
+                                                        'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-all border',
+                                                        isSelected
+                                                            ? 'bg-primary text-primary-foreground border-primary shadow-xs'
+                                                            : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted hover:text-foreground'
+                                                    )}
+                                                >
+                                                    <span>{item.emoji}</span>
+                                                    <span>{item.label}</span>
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
                                 </Field>
 
                                 <Field

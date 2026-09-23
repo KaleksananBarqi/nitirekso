@@ -120,7 +120,7 @@ linux:
       arch:
         - x64
   category: Finance
-  synopsis: nitirekso — Niti Transaksi, Rekso Evaluasi. Trading journal read-only untuk MEXC & Bitunix Futures
+  synopsis: nitirekso — Niti Transaksi, Rekso Evaluasi. Trading journal read-only untuk MEXC, Bitunix, Bybit, Binance, dan BingX Futures
   artifactName: nitirekso-${version}-linux-${arch}.${ext}
 
 mac:

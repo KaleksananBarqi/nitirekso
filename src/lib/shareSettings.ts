@@ -6,7 +6,7 @@
  * template background, custom wallpaper, dan opsi teks adaptif.
  */
 
-export const EXCHANGES = ['mexc', 'bitunix'] as const
+export const EXCHANGES = ['mexc', 'bitunix', 'bybit', 'binance', 'bingx'] as const
 export type ExchangeName = typeof EXCHANGES[number]
 
 export interface BgTemplate {
@@ -98,6 +98,12 @@ export const SHARE_STORAGE_KEYS = {
     MEXC_REF: 'trading_journal_share_mexc_referral',
     BITUNIX_LOGO: 'trading_journal_share_bitunix_logo',
     BITUNIX_REF: 'trading_journal_share_bitunix_referral',
+    BYBIT_LOGO: 'trading_journal_share_bybit_logo',
+    BYBIT_REF: 'trading_journal_share_bybit_referral',
+    BINANCE_LOGO: 'trading_journal_share_binance_logo',
+    BINANCE_REF: 'trading_journal_share_binance_referral',
+    BINGX_LOGO: 'trading_journal_share_bingx_logo',
+    BINGX_REF: 'trading_journal_share_bingx_referral',
     SHOW_REF: 'trading_journal_share_show_referral',
     BG_PRESET_ID: 'trading_journal_share_bg_preset_id',
     CUSTOM_BG: 'trading_journal_share_custom_bg',
@@ -120,6 +126,12 @@ export interface ShareSettings {
     mexcReferralCode: string
     bitunixLogoUrl: string | null
     bitunixReferralCode: string
+    bybitLogoUrl: string | null
+    bybitReferralCode: string
+    binanceLogoUrl: string | null
+    binanceReferralCode: string
+    bingxLogoUrl: string | null
+    bingxReferralCode: string
     showReferral: boolean
     bgPresetId: string
     customBgId: string | null
@@ -442,6 +454,12 @@ export function loadShareSettings(): ShareSettings {
         mexcReferralCode: localStorage.getItem(SHARE_STORAGE_KEYS.MEXC_REF) || '',
         bitunixLogoUrl: localStorage.getItem(SHARE_STORAGE_KEYS.BITUNIX_LOGO) || null,
         bitunixReferralCode: localStorage.getItem(SHARE_STORAGE_KEYS.BITUNIX_REF) || '',
+        bybitLogoUrl: localStorage.getItem(SHARE_STORAGE_KEYS.BYBIT_LOGO) || null,
+        bybitReferralCode: localStorage.getItem(SHARE_STORAGE_KEYS.BYBIT_REF) || '',
+        binanceLogoUrl: localStorage.getItem(SHARE_STORAGE_KEYS.BINANCE_LOGO) || null,
+        binanceReferralCode: localStorage.getItem(SHARE_STORAGE_KEYS.BINANCE_REF) || '',
+        bingxLogoUrl: localStorage.getItem(SHARE_STORAGE_KEYS.BINGX_LOGO) || null,
+        bingxReferralCode: localStorage.getItem(SHARE_STORAGE_KEYS.BINGX_REF) || '',
         showReferral: localStorage.getItem(SHARE_STORAGE_KEYS.SHOW_REF) !== 'false', // default true
         bgPresetId: localStorage.getItem(SHARE_STORAGE_KEYS.BG_PRESET_ID) || 'dark-navy',
         customBgId: activeBgItem ? activeBgItem.id : null,
@@ -481,6 +499,27 @@ export function saveShareSettings(settings: Partial<ShareSettings>): void {
     }
     if (settings.bitunixReferralCode !== undefined) {
         localStorage.setItem(SHARE_STORAGE_KEYS.BITUNIX_REF, settings.bitunixReferralCode)
+    }
+    if (settings.bybitLogoUrl !== undefined) {
+        if (settings.bybitLogoUrl) localStorage.setItem(SHARE_STORAGE_KEYS.BYBIT_LOGO, settings.bybitLogoUrl)
+        else localStorage.removeItem(SHARE_STORAGE_KEYS.BYBIT_LOGO)
+    }
+    if (settings.bybitReferralCode !== undefined) {
+        localStorage.setItem(SHARE_STORAGE_KEYS.BYBIT_REF, settings.bybitReferralCode)
+    }
+    if (settings.binanceLogoUrl !== undefined) {
+        if (settings.binanceLogoUrl) localStorage.setItem(SHARE_STORAGE_KEYS.BINANCE_LOGO, settings.binanceLogoUrl)
+        else localStorage.removeItem(SHARE_STORAGE_KEYS.BINANCE_LOGO)
+    }
+    if (settings.binanceReferralCode !== undefined) {
+        localStorage.setItem(SHARE_STORAGE_KEYS.BINANCE_REF, settings.binanceReferralCode)
+    }
+    if (settings.bingxLogoUrl !== undefined) {
+        if (settings.bingxLogoUrl) localStorage.setItem(SHARE_STORAGE_KEYS.BINGX_LOGO, settings.bingxLogoUrl)
+        else localStorage.removeItem(SHARE_STORAGE_KEYS.BINGX_LOGO)
+    }
+    if (settings.bingxReferralCode !== undefined) {
+        localStorage.setItem(SHARE_STORAGE_KEYS.BINGX_REF, settings.bingxReferralCode)
     }
     if (settings.showReferral !== undefined) {
         localStorage.setItem(SHARE_STORAGE_KEYS.SHOW_REF, String(settings.showReferral))

@@ -20,6 +20,7 @@ import {
     type ShareCardTemplate,
     type CustomBgItem
 } from '../lib/shareSettings'
+import { nitireksoLogo, getExchangeDefaultLogo } from '../lib/exchangeAssets'
 
 // ---------------------------------------------------------------------------
 // Tipe Props
@@ -135,14 +136,11 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const executionGrade = trade.journal?.executionGrade ?? null
     const emotionTag = trade.journal?.emotionTag ?? null
 
-    // Data Exchange & Referral dari Settings
-    const mexcLogoUrl = savedSettings.mexcLogoUrl
-    const mexcReferralCode = savedSettings.mexcReferralCode
-    const bitunixLogoUrl = savedSettings.bitunixLogoUrl
-    const bitunixReferralCode = savedSettings.bitunixReferralCode
-
-    // Default exchange berdasarkan trade (hanya MEXC & Bitunix)
-    const defaultExchange: ExchangeName = trade.trade.exchange === 'bitunix' ? 'bitunix' : 'mexc'
+    // Default exchange berdasarkan trade (mexc, bitunix, bybit, binance, bingx)
+    const tradeEx = (trade.trade.exchange || '').toLowerCase()
+    const defaultExchange: ExchangeName = (EXCHANGES as readonly string[]).includes(tradeEx)
+        ? (tradeEx as ExchangeName)
+        : 'mexc'
     const [selectedExchange, setSelectedExchange] = useState<ExchangeName>(defaultExchange)
 
     // --- State: Toggle Visibilitas Elemen ---
@@ -336,14 +334,27 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const [copySuccess, setCopySuccess] = useState(false)
     const [downloading, setDownloading] = useState(false)
 
+    // Logo & Referral aktif berdasarkan exchange terpilih (otomatis fallback ke logo resmi bawaan)
+    const customExchangeLogo = (savedSettings[`${selectedExchange}LogoUrl` as keyof typeof savedSettings] as string | null) || null
+    const activeLogoUrl = customExchangeLogo || getExchangeDefaultLogo(selectedExchange)
+    const activeReferral = (savedSettings[`${selectedExchange}ReferralCode` as keyof typeof savedSettings] as string | null) || ''
+
     // Ref elemen canvas
     const canvasRef = useRef<HTMLCanvasElement>(null)
 
     // Preloader image refs untuk canvas export
     const avatarImgRef = useRef<HTMLImageElement | null>(null)
     const customBgImgRef = useRef<HTMLImageElement | null>(null)
-    const mexcLogoImgRef = useRef<HTMLImageElement | null>(null)
-    const bitunixLogoImgRef = useRef<HTMLImageElement | null>(null)
+    const exchangeLogoImgRef = useRef<HTMLImageElement | null>(null)
+    const nitireksoLogoImgRef = useRef<HTMLImageElement | null>(null)
+
+    // Preload logo Nitirekso (untuk watermark canvas)
+    useEffect(() => {
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        img.src = nitireksoLogo
+        img.onload = () => { nitireksoLogoImgRef.current = img }
+    }, [])
 
     // Preload gambar Avatar
     useEffect(() => {
@@ -369,34 +380,19 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         }
     }, [activeCustomBgUrl])
 
-    // Preload logo MEXC
+    // Preload logo exchange aktif
     useEffect(() => {
-        if (mexcLogoUrl) {
+        if (activeLogoUrl) {
             const img = new Image()
             img.crossOrigin = 'anonymous'
-            img.src = mexcLogoUrl
-            img.onload = () => { mexcLogoImgRef.current = img }
+            img.src = activeLogoUrl
+            img.onload = () => { exchangeLogoImgRef.current = img }
         } else {
-            mexcLogoImgRef.current = null
+            exchangeLogoImgRef.current = null
         }
-    }, [mexcLogoUrl])
+    }, [activeLogoUrl])
 
-    // Preload logo Bitunix
-    useEffect(() => {
-        if (bitunixLogoUrl) {
-            const img = new Image()
-            img.crossOrigin = 'anonymous'
-            img.src = bitunixLogoUrl
-            img.onload = () => { bitunixLogoImgRef.current = img }
-        } else {
-            bitunixLogoImgRef.current = null
-        }
-    }, [bitunixLogoUrl])
-
-    // Logo & Referral aktif berdasarkan exchange terpilih
-    const activeLogoImg = selectedExchange === 'mexc' ? mexcLogoImgRef.current : bitunixLogoImgRef.current
-    const activeLogoUrl = selectedExchange === 'mexc' ? mexcLogoUrl : bitunixLogoUrl
-    const activeReferral = selectedExchange === 'mexc' ? mexcReferralCode : bitunixReferralCode
+    const activeLogoImg = exchangeLogoImgRef.current
 
     // -----------------------------------------------------------------------
     // Mesin Render Canvas Dinamis (Auto-Flow Y Layout Engine)
@@ -986,17 +982,43 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
 
             if (showWatermark) {
                 ctx.save()
+                const wmLogoImg = nitireksoLogoImgRef.current
+                const logoSize = 42
+                const gap = 12
+
                 ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.75)'
                 const wm1 = 'nitirekso'
                 const w1W = ctx.measureText(wm1).width
-                ctx.fillText(wm1, mx + cw - 52 - w1W, curY + 26)
+
+                ctx.font = '18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                const wm2 = 'Trading Journal'
+                const w2W = ctx.measureText(wm2).width
+
+                const textBlockW = Math.max(w1W, w2W)
+                const hasLogo = wmLogoImg && wmLogoImg.complete
+                const totalW = hasLogo ? logoSize + gap + textBlockW : textBlockW
+
+                const startX = mx + cw - 52 - totalW
+
+                // Gambar logo nitirekso di samping teks jika sudah termuat
+                if (hasLogo) {
+                    ctx.save()
+                    ctx.beginPath()
+                    ctx.roundRect(startX, curY + 12, logoSize, logoSize, 8)
+                    ctx.clip()
+                    ctx.drawImage(wmLogoImg, startX, curY + 12, logoSize, logoSize)
+                    ctx.restore()
+                }
+
+                const textStartX = hasLogo ? startX + logoSize + gap : startX
+
+                ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'
+                ctx.fillText(wm1, textStartX, curY + 28)
 
                 ctx.font = '18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
                 ctx.fillStyle = bg.textSub
-                const wm2 = 'Trading Journal'
-                const w2W = ctx.measureText(wm2).width
-                ctx.fillText(wm2, mx + cw - 52 - w2W, curY + 52)
+                ctx.fillText(wm2, textStartX, curY + 50)
                 ctx.restore()
             }
         }
@@ -1922,9 +1944,16 @@ function PnlCard({
                         )}
 
                         {showWatermark && (
-                            <div className="text-[10px] text-right leading-tight ml-auto" style={{ color: bg.textSub }}>
-                                <div className="font-semibold text-white/80">nitirekso</div>
-                                <div>Trading Journal</div>
+                            <div className="flex items-center gap-2.5 ml-auto">
+                                <img
+                                    src={nitireksoLogo}
+                                    alt="nitirekso logo"
+                                    className="w-8 h-8 rounded-lg object-contain shadow-xs bg-black/20 p-0.5 border border-white/10"
+                                />
+                                <div className="text-[11px] text-left leading-tight" style={{ color: bg.textSub }}>
+                                    <div className="font-bold text-white/90">nitirekso</div>
+                                    <div>Trading Journal</div>
+                                </div>
                             </div>
                         )}
                     </div>

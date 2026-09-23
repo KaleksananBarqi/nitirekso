@@ -70,7 +70,7 @@ export const IPC_CHANNELS = {
 } as const
 
 /** Exchange yang bisa disinkronkan. */
-export type SyncableExchange = 'mexc' | 'bitunix'
+export type SyncableExchange = 'mexc' | 'bitunix' | 'bybit' | 'binance' | 'bingx'
 
 // --- Backup Google Drive (fitur 5) ---
 

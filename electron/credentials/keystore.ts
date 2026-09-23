@@ -161,5 +161,11 @@ export function deleteCredentials(exchange: SupportedExchange): void {
 
 /** Status semua exchange sekaligus, untuk ditampilkan di Settings. */
 export function getAllStatuses(): CredentialStatus[] {
-    return [getStatus('mexc'), getStatus('bitunix')]
+    return [
+        getStatus('mexc'),
+        getStatus('bitunix'),
+        getStatus('bybit'),
+        getStatus('binance'),
+        getStatus('bingx')
+    ]
 }

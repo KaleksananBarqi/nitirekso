@@ -3,6 +3,33 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.5.0] - 2026-09-23
+
+### 🚀 Fitur Baru
+- **Dukungan 3 Exchange Baru (Bybit, Binance, BingX)**:
+  - Integrasi adapter read-only CCXT untuk **Bybit** (Linear Futures V5), **Binance** (USDT-M Futures), dan **BingX** (Swap Perpetual).
+  - Penarikan riwayat posisi tertutup, trade fills, realized PnL bersih, biaya transaksi, funding rate/fee, dan saldo margin futures secara otomatis.
+  - Migrasi skema database SQLite (`005_add_exchanges.sql`) yang memperluas batasan exchange pada tabel `trades` dan `sync_state`.
+  - Panduan interaktif dan form kredensial aman di halaman Settings untuk kelima exchange dengan jaminan izin *read-only*.
+- **Aset Logo Bawaan Exchange & Pengaturan Kode Referral**:
+  - Pustaka logo resmi exchange bawaan (`MEXC`, `Bitunix`, `Bybit`, `Binance`, `BingX`) kini terintegrasi langsung di aplikasi tanpa perlu unggah manual.
+  - Form pengaturan referral per-exchange yang intuitif di menu Settings: pengguna cukup mengisi kode referral exchange masing-masing.
+  - Logo resmi exchange dan badge kode referral otomatis terpampang di kartu visual Share PnL sesuai exchange asal trade.
+- **Watermark Logo nitirekso di Share PnL**:
+  - Rendering ikon logo resmi nitirekso di pojok kanan bawah kartu Share PnL, berdampingan dengan tipografi *"nitirekso Trading Journal"*, baik pada pratinjau DOM maupun ekspor Canvas resolusi tinggi Retina 2x.
+- **Unifikasi Sinkronisasi Trade & Saldo (Unified Sync UX)**:
+  - Menyatukan alur sinkronisasi data transaksi dan saldo exchange menjadi satu aksi terpadu (`window.api.runSync()`), menghilangkan kebingungan pemisahan UI/UX "Sync Now" dan "Sinkron Saldo".
+  - Tombol pada widget saldo diubah menjadi *"↻ Sinkron Sekarang"*, memicu pembaruan menyeluruh untuk trade dan saldo akun sekaligus.
+  - Sistem *event bus* global (`app:sync-complete`) memastikan widget saldo dan daftar trade selalu ter-refresh bersamaan dari tombol mana pun yang diklik (sidebar, dashboard, atau settings).
+  - Chip rincian saldo akun kini merender dinamis seluruh exchange yang terkonfigurasi lengkap dengan logo dan ketersediaan margin.
+
+### 🐛 Perbaikan Bug
+- **Interaksi Pemilihan Tag Emosi di Trade Editor**:
+  - Memperbaiki bug form reset yang menyebabkan badge emosi terkunci setelah dipilih.
+  - Pilihan tag emosi kini bersifat toggle (klik ulang untuk membatalkan) dan disediakan tombol pembersih tag emosi.
+
+---
+
 ## [1.4.0] - 2026-09-22
 
 ### 🚀 Fitur Baru

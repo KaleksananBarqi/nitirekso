@@ -77,6 +77,7 @@ export default function App(): React.JSX.Element {
                         void window.api.logWarn(`[App] Sinkronisasi otomatis startup selesai dengan catatan: ${res.error ?? 'tidak diketahui'}`)
                     }
                     await reload()
+                    window.dispatchEvent(new CustomEvent('app:sync-complete'))
                 }
             } catch (err) {
                 void window.api.logWarn('[App] Gagal menjalankan sinkronisasi otomatis startup:', err)
@@ -85,10 +86,16 @@ export default function App(): React.JSX.Element {
 
         void triggerStartupSync()
 
+        const handleGlobalSyncComplete = () => {
+            void reload()
+        }
+        window.addEventListener('app:sync-complete', handleGlobalSyncComplete)
+
         return () => {
             isMounted = false
             window.removeEventListener('error', handleGlobalError)
             window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+            window.removeEventListener('app:sync-complete', handleGlobalSyncComplete)
         }
     }, [reload])
 
