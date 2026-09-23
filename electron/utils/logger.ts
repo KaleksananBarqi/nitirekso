@@ -25,7 +25,7 @@ export function getLogFilePath(): string {
 
     let baseDir: string
     try {
-        if (app && app.isReady()) {
+        if (app && typeof app.getPath === 'function') {
             baseDir = join(app.getPath('userData'), 'logs')
         } else {
             baseDir = join(process.cwd(), 'logs')

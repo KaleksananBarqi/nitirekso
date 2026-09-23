@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { join } from 'node:path'
 import { closeDb, getDbPath, initializeDb } from './db/index'
 import { registerIpcHandlers } from './ipc/handlers'
@@ -9,15 +9,12 @@ import { logger } from './utils/logger'
  * Entry point main process.
  *
  * Fase 1: aplikasi membuka DB, menjalankan migrasi, lalu menampilkan UI jurnal.
- * Belum ada integrasi exchange (itu Fase 2+).
  */
 
 const APP_NAME = 'nitirekso'
-logger.initGlobalErrorHandlers()
-logger.info(`Memulai ${APP_NAME}... File Log: ${logger.getLogPath()}`)
 
 /**
- * WAJIB dipanggil SEBELUM app.whenReady().
+ * WAJIB dipanggil SEBELUM memanggil getPath('userData') atau app.whenReady().
  *
  * Tanpa ini, Electron memakai nama default "Electron", sehingga `userData` jatuh ke
  * `%APPDATA%\Electron`. Akibatnya SEMUA aplikasi Electron lain di mesin ini berbagi
@@ -27,6 +24,9 @@ app.setName(APP_NAME)
 if (process.platform === 'win32') {
     app.setAppUserModelId('com.nitirekso.app')
 }
+
+logger.initGlobalErrorHandlers()
+logger.info(`Memulai ${APP_NAME}... File Log: ${logger.getLogPath()}`)
 
 /** Path icon resmi Nitirekso untuk window titlebar dan taskbar. */
 function getAppIconPath(): string {
@@ -76,6 +76,33 @@ function createWindow(): void {
 }
 
 /**
+ * Menangani kegagalan fatal saat startup secara transparan dan ramah pengguna.
+ *
+ * Mencegah "silent crash / ghost click" di Windows: menampilkan kotak dialog
+ * OS native dengan penjelasan masalah, jaminan keamanan data lokal, dan lokasi log.
+ */
+function handleStartupFatalError(error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error)
+    logger.error('[startup] GAGAL memulai aplikasi:', error)
+
+    try {
+        dialog.showErrorBox(
+            'nitirekso — Gagal Membuka Aplikasi',
+            `Terjadi kesalahan saat menginisialisasi database atau dependensi aplikasi:\n\n${message}\n\n` +
+            `Catatan Penting:\n` +
+            `• Data riwayat transaksi dan jurnal trading Anda tetap aman.\n` +
+            `• File log lengkap tersimpan di:\n  ${logger.getLogPath()}\n\n` +
+            `Silakan laporkan masalah ini ke repositori pengembang.`
+        )
+    } catch {
+        // Fallback jika dialog OS tidak dapat ditampilkan
+    }
+
+    closeDb()
+    app.exit(1)
+}
+
+/**
  * Kunci single-instance.
  *
  * Dua instance yang menulis ke file SQLite yang sama berisiko korupsi data.
@@ -95,23 +122,22 @@ if (!gotLock) {
     })
 
     app.whenReady().then(() => {
-        // Buka DB + jalankan migrasi. Kalau native addon rusak atau SQL invalid,
-        // error muncul SEKARANG — saat startup — bukan nanti saat user menyimpan trade.
         try {
+            // Buka DB + jalankan migrasi.
             const result = initializeDb()
             logger.info(`[db] koneksi terbuka: ${getDbPath()}`)
             if (result.applied.length > 0) {
                 logger.info(`[db] migrasi diterapkan: ${result.applied.join(', ')}`)
             }
             logger.info(`[db] schema version: ${result.currentVersion}`)
-        } catch (error) {
-            logger.error('[db] GAGAL menginisialisasi database:', error)
-            throw error
-        }
 
-        registerIpcHandlers()
-        registerSyncHandlers(() => mainWindow)
-        createWindow()
+            registerIpcHandlers()
+            registerSyncHandlers(() => mainWindow)
+            createWindow()
+        } catch (error) {
+            handleStartupFatalError(error)
+            return
+        }
 
         app.on('activate', () => {
             if (BrowserWindow.getAllWindows().length === 0) {

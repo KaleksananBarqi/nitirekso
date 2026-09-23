@@ -3,6 +3,21 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.5.2] - 2026-09-23
+
+### 🐛 Perbaikan Bug & Peningkatan Stabilitas
+- **Ketahanan Runner Migrasi SQLite (Idempotent & Self-Healing)**:
+  - Memperbaiki eksekusi migrasi skema database agar secara otomatis mendeteksi dan mengabaikan error `duplicate column name` saat menambahkan kolom baru (`raw_payload`, `positions_synced`, `fills_synced`, `funding_synced`).
+  - Mencegah *silent crash* dan kegagalan startup pada pengguna Windows yang memperbarui dari versi sebelumnya.
+- **Startup Error Guard & Native OS Dialog**:
+  - Menambahkan penanganan error fatal saat pembukaan aplikasi menggunakan dialog native OS (`dialog.showErrorBox`).
+  - Menghilangkan fenomena *silent ghost crash* di Windows dengan menampilkan pesan diagnostik yang jelas, jaminan integritas data pengguna, dan lokasi berkas log jika inisialisasi lingkungan bermasalah.
+- **Resolusi Path Log Dini**:
+  - Menata urutan inisialisasi identitas aplikasi (`app.setName('nitirekso')`) di Main Process sebelum pemanggilan modul logging dini.
+  - Memastikan seluruh log startup langsung mengarah ke `%APPDATA%\nitirekso\logs\app.log` dengan aman tanpa menunggu event `app.isReady()`.
+
+---
+
 ## [1.5.1] - 2026-09-23
 
 ### 🐛 Perbaikan Bug & Peningkatan Stabilitas

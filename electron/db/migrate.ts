@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { logger } from '../utils/logger'
 import migration001 from './migrations/001_init.sql?raw'
 import migration002 from './migrations/002_sync_support.sql?raw'
 import migration003 from './migrations/003_custom_tags.sql?raw'
@@ -58,6 +59,59 @@ function getAppliedVersions(db: Database.Database): Set<number> {
     return new Set(rows.map((row) => row.version))
 }
 
+function splitSqlStatements(sql: string): string[] {
+    const lines = sql.split(/\r?\n/)
+    const cleanLines: string[] = []
+    for (const line of lines) {
+        const trimmed = line.trim()
+        if (trimmed.startsWith('--')) continue
+        cleanLines.push(line)
+    }
+    const cleanSql = cleanLines.join('\n')
+    return cleanSql
+        .split(';')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+}
+
+/**
+ * Eksekusi DDL migrasi dengan penanganan error defensif.
+ *
+ * Mengapa ini penting:
+ * SQLite tidak mendukung sintaks `ALTER TABLE <table> ADD COLUMN IF NOT EXISTS <col>`.
+ * Jika kolom sudah terbentuk sebelumnya di database pengguna (misalnya akibat patch atau pengujian),
+ * SQLite akan melempar fatal error `duplicate column name: <nama_kolom>`.
+ *
+ * Fungsi ini mencoba db.exec() langsung. Jika gagal karena 'duplicate column name',
+ * SQL dipecah per-statement dan error 'duplicate column name' diabaikan secara aman karena
+ * tujuan akhir (keberadaan kolom tersebut) sudah terpenuhi.
+ */
+function executeMigrationSql(db: Database.Database, sql: string, migrationName: string): void {
+    try {
+        db.exec(sql)
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        if (!message.toLowerCase().includes('duplicate column name')) {
+            throw err
+        }
+
+        logger.warn(`[db:migrate] Terdeteksi kolom duplikat pada ${migrationName}, beralih ke mode eksekusi per-statement defensif: ${message}`)
+        const statements = splitSqlStatements(sql)
+        for (const statement of statements) {
+            try {
+                db.exec(statement)
+            } catch (stmtErr: unknown) {
+                const stmtMsg = stmtErr instanceof Error ? stmtErr.message : String(stmtErr)
+                if (stmtMsg.toLowerCase().includes('duplicate column name')) {
+                    logger.info(`[db:migrate] Mengabaikan duplikasi kolom yang sudah ada: ${stmtMsg}`)
+                    continue
+                }
+                throw stmtErr
+            }
+        }
+    }
+}
+
 /**
  * Jalankan semua migrasi yang belum diterapkan.
  * Setiap migrasi dibungkus transaksi sendiri: kalau satu gagal, yang sudah
@@ -73,7 +127,7 @@ export function runMigrations(db: Database.Database): MigrationResult {
         if (applied.has(migration.version)) continue
 
         const execute = db.transaction(() => {
-            db.exec(migration.sql)
+            executeMigrationSql(db, migration.sql, migration.name)
             db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)').run(
                 migration.version,
                 migration.name,
