@@ -291,17 +291,28 @@ export function registerSyncHandlers(getWindow: () => BrowserWindow | null): voi
             const allFetched: AccountBalance[] = []
             const errors: string[] = []
 
-            for (const adapter of adapters) {
-                if (typeof adapter.fetchBalances === 'function') {
+            const fetchPromises = adapters
+                .filter(adapter => typeof adapter.fetchBalances === 'function')
+                .map(async (adapter) => {
                     try {
-                        const balances = await adapter.fetchBalances()
-                        upsertBalances(db, balances)
-                        allFetched.push(...balances)
+                        const balances = await adapter.fetchBalances!()
+                        return { status: 'fulfilled' as const, adapter, balances }
                     } catch (err) {
-                        const msg = err instanceof Error ? err.message : String(err)
-                        logger.error(`[ipc:sync] Gagal ambil saldo ${adapter.id}:`, err)
-                        errors.push(`${adapter.displayName}: ${msg}`)
+                        return { status: 'rejected' as const, adapter, err }
                     }
+                })
+
+            const results = await Promise.all(fetchPromises)
+
+            for (const result of results) {
+                if (result.status === 'fulfilled') {
+                    upsertBalances(db, result.balances)
+                    allFetched.push(...result.balances)
+                } else {
+                    const err = result.err
+                    const msg = err instanceof Error ? err.message : String(err)
+                    logger.error(`[ipc:sync] Gagal ambil saldo ${result.adapter.id}:`, err)
+                    errors.push(`${result.adapter.displayName}: ${msg}`)
                 }
             }
 

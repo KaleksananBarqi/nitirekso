@@ -215,8 +215,7 @@ export class BitunixClient {
         let dispatcher: unknown = undefined
         if (proxyUrl) {
             try {
-                // eslint-disable-next-line @typescript-eslint/no-var-requires
-                const { ProxyAgent } = require('undici') as { ProxyAgent: new (url: string) => unknown }
+                const { ProxyAgent } = (await import('undici')) as { ProxyAgent: new (url: string) => unknown }
                 dispatcher = new ProxyAgent(proxyUrl)
             } catch { }
         }
