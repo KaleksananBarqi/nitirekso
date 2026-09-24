@@ -424,14 +424,17 @@ export async function runBackup(): Promise<BackupRunResult> {
             const screenshotDir = getScreenshotDir()
             if (existsSync(screenshotDir)) {
                 const files = readdirSync(screenshotDir)
-                for (const fileName of files) {
+                const uploadPromises = files.map(async (fileName) => {
                     const filePath = join(screenshotDir, fileName)
                     const stat = statSync(filePath)
                     const data = readFileSync(filePath)
                     await uploadFile(token.access_token, folderId, fileName, data, 'application/octet-stream')
-                    filesUploaded++
-                    bytesUploaded += stat.size
-                }
+                    return stat.size
+                })
+
+                const sizes = await Promise.all(uploadPromises)
+                filesUploaded += sizes.length
+                bytesUploaded += sizes.reduce((acc, size) => acc + size, 0)
             }
 
             setSetting(db, SETTING_KEYS.gdriveFolderId, folderId)
