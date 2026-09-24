@@ -17,7 +17,7 @@ export class BinanceAdapter implements ExchangeAdapter {
     readonly id = 'binance' as const
     readonly displayName = 'Binance Futures'
 
-    private client: unknown
+    private client: Promise<unknown>
 
     constructor(credentials: ExchangeCredentials) {
         this.client = createClient(credentials)
@@ -29,7 +29,7 @@ export class BinanceAdapter implements ExchangeAdapter {
     ): Promise<RawClosedPosition[]> {
         return withRetry(
             async () => {
-                const client = this.client as {
+                const client = (await this.client) as {
                     fetchMyTrades?: (
                         symbol?: string,
                         since?: number,
@@ -73,7 +73,7 @@ export class BinanceAdapter implements ExchangeAdapter {
     ): Promise<RawFill[]> {
         return withRetry(
             async () => {
-                const client = this.client as {
+                const client = (await this.client) as {
                     fetchMyTrades?: (
                         symbol?: string,
                         since?: number,
@@ -108,7 +108,7 @@ export class BinanceAdapter implements ExchangeAdapter {
     ): Promise<RawFundingFee[]> {
         return withRetry(
             async () => {
-                const client = this.client as {
+                const client = (await this.client) as {
                     fetchFundingHistory?: (
                         symbol?: string,
                         since?: number,
@@ -140,7 +140,7 @@ export class BinanceAdapter implements ExchangeAdapter {
     async fetchBalances(options: FetchOptions = {}): Promise<AccountBalance[]> {
         return withRetry(
             async () => {
-                const client = this.client as {
+                const client = (await this.client) as {
                     fetchBalance?: (params?: Record<string, unknown>) => Promise<Record<string, unknown>>
                 }
 
@@ -200,9 +200,9 @@ function logRetry(attempt: number, delay: number, error: ExchangeError): void {
     )
 }
 
-function createClient(credentials: ExchangeCredentials): unknown {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const ccxt = require('ccxt') as Record<string, unknown>
+async function createClient(credentials: ExchangeCredentials): Promise<unknown> {
+    const ccxtModule = await import('ccxt')
+    const ccxt = (ccxtModule.default || ccxtModule) as Record<string, unknown>
     const BinanceClass = (ccxt['binanceusdm'] || ccxt['binance']) as
         | (new (config: Record<string, unknown>) => unknown)
         | undefined

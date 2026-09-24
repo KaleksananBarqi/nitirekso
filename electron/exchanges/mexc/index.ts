@@ -58,7 +58,7 @@ export class MexcAdapter implements ExchangeAdapter {
     readonly displayName = 'MEXC Futures'
 
     /** Instance ccxt. Tipe `any` karena ccxt tidak menyediakan tipe per-exchange. */
-    private client: unknown
+    private client: Promise<unknown>
 
     constructor(credentials: ExchangeCredentials) {
         this.client = createClient(credentials)
@@ -113,7 +113,7 @@ export class MexcAdapter implements ExchangeAdapter {
         pageSize: number,
         options: FetchOptions
     ): Promise<unknown[]> {
-        const client = this.client as {
+        const client = (await this.client) as {
             fetchPositionsHistory: (
                 symbols?: string[],
                 since?: number,
@@ -138,7 +138,7 @@ export class MexcAdapter implements ExchangeAdapter {
     }
 
     async fetchFills(cursor: SyncCursor, options: FetchOptions = {}): Promise<RawFill[]> {
-        const client = this.client as {
+        const client = (await this.client) as {
             fetchMyTrades: (
                 symbol?: string,
                 since?: number,
@@ -168,7 +168,7 @@ export class MexcAdapter implements ExchangeAdapter {
         cursor: SyncCursor,
         options: FetchOptions = {}
     ): Promise<RawFundingFee[]> {
-        const client = this.client as {
+        const client = (await this.client) as {
             fetchFundingHistory: (
                 symbol?: string,
                 since?: number,
@@ -217,7 +217,7 @@ export class MexcAdapter implements ExchangeAdapter {
      * Ambil saldo akun futures MEXC saat ini (USDT/USDC).
      */
     async fetchBalances(options: FetchOptions = {}): Promise<AccountBalance[]> {
-        const client = this.client as {
+        const client = (await this.client) as {
             fetchBalance: (params?: Record<string, unknown>) => Promise<Record<string, unknown>>
         }
 
@@ -301,10 +301,10 @@ function logRetry(attempt: number, delay: number, error: ExchangeError): void {
  * `defaultType: 'swap'` WAJIB — default ccxt adalah `'spot'`, dan tanpa ini
  * semua panggilan akan mengarah ke pasar spot, bukan futures.
  */
-function createClient(credentials: ExchangeCredentials): unknown {
+async function createClient(credentials: ExchangeCredentials): Promise<unknown> {
     // Import dinamis via require agar ccxt (paket besar) tidak ikut ter-bundle.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const ccxt = require('ccxt') as Record<string, unknown>
+    const ccxtModule = await import('ccxt')
+    const ccxt = (ccxtModule.default || ccxtModule) as Record<string, unknown>
 
     const MexcClass = ccxt['mexc'] as
         | (new (config: Record<string, unknown>) => unknown)
