@@ -17,10 +17,18 @@ export class BingxAdapter implements ExchangeAdapter {
     readonly id = 'bingx' as const
     readonly displayName = 'BingX Futures'
 
-    private client: unknown
+    private client: Promise<unknown> | null = null
+    private credentials: ExchangeCredentials
 
     constructor(credentials: ExchangeCredentials) {
-        this.client = createClient(credentials)
+        this.credentials = credentials
+    }
+
+    private getClient(): Promise<unknown> {
+        if (!this.client) {
+            this.client = createClient(this.credentials)
+        }
+        return this.client
     }
 
     async fetchClosedPositions(
@@ -29,7 +37,8 @@ export class BingxAdapter implements ExchangeAdapter {
     ): Promise<RawClosedPosition[]> {
         return withRetry(
             async () => {
-                const client = this.client as {
+                const resolvedClient = await this.getClient()
+                const client = resolvedClient as {
                     swapV2PrivateGetUserIncome?: (params?: Record<string, unknown>) => Promise<{ data?: unknown[] } | unknown[]>
                 }
 
@@ -69,7 +78,8 @@ export class BingxAdapter implements ExchangeAdapter {
     ): Promise<RawFill[]> {
         return withRetry(
             async () => {
-                const client = this.client as {
+                const resolvedClient = await this.getClient()
+                const client = resolvedClient as {
                     fetchMyTrades?: (
                         symbol?: string,
                         since?: number,
@@ -104,7 +114,8 @@ export class BingxAdapter implements ExchangeAdapter {
     ): Promise<RawFundingFee[]> {
         return withRetry(
             async () => {
-                const client = this.client as {
+                const resolvedClient = await this.getClient()
+                const client = resolvedClient as {
                     swapV2PrivateGetUserIncome?: (params?: Record<string, unknown>) => Promise<{ data?: unknown[] } | unknown[]>
                 }
 
@@ -140,7 +151,8 @@ export class BingxAdapter implements ExchangeAdapter {
     async fetchBalances(options: FetchOptions = {}): Promise<AccountBalance[]> {
         return withRetry(
             async () => {
-                const client = this.client as {
+                const resolvedClient = await this.getClient()
+                const client = resolvedClient as {
                     fetchBalance?: (params?: Record<string, unknown>) => Promise<Record<string, unknown>>
                 }
 
@@ -200,9 +212,9 @@ function logRetry(attempt: number, delay: number, error: ExchangeError): void {
     )
 }
 
-function createClient(credentials: ExchangeCredentials): unknown {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const ccxt = require('ccxt') as Record<string, unknown>
+async function createClient(credentials: ExchangeCredentials): Promise<unknown> {
+    const imported = await import('ccxt')
+    const ccxt = (imported.default || imported) as Record<string, unknown>
     const BingxClass = ccxt['bingx'] as (new (config: Record<string, unknown>) => unknown) | undefined
 
     if (!BingxClass) {
