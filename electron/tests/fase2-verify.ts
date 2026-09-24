@@ -233,11 +233,13 @@ class FakeMexcAdapter implements ExchangeAdapter {
     fillCalls = 0
     fundingCalls = 0
     /** Set true untuk mensimulasikan kegagalan di tahap tertentu. */
+    failPositions = false
     failFills = false
     lastCursor: SyncCursor | null = null
 
     async fetchClosedPositions(cursor: SyncCursor, _options?: FetchOptions): Promise<RawClosedPosition[]> {
         this.positionCalls += 1
+        if (this.failPositions) throw new Error('Simulasi kegagalan jaringan pada positions')
         this.lastCursor = cursor
 
         const raw = [MEXC_RAW_CLOSED_POSITION, MEXC_RAW_SHORT_CROSS]
@@ -511,6 +513,31 @@ async function main(): Promise<void> {
         const stateAfterPartial = getSyncState(db, 'mexc')
         check('Status partial tercatat di sync_state', stateAfterPartial.lastStatus === 'partial')
         check('last_error terisi', stateAfterPartial.lastError !== null)
+
+        // --- Bagian 8b: kegagalan penuh (posisi gagal) ---
+        results.push('--- Penanganan kegagalan (posisi) ---')
+
+        // Reset cursor supaya sync mencoba narik data dari awal
+        db.prepare("UPDATE sync_state SET last_exit_time = NULL, last_external_id = NULL WHERE exchange = 'mexc'").run()
+
+        const failingPositionsAdapter = new FakeMexcAdapter()
+        failingPositionsAdapter.failPositions = true
+
+        const errorResult = await syncExchange(db, failingPositionsAdapter)
+        check(
+            'Kegagalan positions menghasilkan status error',
+            errorResult.status === 'error',
+            `status=${errorResult.status}`
+        )
+        check('Pesan error tercatat', Boolean(errorResult.error))
+        check(
+            'Data posisi tidak tersimpan saat fetch gagal',
+            errorResult.positions.inserted === 0 && errorResult.positions.updated === 0
+        )
+
+        const stateAfterError = getSyncState(db, 'mexc')
+        check('Status error tercatat di sync_state', stateAfterError.lastStatus === 'error')
+        check('last_error terisi saat error penuh', stateAfterError.lastError !== null)
 
         // --- Bagian 9: upsert langsung (perilaku update) ---
         results.push('--- Update nilai saat data exchange berubah ---')
