@@ -57,11 +57,11 @@ export class MexcAdapter implements ExchangeAdapter {
     readonly id = 'mexc' as const
     readonly displayName = 'MEXC Futures'
 
-    /** Instance ccxt. Tipe `any` karena ccxt tidak menyediakan tipe per-exchange. */
-    private client: unknown
+    /** Instance ccxt. Tipe promise karena import dinamis dilakukan secara async. */
+    private clientPromise: Promise<unknown>
 
     constructor(credentials: ExchangeCredentials) {
-        this.client = createClient(credentials)
+        this.clientPromise = createClient(credentials)
     }
 
     /**
@@ -113,7 +113,7 @@ export class MexcAdapter implements ExchangeAdapter {
         pageSize: number,
         options: FetchOptions
     ): Promise<unknown[]> {
-        const client = this.client as {
+        const client = (await this.clientPromise) as {
             fetchPositionsHistory: (
                 symbols?: string[],
                 since?: number,
@@ -138,7 +138,7 @@ export class MexcAdapter implements ExchangeAdapter {
     }
 
     async fetchFills(cursor: SyncCursor, options: FetchOptions = {}): Promise<RawFill[]> {
-        const client = this.client as {
+        const client = (await this.clientPromise) as {
             fetchMyTrades: (
                 symbol?: string,
                 since?: number,
@@ -168,7 +168,7 @@ export class MexcAdapter implements ExchangeAdapter {
         cursor: SyncCursor,
         options: FetchOptions = {}
     ): Promise<RawFundingFee[]> {
-        const client = this.client as {
+        const client = (await this.clientPromise) as {
             fetchFundingHistory: (
                 symbol?: string,
                 since?: number,
@@ -217,7 +217,7 @@ export class MexcAdapter implements ExchangeAdapter {
      * Ambil saldo akun futures MEXC saat ini (USDT/USDC).
      */
     async fetchBalances(options: FetchOptions = {}): Promise<AccountBalance[]> {
-        const client = this.client as {
+        const client = (await this.clientPromise) as {
             fetchBalance: (params?: Record<string, unknown>) => Promise<Record<string, unknown>>
         }
 
@@ -296,12 +296,11 @@ function logRetry(attempt: number, delay: number, error: ExchangeError): void {
  * `defaultType: 'swap'` WAJIB — default ccxt adalah `'spot'`, dan tanpa ini
  * semua panggilan akan mengarah ke pasar spot, bukan futures.
  */
-function createClient(credentials: ExchangeCredentials): unknown {
-    // Import dinamis via require agar ccxt (paket besar) tidak ikut ter-bundle.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const ccxt = require('ccxt') as Record<string, unknown>
+async function createClient(credentials: ExchangeCredentials): Promise<unknown> {
+    // Import dinamis via async import agar ccxt (paket besar) tidak ikut ter-bundle.
+    const ccxt = await import('ccxt') as Record<string, unknown>
 
-    const MexcClass = ccxt['mexc'] as
+    const MexcClass = (ccxt['mexc'] || (ccxt.default as Record<string, unknown> | undefined)?.['mexc']) as
         | (new (config: Record<string, unknown>) => unknown)
         | undefined
 
