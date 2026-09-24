@@ -41,7 +41,8 @@
     },
     "dependencies": {
         "better-sqlite3": "^13.0.3",
-        "ccxt": "^4.5.78"
+        "ccxt": "^4.5.78",
+        "node-machine-id": "^1.1.12"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.3.3",

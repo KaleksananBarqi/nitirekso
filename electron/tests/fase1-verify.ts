@@ -12,7 +12,9 @@ import {
     listTrades,
     updateTrade
 } from '../db/repositories/trades'
-import { getAllSettings, getSetting, setSetting } from '../db/repositories/settings'
+import { getAllSettings, getSetting, setSetting, SETTING_KEYS } from '../db/repositories/settings'
+import { getEffectiveClientId } from '../backup/index'
+
 import type { TradeSavePayload } from '../../shared/ipc-contract'
 
 /**
@@ -387,7 +389,36 @@ function main(): void {
             getSetting(reopened, 'tidak_ada', 'default-aman') === 'default-aman'
         )
 
-        // --- 13. Data lokal tidak masuk repo ----------------------------------
+
+
+// --- 13. Backup Client ID ------------------------------------------------
+        check('Client ID: Default fallback ke machine id atau dummy', getEffectiveClientId() !== '')
+
+        process.env.GDRIVE_CLIENT_ID = 'env-client-id'
+        check('Client ID: Membaca dari environment', getEffectiveClientId() === 'env-client-id')
+        delete process.env.GDRIVE_CLIENT_ID
+
+        setSetting(reopened, SETTING_KEYS.gdriveClientId, 'db-client-id')
+        check('Client ID: Membaca dari database', getEffectiveClientId() === 'db-client-id')
+        setSetting(reopened, SETTING_KEYS.gdriveClientId, '')
+
+        // Mock module node-machine-id directly menggunakan Module overriding pada require.cache
+        const moduleId = require.resolve('node-machine-id');
+        const originalMachineIdSync = require(moduleId).machineIdSync;
+
+        // Mock to return a specific ID
+        require.cache[moduleId].exports.machineIdSync = () => 'mock-machine-id';
+        check('Client ID: Membaca dari machine id (mocked)', getEffectiveClientId() === 'mock-machine-id');
+
+        // Mock to throw an error
+        require.cache[moduleId].exports.machineIdSync = () => { throw new Error('mock error'); };
+        check('Client ID: Fallback ke dummy id ketika machine id error (mocked)', getEffectiveClientId() === 'dummy-client-id');
+
+        // Restore original
+        require.cache[moduleId].exports.machineIdSync = originalMachineIdSync;
+
+
+        // --- 14. Data lokal tidak masuk repo ----------------------------------
         const gitignored = checkGitignore()
         check('data/ dan out/ ter-ignore dari git', gitignored.length === 0, gitignored.join('; '))
 

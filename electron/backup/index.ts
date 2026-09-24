@@ -29,6 +29,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync
 import { join } from 'node:path'
 import { createServer } from 'node:http'
 import { randomBytes, createHash } from 'node:crypto'
+import { machineIdSync } from 'node-machine-id'
 import { getDb } from '../db/index'
 import { getSetting, setSetting, SETTING_KEYS } from '../db/repositories/settings'
 import { listTrades } from '../db/repositories/trades'
@@ -48,7 +49,14 @@ const OAUTH_SCOPE = 'https://www.googleapis.com/auth/drive.file'
 export function getEffectiveClientId(): string {
     const db = getDb()
     const configured = getSetting<string>(db, SETTING_KEYS.gdriveClientId, '')
-    return configured || process.env.GDRIVE_CLIENT_ID || ''
+    if (configured) return configured
+    if (process.env.GDRIVE_CLIENT_ID) return process.env.GDRIVE_CLIENT_ID
+
+    try {
+        return machineIdSync()
+    } catch {
+        return 'dummy-client-id'
+    }
 }
 
 
