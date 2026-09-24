@@ -234,6 +234,8 @@ class FakeMexcAdapter implements ExchangeAdapter {
     fundingCalls = 0
     /** Set true untuk mensimulasikan kegagalan di tahap tertentu. */
     failFills = false
+    failReconcile = false
+    dbForReconcileFail?: Database.Database
     lastCursor: SyncCursor | null = null
 
     async fetchClosedPositions(cursor: SyncCursor, _options?: FetchOptions): Promise<RawClosedPosition[]> {
@@ -281,6 +283,9 @@ class FakeMexcAdapter implements ExchangeAdapter {
 
     async fetchFundingFees(_cursor: SyncCursor, _options?: FetchOptions): Promise<RawFundingFee[]> {
         this.fundingCalls += 1
+        if (this.failReconcile && this.dbForReconcileFail) {
+            this.dbForReconcileFail.prepare('ALTER TABLE trade_fills RENAME TO trade_fills_temp').run()
+        }
         return [MEXC_RAW_FUNDING, MEXC_RAW_FUNDING_2]
             .map((item) => mapFundingFee(item))
             .filter((f): f is RawFundingFee => f !== null)
@@ -511,6 +516,23 @@ async function main(): Promise<void> {
         const stateAfterPartial = getSyncState(db, 'mexc')
         check('Status partial tercatat di sync_state', stateAfterPartial.lastStatus === 'partial')
         check('last_error terisi', stateAfterPartial.lastError !== null)
+
+        const failingReconcileAdapter = new FakeMexcAdapter()
+        failingReconcileAdapter.failReconcile = true
+        failingReconcileAdapter.dbForReconcileFail = db
+
+        const partialReconcileResult = await syncExchange(db, failingReconcileAdapter)
+        check(
+            'Kegagalan rekonsiliasi menghasilkan status partial',
+            partialReconcileResult.status === 'partial',
+            `status=${partialReconcileResult.status}`
+        )
+        check(
+            'Pesan error rekonsiliasi tercatat',
+            Boolean(partialReconcileResult.error && partialReconcileResult.error.includes('Rekonsiliasi gagal')),
+            `error=${partialReconcileResult.error}`
+        )
+        db.prepare('ALTER TABLE trade_fills_temp RENAME TO trade_fills').run()
 
         // --- Bagian 9: upsert langsung (perilaku update) ---
         results.push('--- Update nilai saat data exchange berubah ---')
