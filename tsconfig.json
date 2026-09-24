@@ -28,11 +28,15 @@
             ]
         },
         "types": [
+            "vitest/globals",
+            "@testing-library/jest-dom",
             "vite/client"
         ]
     },
     "include": [
+        "vitest.d.ts",
         "src/**/*.ts",
+        "src/types/test-utils.d.ts",
         "src/**/*.tsx",
         "shared/**/*.ts"
     ]
