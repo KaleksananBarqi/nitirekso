@@ -235,6 +235,19 @@ export class MexcAdapter implements ExchangeAdapter {
         const now = Date.now()
         const result: AccountBalance[] = []
 
+        // Pre-compute PnL map for O(1) lookups
+        const pnlMap = new Map<string, number>()
+        if (raw.info && typeof raw.info === 'object') {
+            const info = raw.info as Record<string, unknown>
+            if (Array.isArray(info.data)) {
+                for (const item of info.data) {
+                    if (item && typeof item === 'object' && item.currency !== undefined && item.unrealisedPnl !== undefined) {
+                        pnlMap.set(String(item.currency), Number(item.unrealisedPnl) || 0)
+                    }
+                }
+            }
+        }
+
         // Prioritaskan USDT jika ada, atau aset lain yang bernilai > 0
         const assets = Object.keys(totalMap).filter((asset) => {
             const val = Number(totalMap[asset])
@@ -245,15 +258,7 @@ export class MexcAdapter implements ExchangeAdapter {
             const total = Number(totalMap[asset]) || 0
             const available = Number(freeMap[asset]) || 0
             // Cari unrealized PnL dari info jika disediakan ccxt
-            let unrealizedPnl = 0
-            if (raw.info && typeof raw.info === 'object') {
-                const info = raw.info as Record<string, unknown>
-                const dataList = Array.isArray(info.data) ? info.data : []
-                const found = dataList.find((item: Record<string, unknown>) => item.currency === asset)
-                if (found && found.unrealisedPnl !== undefined) {
-                    unrealizedPnl = Number(found.unrealisedPnl) || 0
-                }
-            }
+            const unrealizedPnl = pnlMap.get(asset) || 0
 
             result.push({
                 exchange: 'mexc',
