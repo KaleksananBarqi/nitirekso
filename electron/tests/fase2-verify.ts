@@ -235,6 +235,8 @@ class FakeMexcAdapter implements ExchangeAdapter {
     /** Set true untuk mensimulasikan kegagalan di tahap tertentu. */
     failPositions = false
     failFills = false
+    failReconcile = false
+    dbForReconcileFail?: Database.Database
     lastCursor: SyncCursor | null = null
 
     async fetchClosedPositions(cursor: SyncCursor, _options?: FetchOptions): Promise<RawClosedPosition[]> {
@@ -283,6 +285,9 @@ class FakeMexcAdapter implements ExchangeAdapter {
 
     async fetchFundingFees(_cursor: SyncCursor, _options?: FetchOptions): Promise<RawFundingFee[]> {
         this.fundingCalls += 1
+        if (this.failReconcile && this.dbForReconcileFail) {
+            this.dbForReconcileFail.prepare('ALTER TABLE trade_fills RENAME TO trade_fills_temp').run()
+        }
         return [MEXC_RAW_FUNDING, MEXC_RAW_FUNDING_2]
             .map((item) => mapFundingFee(item))
             .filter((f): f is RawFundingFee => f !== null)
@@ -514,7 +519,29 @@ async function main(): Promise<void> {
         check('Status partial tercatat di sync_state', stateAfterPartial.lastStatus === 'partial')
         check('last_error terisi', stateAfterPartial.lastError !== null)
 
-        // --- Bagian 8b: kegagalan penuh (posisi gagal) ---
+        // --- Bagian 8b: kegagalan rekonsiliasi (tahap 4 parsial) ---
+        results.push('--- Penanganan kegagalan (rekonsiliasi) ---')
+        const failingReconcileAdapter = new FakeMexcAdapter()
+        failingReconcileAdapter.failReconcile = true
+        failingReconcileAdapter.dbForReconcileFail = db
+
+        try {
+            const partialReconcileResult = await syncExchange(db, failingReconcileAdapter)
+            check(
+                'Kegagalan rekonsiliasi menghasilkan status partial',
+                partialReconcileResult.status === 'partial',
+                `status=${partialReconcileResult.status}`
+            )
+            check(
+                'Pesan error rekonsiliasi tercatat',
+                Boolean(partialReconcileResult.error && partialReconcileResult.error.includes('Rekonsiliasi gagal')),
+                `error=${partialReconcileResult.error}`
+            )
+        } finally {
+            db.prepare('ALTER TABLE trade_fills_temp RENAME TO trade_fills').run()
+        }
+
+        // --- Bagian 8c: kegagalan penuh (posisi gagal) ---
         results.push('--- Penanganan kegagalan (posisi) ---')
 
         // Reset cursor supaya sync mencoba narik data dari awal
