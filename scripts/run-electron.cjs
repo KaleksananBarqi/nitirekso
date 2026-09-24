@@ -31,12 +31,8 @@ if (!existsSync(binary)) {
     process.exit(1)
 }
 
-const env = { ...process.env, DISPLAY: ':99' }
+const env = { ...process.env }
 delete env.ELECTRON_RUN_AS_NODE
 
-const result = spawnSync('xvfb-run', ['-a', binary, '--disable-gpu', ...args], { stdio: 'inherit', env })
-if (result.error) {
-    const fallbackResult = spawnSync(binary, ['--disable-gpu', ...args], { stdio: 'inherit', env })
-    process.exit(fallbackResult.status ?? 1)
-}
+const result = spawnSync(binary, args, { stdio: 'inherit', env })
 process.exit(result.status ?? 1)
