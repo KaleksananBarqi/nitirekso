@@ -49,6 +49,36 @@ export interface PerformanceSummary {
     fundingFeeTotal: number
     /** Jumlah trade yang punya R valid (stop loss diisi). */
     tradesWithR: number
+    /** Akumulasi sum(rMultiple) untuk semua trade yang punya R valid. Null bila tidak ada trade dengan R. */
+    totalR: number | null
+    /** Rata-rata R-multiple per trade dengan R. Null jika tradesWithR === 0. */
+    avgR: number | null
+    /** Expectancy dalam satuan R: (winRateR × avgWinR) − (lossRateR × avgLossR). Null bila tidak dapat dihitung. */
+    expectancyR: number | null
+    /** Streak kemenangan berurutan terpanjang secara kronologis exit time. */
+    maxConsecutiveWins: number
+    /** Streak kekalahan berurutan terpanjang secara kronologis exit time. */
+    maxConsecutiveLosses: number
+    /** Recovery Factor: netPnlTotal / |maxDrawdown|. Null bila maxDrawdown === 0 dan tidak profit. */
+    recoveryFactor: number | null
+}
+
+/**
+ * Recovery Factor: perbandingan antara total net P&L terhadap Max Drawdown absolut.
+ * Menunjukkan seberapa cepat sistem bangkit dari penurunan modal (drawdown).
+ *
+ * Aturan matematis:
+ * - Jika maxDrawdown === 0:
+ *   - Bila netPnlTotal > 0: Infinity (sistem profit tanpa pernah drawdown)
+ *   - Bila netPnlTotal <= 0: null (tidak ada drawdown dan tidak profit)
+ * - Jika maxDrawdown < 0:
+ *   - netPnlTotal / Math.abs(maxDrawdown)
+ */
+export function computeRecoveryFactor(netPnlTotal: number, maxDrawdown: number): number | null {
+    if (maxDrawdown === 0) {
+        return netPnlTotal > 0 ? Number.POSITIVE_INFINITY : null
+    }
+    return netPnlTotal / Math.abs(maxDrawdown)
 }
 
 export function summarize(trades: TradeDetail[]): PerformanceSummary {
@@ -61,13 +91,29 @@ export function summarize(trades: TradeDetail[]): PerformanceSummary {
     let feeTotal = 0
     let fundingFeeTotal = 0
     let tradesWithR = 0
+    let sumR = 0
+    let winsWithR = 0
+    let lossesWithR = 0
+    let winRTotal = 0
+    let lossRTotal = 0
 
     for (const detail of trades) {
         const pnl = netPnl(detail)
         grossPnlTotal += detail.trade.realizedPnl
         feeTotal += detail.trade.feeOpen + detail.trade.feeClose
         fundingFeeTotal += detail.trade.fundingFee
-        if (detail.rMultiple !== null) tradesWithR += 1
+
+        if (detail.rMultiple !== null) {
+            tradesWithR += 1
+            sumR += detail.rMultiple
+            if (detail.rMultiple > 0) {
+                winsWithR += 1
+                winRTotal += detail.rMultiple
+            } else if (detail.rMultiple < 0) {
+                lossesWithR += 1
+                lossRTotal += Math.abs(detail.rMultiple)
+            }
+        }
 
         if (pnl > 0) {
             wins += 1
@@ -95,6 +141,53 @@ export function summarize(trades: TradeDetail[]): PerformanceSummary {
         expectancy = winRate * avgWin - lossRate * avgLoss
     }
 
+    // Metrik turunan berbasis R-Multiple
+    const totalR = tradesWithR > 0 ? sumR : null
+    const avgR = tradesWithR > 0 ? sumR / tradesWithR : null
+
+    let expectancyR: number | null = null
+    const directionalR = winsWithR + lossesWithR
+    const winRateR = directionalR > 0 ? winsWithR / directionalR : null
+    const avgWinR = winsWithR > 0 ? winRTotal / winsWithR : null
+    const avgLossR = lossesWithR > 0 ? lossRTotal / lossesWithR : null
+
+    if (winRateR !== null && avgWinR !== null && avgLossR !== null) {
+        const lossRateR = 1 - winRateR
+        expectancyR = winRateR * avgWinR - lossRateR * avgLossR
+    }
+
+    // Hitung streak kemenangan & kekalahan berturut-turut kronologis berdasarkan exitTime
+    const ordered = [...trades].sort((a, b) => {
+        if (a.trade.exitTime !== b.trade.exitTime) return a.trade.exitTime - b.trade.exitTime
+        return a.trade.id - b.trade.id
+    })
+
+    let maxConsecutiveWins = 0
+    let maxConsecutiveLosses = 0
+    let curWins = 0
+    let curLosses = 0
+
+    for (const detail of ordered) {
+        const pnl = netPnl(detail)
+        if (pnl > 0) {
+            curWins += 1
+            curLosses = 0
+            if (curWins > maxConsecutiveWins) maxConsecutiveWins = curWins
+        } else if (pnl < 0) {
+            curLosses += 1
+            curWins = 0
+            if (curLosses > maxConsecutiveLosses) maxConsecutiveLosses = curLosses
+        } else {
+            curWins = 0
+            curLosses = 0
+        }
+    }
+
+    const netPnlTotal = grossProfit - grossLoss
+    const curve = buildEquityCurve(trades)
+    const drawdown = computeDrawdown(curve)
+    const recoveryFactor = computeRecoveryFactor(netPnlTotal, drawdown.maxDrawdown)
+
     return {
         totalTrades: trades.length,
         wins,
@@ -105,11 +198,17 @@ export function summarize(trades: TradeDetail[]): PerformanceSummary {
         expectancy,
         avgWin,
         avgLoss,
-        netPnlTotal: grossProfit - grossLoss,
+        netPnlTotal,
         grossPnlTotal,
         feeTotal,
         fundingFeeTotal,
-        tradesWithR
+        tradesWithR,
+        totalR,
+        avgR,
+        expectancyR,
+        maxConsecutiveWins,
+        maxConsecutiveLosses,
+        recoveryFactor
     }
 }
 

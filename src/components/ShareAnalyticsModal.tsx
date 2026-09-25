@@ -7,7 +7,6 @@ import { cn } from '../lib/utils'
 import {
     BG_TEMPLATES,
     BUILTIN_TEMPLATES,
-    EXCHANGES,
     loadShareSettings,
     loadCustomBgList,
     addCustomBgItem,
@@ -17,7 +16,6 @@ import {
     getActiveTemplateId,
     setActiveTemplateId,
     type BgTemplate,
-    type ExchangeName,
     type ShareCardTemplate,
     type CustomBgItem
 } from '../lib/shareSettings'
@@ -209,9 +207,8 @@ function ShareAnalyticsModalContent({
     const brandSubtitle = 'ANALYTICS'
     const bgDimming = savedSettings.bgDimming
 
-    // Exchange selector
-    const [selectedExchange, setSelectedExchange] = useState<ExchangeName>('mexc')
-    const activeReferral = selectedExchange === 'bitunix' ? savedSettings.bitunixReferralCode : savedSettings.mexcReferralCode
+    // Referral code dari settings jika tersedia
+    const activeReferral = savedSettings.mexcReferralCode || savedSettings.bitunixReferralCode || ''
 
     // State Format & Rasio Kartu
     const [aspectRatio, setAspectRatio] = useState<CardAspectRatio>('16:9')
@@ -238,8 +235,6 @@ function ShareAnalyticsModalContent({
     const uploadBgModalInputRef = useRef<HTMLInputElement | null>(null)
     const avatarImgRef = useRef<HTMLImageElement | null>(null)
     const customBgImgRef = useRef<HTMLImageElement | null>(null)
-    const mexcLogoImgRef = useRef<HTMLImageElement | null>(null)
-    const bitunixLogoImgRef = useRef<HTMLImageElement | null>(null)
 
     // Upload background baru langsung dari modal
     const handleUploadNewBg = (file?: File) => {
@@ -281,22 +276,6 @@ function ShareAnalyticsModalContent({
             customBgImgRef.current = null
         }
     }, [activeCustomBgUrl])
-
-    // Preload Logo Exchanges
-    useEffect(() => {
-        if (savedSettings.mexcLogoUrl) {
-            const img = new Image()
-            img.crossOrigin = 'anonymous'
-            img.src = savedSettings.mexcLogoUrl
-            img.onload = () => { mexcLogoImgRef.current = img }
-        }
-        if (savedSettings.bitunixLogoUrl) {
-            const img = new Image()
-            img.crossOrigin = 'anonymous'
-            img.src = savedSettings.bitunixLogoUrl
-            img.onload = () => { bitunixLogoImgRef.current = img }
-        }
-    }, [savedSettings.mexcLogoUrl, savedSettings.bitunixLogoUrl])
 
     // Switch Template
     const handleApplyTemplate = (tpl: ShareCardTemplate) => {
@@ -471,30 +450,14 @@ function ShareAnalyticsModalContent({
         ctx.fillStyle = 'rgba(255, 255, 255, 0.55)'
         ctx.fillText(periodLabel, padX + 36, headerY + 28)
 
-        // Badge Exchange & Referral di Kanan Atas
-        const badgeText = selectedExchange.toUpperCase()
-        ctx.font = 'bold 18px sans-serif'
-        const badgeW = ctx.measureText(badgeText).width + 24
-        const badgeH = 34
-        const badgeX = padX + cardW - 36 - badgeW
-        const badgeY = padY + 28
-
-        ctx.beginPath()
-        ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 10)
-        ctx.fillStyle = `${accent}28`
-        ctx.fill()
-        ctx.strokeStyle = `${accent}88`
-        ctx.lineWidth = 1.5
-        ctx.stroke()
-
-        ctx.fillStyle = '#ffffff'
-        ctx.fillText(badgeText, badgeX + 12, badgeY + 24)
-
+        // Badge Referral di Kanan Atas (jika aktif)
         if (showReferral && activeReferral) {
             const refText = `REF: ${activeReferral}`
             ctx.font = 'bold 16px sans-serif'
             const refW = ctx.measureText(refText).width + 20
-            const refX = badgeX - refW - 12
+            const badgeH = 34
+            const refX = padX + cardW - 36 - refW
+            const badgeY = padY + 28
             ctx.beginPath()
             ctx.roundRect(refX, badgeY, refW, badgeH, 10)
             ctx.fillStyle = 'rgba(56, 189, 248, 0.15)'
@@ -560,9 +523,10 @@ function ShareAnalyticsModalContent({
         ctx.restore()
 
         // 5. Kurva Ekuitas (Chart)
-        let curY = heroY + heroH + 20
+        const gap1 = aspectRatio === '4:5' ? 28 : (aspectRatio === '1:1' ? 22 : 16)
+        let curY = heroY + heroH + gap1
         if (showChart && curve.length >= 2) {
-            const chartH = aspectRatio === '16:9' ? 140 : 180
+            const chartH = aspectRatio === '4:5' ? 320 : (aspectRatio === '1:1' ? 220 : 135)
             const chartW = heroW
             const chartX = heroX
 
@@ -583,33 +547,71 @@ function ShareAnalyticsModalContent({
             ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
             ctx.fillText(`${curve.length} points`, chartX + chartW - 90, curY + 28)
 
-            drawEquityCurveOnCanvas(ctx, curve, chartX + 16, curY + 32, chartW - 32, chartH - 48, accent)
+            drawEquityCurveOnCanvas(ctx, curve, chartX + 16, curY + 34, chartW - 32, chartH - 50, accent)
             ctx.restore()
 
-            curY += chartH + 20
+            const gap2 = aspectRatio === '4:5' ? 26 : (aspectRatio === '1:1' ? 20 : 16)
+            curY += chartH + gap2
         }
 
-        // 6. Bento Grid Stat Bar
+        // 6. Bento Grid Stat Bar (8 Metrik Kuantitatif & Risiko Nitirekso)
         const gridW = heroW
-        const gridCols = aspectRatio === '16:9' ? 6 : 3
-        const gridItemW = (gridW - (gridCols - 1) * 12) / gridCols
-        const gridItemH = 68
+        const gridCols = aspectRatio === '4:5' ? 2 : 4
+        const gridGap = aspectRatio === '4:5' ? 14 : 12
+        const gridItemW = (gridW - (gridCols - 1) * gridGap) / gridCols
+        const gridItemH = aspectRatio === '4:5' ? 82 : (aspectRatio === '1:1' ? 74 : 64)
+
+        const recoveryStr = summary.recoveryFactor !== null
+            ? (!Number.isFinite(summary.recoveryFactor) ? '∞' : summary.recoveryFactor.toFixed(2))
+            : '—'
+
+        const streakStr = `${summary.maxConsecutiveWins}W / ${summary.maxConsecutiveLosses}L`
 
         const metricsData = [
-            { label: 'TOTAL TRADES', value: `${summary.totalTrades} (${summary.wins}W/${summary.losses}L)` },
-            { label: 'PROFIT FACTOR', value: summary.profitFactor !== Number.POSITIVE_INFINITY ? formatRatio(summary.profitFactor) : '∞' },
-            { label: 'MAX DRAWDOWN', value: `${formatPnl(drawdown.maxDrawdown)} USDT` },
-            { label: 'EXPECTANCY', value: summary.expectancy !== null ? `${formatPnl(summary.expectancy)} USDT` : '—' },
-            { label: 'AVG WIN / LOSS', value: hideNominal ? '★★★ / ★★★' : `${formatPnl(summary.avgWin || 0)} / ${formatPnl(summary.avgLoss || 0)}` },
-            { label: 'FEE & FUNDING', value: hideNominal ? '★★★' : `${formatPnl(summary.feeTotal + summary.fundingFeeTotal)} USDT` }
+            {
+                label: 'TOTAL TRADES',
+                value: `${summary.totalTrades} (${summary.wins}W/${summary.losses}L)`
+            },
+            {
+                label: 'PROFIT FACTOR',
+                value: summary.profitFactor !== Number.POSITIVE_INFINITY ? formatRatio(summary.profitFactor) : '∞'
+            },
+            {
+                label: 'TOTAL R',
+                value: summary.totalR !== null
+                    ? `${summary.totalR >= 0 ? '+' : ''}${summary.totalR.toFixed(2)} R`
+                    : '—'
+            },
+            {
+                label: 'EXPECTANCY (R)',
+                value: summary.expectancyR !== null
+                    ? `${summary.expectancyR >= 0 ? '+' : ''}${summary.expectancyR.toFixed(2)} R`
+                    : (hideNominal ? '★★★' : (summary.expectancy !== null ? `${formatPnl(summary.expectancy)} USDT` : '—'))
+            },
+            {
+                label: 'RECOVERY FACTOR',
+                value: recoveryStr
+            },
+            {
+                label: 'MAX STREAK',
+                value: streakStr
+            },
+            {
+                label: 'MAX DRAWDOWN',
+                value: hideNominal ? '★★★' : `${formatPnl(drawdown.maxDrawdown)} USDT`
+            },
+            {
+                label: 'AVG WIN / LOSS',
+                value: hideNominal ? '★★★ / ★★★' : `${formatPnl(summary.avgWin || 0)} / ${formatPnl(summary.avgLoss || 0)}`
+            }
         ]
 
         ctx.save()
         metricsData.forEach((item, idx) => {
             const row = Math.floor(idx / gridCols)
             const col = idx % gridCols
-            const gx = heroX + col * (gridItemW + 12)
-            const gy = curY + row * (gridItemH + 12)
+            const gx = heroX + col * (gridItemW + gridGap)
+            const gy = curY + row * (gridItemH + gridGap)
 
             ctx.beginPath()
             ctx.roundRect(gx, gy, gridItemW, gridItemH, 12)
@@ -625,12 +627,12 @@ function ShareAnalyticsModalContent({
 
             ctx.font = 'bold 17px monospace'
             ctx.fillStyle = '#ffffff'
-            ctx.fillText(item.value, gx + 14, gy + 50)
+            ctx.fillText(item.value, gx + 14, gy + (gridItemH >= 78 ? 56 : 50))
         })
         ctx.restore()
 
         const numRows = Math.ceil(metricsData.length / gridCols)
-        curY += numRows * (gridItemH + 12) + 8
+        curY += numRows * (gridItemH + gridGap) + 12
 
         // Catatan Trader Kustom (jika ada)
         if (customTraderNote.trim()) {
@@ -708,7 +710,7 @@ function ShareAnalyticsModalContent({
         return canvas
     }, [
         aspectRatio, isCustomBgActive, bg, accent, isProfit, customTraderNote,
-        bgDimming, brandTitle, brandSubtitle, periodLabel, selectedExchange,
+        bgDimming, brandTitle, brandSubtitle, periodLabel,
         showReferral, activeReferral, hideNominal, summary, drawdown, showChart,
         curve, showProfile, avatarUrl, traderHandle, showWatermark
     ])
@@ -752,7 +754,7 @@ function ShareAnalyticsModalContent({
     }
 
     const handleTwitterShare = (): void => {
-        const refStr = showReferral && activeReferral ? `\nRef Code (${selectedExchange.toUpperCase()}): ${activeReferral}` : ''
+        const refStr = showReferral && activeReferral ? `\nRef Code: ${activeReferral}` : ''
         const pnlStr = hideNominal ? 'Profitable' : `${isProfit ? '+' : ''}${formatPnl(summary.netPnlTotal)} USDT`
         const winRateStr = summary.winRate !== null ? (summary.winRate * 100).toFixed(1) : '0.0'
         const pfStr = summary.profitFactor !== Number.POSITIVE_INFINITY ? formatRatio(summary.profitFactor) : '∞'
@@ -877,7 +879,6 @@ function ShareAnalyticsModalContent({
                             bg={bg}
                             accent={accent}
                             isProfit={isProfit}
-                            selectedExchange={selectedExchange}
                             traderHandle={traderHandle}
                             brandTitle={brandTitle}
                             brandSubtitle={brandSubtitle}
@@ -1088,26 +1089,13 @@ function ShareAnalyticsModalContent({
                     </div>
                 </div>
 
-                {/* ── EXCHANGE SELECTOR BAR (MEXC & BITUNIX) ── */}
+                {/* ── INFO PORTOFOLIO / FOOTER KONTROL ── */}
                 <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-border/40 bg-card/20 rounded-lg">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-muted-foreground font-medium">Exchange:</span>
-                        {EXCHANGES.map((ex) => (
-                            <button
-                                key={ex}
-                                type="button"
-                                onClick={() => setSelectedExchange(ex)}
-                                className={`rounded-md px-3 py-1 text-xs font-bold uppercase transition-all ${
-                                    selectedExchange === ex
-                                        ? 'text-white shadow-xs'
-                                        : 'bg-muted text-muted-foreground hover:text-foreground'
-                                }`}
-                                style={selectedExchange === ex ? { background: accent } : {}}
-                            >
-                                {ex}
-                            </button>
-                        ))}
-
+                    <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            Portofolio: Semua Akun / Multi-Exchange
+                        </span>
                         {showReferral && activeReferral && (
                             <span className="text-[11px] font-semibold text-sky-400 ml-1">
                                 (Kode Reff: {activeReferral})
@@ -1190,7 +1178,6 @@ interface AnalyticsCardPreviewProps {
     bg: BgTemplate
     accent: string
     isProfit: boolean
-    selectedExchange: ExchangeName
     traderHandle: string
     brandTitle: string
     brandSubtitle: string
@@ -1210,7 +1197,7 @@ interface AnalyticsCardPreviewProps {
 }
 
 function AnalyticsCardPreview({
-    summary, curve, drawdown, bg, accent, isProfit, selectedExchange,
+    summary, curve, drawdown, bg, accent, isProfit,
     traderHandle, brandTitle, brandSubtitle, activeReferral, avatarUrl,
     isCustomBgActive, customBgUrl, bgDimming, showProfile, showWatermark,
     showChart, hideNominal, showReferral, periodLabel, customTraderNote, aspectRatio
@@ -1289,12 +1276,6 @@ function AnalyticsCardPreview({
                                 REF: {activeReferral}
                             </span>
                         )}
-                        <span
-                            className="rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white"
-                            style={{ background: `${accent}33`, border: `1px solid ${accent}88` }}
-                        >
-                            {selectedExchange}
-                        </span>
                     </div>
                 </div>
 
@@ -1326,7 +1307,13 @@ function AnalyticsCardPreview({
                             <span>EQUITY GROWTH</span>
                             <span>{curve.length} points</span>
                         </div>
-                        <svg viewBox="0 0 440 75" className="w-full h-12 overflow-visible">
+                        <svg
+                            viewBox="0 0 440 75"
+                            className={cn(
+                                "w-full overflow-visible",
+                                aspectRatio === '4:5' ? "h-20" : aspectRatio === '1:1' ? "h-16" : "h-12"
+                            )}
+                        >
                             <path
                                 d={svgCurvePath}
                                 fill="none"
@@ -1339,10 +1326,10 @@ function AnalyticsCardPreview({
                     </div>
                 )}
 
-                {/* Bento Grid Stats */}
+                {/* Bento Grid Stats (8 Metrik Kuantitatif & Risiko Nitirekso) */}
                 <div className={cn(
                     "grid gap-1.5 text-left",
-                    aspectRatio === '16:9' ? "grid-cols-6" : "grid-cols-3"
+                    aspectRatio === '4:5' ? "grid-cols-2" : "grid-cols-4"
                 )}>
                     <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
                         <span className="text-[8px] text-white/50 uppercase block">Total Trades</span>
@@ -1353,20 +1340,38 @@ function AnalyticsCardPreview({
                         <span className="text-[11px] font-bold text-white">{summary.profitFactor !== Number.POSITIVE_INFINITY ? formatRatio(summary.profitFactor) : '∞'}</span>
                     </div>
                     <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
-                        <span className="text-[8px] text-white/50 uppercase block">Max Drawdown</span>
-                        <span className="text-[11px] font-bold text-white">{formatPnl(drawdown.maxDrawdown)}</span>
+                        <span className="text-[8px] text-white/50 uppercase block">Total R</span>
+                        <span className="text-[11px] font-bold text-white">
+                            {summary.totalR !== null ? `${summary.totalR >= 0 ? '+' : ''}${summary.totalR.toFixed(2)} R` : '—'}
+                        </span>
                     </div>
                     <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
-                        <span className="text-[8px] text-white/50 uppercase block">Expectancy</span>
-                        <span className="text-[11px] font-bold text-white">{summary.expectancy !== null ? `${formatPnl(summary.expectancy)}` : '—'}</span>
+                        <span className="text-[8px] text-white/50 uppercase block">Expectancy (R)</span>
+                        <span className="text-[11px] font-bold text-white">
+                            {summary.expectancyR !== null
+                                ? `${summary.expectancyR >= 0 ? '+' : ''}${summary.expectancyR.toFixed(2)} R`
+                                : (hideNominal ? '★★★' : (summary.expectancy !== null ? `${formatPnl(summary.expectancy)} USDT` : '—'))}
+                        </span>
+                    </div>
+                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
+                        <span className="text-[8px] text-white/50 uppercase block">Recovery Factor</span>
+                        <span className="text-[11px] font-bold text-white">
+                            {summary.recoveryFactor !== null ? (!Number.isFinite(summary.recoveryFactor) ? '∞' : summary.recoveryFactor.toFixed(2)) : '—'}
+                        </span>
+                    </div>
+                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
+                        <span className="text-[8px] text-white/50 uppercase block">Max Streak</span>
+                        <span className="text-[11px] font-bold text-white">{summary.maxConsecutiveWins}W / {summary.maxConsecutiveLosses}L</span>
+                    </div>
+                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
+                        <span className="text-[8px] text-white/50 uppercase block">Max Drawdown</span>
+                        <span className="text-[11px] font-bold text-white">
+                            {hideNominal ? '★★★' : `${formatPnl(drawdown.maxDrawdown)} USDT`}
+                        </span>
                     </div>
                     <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
                         <span className="text-[8px] text-white/50 uppercase block">Avg Win / Loss</span>
-                        <span className="text-[11px] font-bold text-white">{hideNominal ? '★★★' : `${formatPnl(summary.avgWin || 0)} / ${formatPnl(summary.avgLoss || 0)}`}</span>
-                    </div>
-                    <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
-                        <span className="text-[8px] text-white/50 uppercase block">Total Biaya</span>
-                        <span className="text-[11px] font-bold text-white">{hideNominal ? '★★★' : `${formatPnl(summary.feeTotal + summary.fundingFeeTotal)}`}</span>
+                        <span className="text-[11px] font-bold text-white">{hideNominal ? '★★★ / ★★★' : `${formatPnl(summary.avgWin || 0)} / ${formatPnl(summary.avgLoss || 0)}`}</span>
                     </div>
                 </div>
 

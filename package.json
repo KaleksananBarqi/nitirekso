@@ -1,6 +1,6 @@
 {
     "name": "nitirekso",
-    "version": "1.5.2",
+    "version": "1.5.3",
     "private": true,
     "description": "nitirekso — Niti Transaksi, Rekso Evaluasi. Trading journal otomatis read-only untuk MEXC, Bitunix, Bybit, Binance, dan BingX Futures",
     "author": {

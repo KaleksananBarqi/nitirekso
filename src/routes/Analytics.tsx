@@ -21,7 +21,7 @@ import {
     computeDrawdown,
     summarize
 } from '../lib/analytics/metrics'
-import { formatDuration, formatPnl, formatRatio, formatR, pnlColorClass } from '../lib/format'
+import { formatDuration, formatPnl, formatRatio, formatR, pnlColorClass, rColorClass } from '../lib/format'
 import { cn } from '../lib/utils'
 
 /**
@@ -429,6 +429,57 @@ export function Analytics({ trades, hidePnl }: AnalyticsProps): React.JSX.Elemen
                                 label="Funding Fee"
                                 value={<PnlValue value={formatPnl(-summary.fundingFeeTotal)} hide={hidePnl} className={summary.fundingFeeTotal > 0 ? 'text-loss' : undefined} />}
                                 hint="Biaya berkelanjutan perpetual"
+                            />
+                        </div>
+
+                        {/* --- Metrik Kuantitatif & Risiko Terfilter --- */}
+                        <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                            <MetricCard
+                                label="Total R"
+                                value={formatR(summary.totalR)}
+                                hint={
+                                    summary.avgR !== null
+                                        ? `Rata-rata ${formatR(summary.avgR)}/trade`
+                                        : 'Belum ada trade R valid'
+                                }
+                                valueClassName={rColorClass(summary.totalR)}
+                            />
+                            <MetricCard
+                                label="Expectancy (R)"
+                                value={formatR(summary.expectancyR)}
+                                hint="Ekspektasi hasil dlm unit risiko"
+                                valueClassName={rColorClass(summary.expectancyR)}
+                            />
+                            <MetricCard
+                                label="Recovery Factor"
+                                value={
+                                    summary.recoveryFactor !== null
+                                        ? (!Number.isFinite(summary.recoveryFactor) ? '∞' : summary.recoveryFactor.toFixed(2))
+                                        : '—'
+                                }
+                                hint="Net profit ÷ Max drawdown"
+                                valueClassName={
+                                    summary.recoveryFactor !== null && summary.recoveryFactor >= 1
+                                        ? 'text-profit'
+                                        : summary.recoveryFactor !== null && summary.recoveryFactor < 0
+                                            ? 'text-loss'
+                                            : undefined
+                                }
+                                badge={
+                                    summary.recoveryFactor !== null && summary.recoveryFactor >= 1 ? (
+                                        <Badge tone="profit">Tangguh</Badge>
+                                    ) : undefined
+                                }
+                            />
+                            <MetricCard
+                                label="Streak Maksimal"
+                                value={`${summary.maxConsecutiveWins}W / ${summary.maxConsecutiveLosses}L`}
+                                hint="Kemenangan / kekalahan beruntun"
+                                badge={
+                                    summary.maxConsecutiveWins >= 3 ? (
+                                        <Badge tone="profit">{summary.maxConsecutiveWins} Win Streak</Badge>
+                                    ) : undefined
+                                }
                             />
                         </div>
 

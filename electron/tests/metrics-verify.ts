@@ -24,6 +24,7 @@ import {
     buildEquityCurve,
     buildRDistribution,
     computeDrawdown,
+    computeRecoveryFactor,
     netPnl,
     summarize
 } from '../../src/lib/analytics/metrics'
@@ -290,6 +291,22 @@ function scenarioR(): void {
         dist.withR < dist.total,
         true
     )
+
+    // Nilai R dihitung tangan:
+    // Trade 1: PnL 150, Risk 50 -> R = +3.0 (WIN)
+    // Trade 2: PnL -50, Risk 50 -> R = -1.0 (LOSS)
+    // Trade 3: PnL 25, Risk 50  -> R = +0.5 (WIN)
+    // Trade 4 & 5: Risk null/0  -> R dikecualikan
+    // Total R: 3.0 + (-1.0) + 0.5 = 2.5 R
+    // Trades with R = 3
+    // Avg R: 2.5 / 3 = 0.8333333333333334 R
+    // Win Rate R: 2 / 3 = 0.6666666666666666
+    // Avg Win R: (3.0 + 0.5) / 2 = 1.75 R
+    // Avg Loss R: 1.0 / 1 = 1.0 R
+    // Expectancy R: (2/3 * 1.75) - (1/3 * 1.0) = (3.5/3) - (1/3) = 2.5 / 3 = 0.8333333333333334 R
+    check('totalR sesuai hitungan tangan (3 - 1 + 0.5 = 2.5)', s.totalR, 2.5, 1e-9)
+    check('avgR sesuai hitungan tangan (2.5 / 3)', s.avgR, 2.5 / 3, 1e-9)
+    check('expectancyR sesuai hitungan tangan (2.5 / 3)', s.expectancyR, 2.5 / 3, 1e-9)
 }
 
 // ---------------------------------------------------------------------------
@@ -513,6 +530,12 @@ function scenarioEmpty(): void {
     check('profitFactor Infinity', s.profitFactor === Number.POSITIVE_INFINITY, true)
     check('netPnlTotal 0', s.netPnlTotal, 0)
     check('tradesWithR 0', s.tradesWithR, 0)
+    check('totalR kosong null', s.totalR, null)
+    check('avgR kosong null', s.avgR, null)
+    check('expectancyR kosong null', s.expectancyR, null)
+    check('maxConsecutiveWins kosong 0', s.maxConsecutiveWins, 0)
+    check('maxConsecutiveLosses kosong 0', s.maxConsecutiveLosses, 0)
+    check('recoveryFactor kosong null', s.recoveryFactor, null)
 
     check('kurva kosong', buildEquityCurve([]).length, 0)
 
@@ -541,6 +564,80 @@ function scenarioConsistency(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Skenario 14: streak & recovery factor — dihitung tangan
+// ---------------------------------------------------------------------------
+
+function scenarioStreaksAndRecovery(): void {
+    results.push('--- Skenario 14: streak & recovery factor ---')
+
+    // Urutan kronologis exit time (jam = id):
+    // Jam 1: +100 (W1)
+    // Jam 2: +200 (W2)
+    // Jam 3: +50  (W3) -> Max win streak mencapai 3
+    // Jam 4: -50  (L1)
+    // Jam 5: +100 (W1)
+    // Jam 6: -100 (L1)
+    // Jam 7: -80  (L2)
+    // Jam 8: -20  (L3)
+    // Jam 9: -10  (L4) -> Max loss streak mencapai 4
+    // Jam 10: +150 (W1)
+    const trades = [
+        makeTrade({ id: 1, realizedPnl: 100 }),
+        makeTrade({ id: 2, realizedPnl: 200 }),
+        makeTrade({ id: 3, realizedPnl: 50 }),
+        makeTrade({ id: 4, realizedPnl: -50 }),
+        makeTrade({ id: 5, realizedPnl: 100 }),
+        makeTrade({ id: 6, realizedPnl: -100 }),
+        makeTrade({ id: 7, realizedPnl: -80 }),
+        makeTrade({ id: 8, realizedPnl: -20 }),
+        makeTrade({ id: 9, realizedPnl: -10 }),
+        makeTrade({ id: 10, realizedPnl: 150 })
+    ]
+
+    const s = summarize(trades)
+
+    // Hitung tangan streak:
+    check('maxConsecutiveWins dihitung tangan = 3', s.maxConsecutiveWins, 3)
+    check('maxConsecutiveLosses dihitung tangan = 4', s.maxConsecutiveLosses, 4)
+
+    // Uji break-even me-reset streak:
+    // W (+50), Flat (0), W (+50) -> max streak win harus 1 (bukan 2)
+    const tradesWithFlat = [
+        makeTrade({ id: 1, realizedPnl: 50 }),
+        makeTrade({ id: 2, realizedPnl: 0 }),
+        makeTrade({ id: 3, realizedPnl: 50 })
+    ]
+    const sFlat = summarize(tradesWithFlat)
+    check('trade flat me-reset streak kemenangan', sFlat.maxConsecutiveWins, 1)
+
+    // Hitung tangan Recovery Factor:
+    // Net PnL total: 100 + 200 + 50 - 50 + 100 - 100 - 80 - 20 - 10 + 150 = 340
+    // Trajectory equity & peak:
+    //  t1: eq 100, peak 100, dd 0
+    //  t2: eq 300, peak 300, dd 0
+    //  t3: eq 350, peak 350, dd 0
+    //  t4: eq 300, peak 350, dd -50
+    //  t5: eq 400, peak 400, dd 0
+    //  t6: eq 300, peak 400, dd -100
+    //  t7: eq 220, peak 400, dd -180
+    //  t8: eq 200, peak 400, dd -200
+    //  t9: eq 190, peak 400, dd -210  <- maxDrawdown = -210
+    //  t10: eq 340, peak 400, dd -60
+    // Recovery Factor = Net PnL (340) / |Max Drawdown| (210) = 340 / 210 = 1.619047619...
+    check('recoveryFactor dari summarize (340/210)', s.recoveryFactor, 340 / 210, 1e-9)
+    check('computeRecoveryFactor murni (340, -210)', computeRecoveryFactor(340, -210), 340 / 210, 1e-9)
+
+    // Edge cases helper computeRecoveryFactor
+    check(
+        'computeRecoveryFactor saat maxDrawdown 0 & profit -> Infinity',
+        computeRecoveryFactor(500, 0) === Number.POSITIVE_INFINITY,
+        true
+    )
+    check('computeRecoveryFactor saat maxDrawdown 0 & rugi -> null', computeRecoveryFactor(-50, 0), null)
+    check('computeRecoveryFactor saat net PnL negatif -> negatif (-100/200 = -0.5)', computeRecoveryFactor(-100, -200), -0.5, 1e-9)
+}
+
+// ---------------------------------------------------------------------------
 
 function main(): void {
     scenarioBasic()
@@ -556,6 +653,7 @@ function main(): void {
     scenarioGradeIndependent()
     scenarioEmpty()
     scenarioConsistency()
+    scenarioStreaksAndRecovery()
 
     console.log('\n===== TEST METRIK ANALITIK (Fase 4) =====')
     for (const line of results) console.log(line)

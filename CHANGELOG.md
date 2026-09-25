@@ -3,6 +3,27 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.5.3] - 2026-09-25
+
+### 🚀 Fitur Baru
+- **Metrik Kuantitatif & Manajemen Risiko Profesional**:
+  - Menghadirkan kalkulasi murni metrik risiko kuantitatif: **Total R** (akumulasi kelipatan risiko), **Expectancy R** (nilai harapan matematis per trade dalam satuan R), **Recovery Factor** (rasio pemulihan laba bersih terhadap *Max Drawdown* nominal), serta **Max Consecutive Streak** (rekor kemenangan dan kekalahan beruntun).
+  - Integrasi panel grid metrik kuantitatif di **Dashboard** (sejajar di bawah drawdown) dan **Analytics** (tersinkronisasi secara dinamis dengan filter rentang waktu dan exchange).
+- **Studio Share Analytics dengan Bento Grid 8-Slot**:
+  - Pembaruan tata letak kartu analitik pamer performa dengan arsitektur **8-Bento Grid** modern yang rapi dan padat informasi: Win Rate, Total PnL, Profit Factor, Total Trades, Total R, Recovery Factor, Max Streak, dan Expectancy R.
+  - Kompatibel dengan semua preset rasio (16:9 Landscape, 1:1 Square, 4:5 Feed).
+
+### 🐛 Perbaikan Bug & Peningkatan Kualitas Visual
+- **Penyelarasan Presisi Canvas 2x Retina & Pratinjau DOM**:
+  - Memperbaiki proporsi grafik kurva ekuitas (ditingkatkan menjadi 320px pada rasio 4:5 vertikal) untuk menghilangkan celah kosong (*empty gap*) di bawah kartu.
+  - Menjamin hasil gambar ekspor PNG dan salin ke clipboard memiliki tata letak yang 100% identik dan kembar dengan pratinjau antarmuka (*What You See Is What You Get*).
+- **Pembersihan Residu Exchange pada Modal Share Analytics**:
+  - Menghapus kontrol pemilih exchange yang tidak relevan pada modal analitik portofolio umum, mencegah munculnya placeholder logo exchange yang membingungkan.
+- **Hardening Privasi Finansial**:
+  - Penyamaran nominal PnL (*privacy mode*) kini diterapkan secara konsisten pada seluruh slot kartu performa saat opsi sensor aktif.
+
+---
+
 ## [1.5.2] - 2026-09-23
 
 ### 🐛 Perbaikan Bug & Peningkatan Stabilitas

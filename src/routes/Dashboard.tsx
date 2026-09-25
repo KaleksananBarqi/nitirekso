@@ -220,6 +220,57 @@ export function Dashboard({ trades, hidePnl }: DashboardProps): React.JSX.Elemen
                     />
                 </div>
 
+                {/* Metrik Kuantitatif & Risiko (R-Multiple, Recovery, Streaks) */}
+                <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <MetricCard
+                        label="Total R"
+                        value={formatR(summary.totalR)}
+                        hint={
+                            summary.avgR !== null
+                                ? `Rata-rata ${formatR(summary.avgR)}/trade`
+                                : 'Belum ada trade R valid'
+                        }
+                        valueClassName={rColorClass(summary.totalR)}
+                    />
+                    <MetricCard
+                        label="Expectancy (R)"
+                        value={formatR(summary.expectancyR)}
+                        hint="Ekspektasi hasil dlm unit risiko"
+                        valueClassName={rColorClass(summary.expectancyR)}
+                    />
+                    <MetricCard
+                        label="Recovery Factor"
+                        value={
+                            summary.recoveryFactor !== null
+                                ? (!Number.isFinite(summary.recoveryFactor) ? '∞' : summary.recoveryFactor.toFixed(2))
+                                : '—'
+                        }
+                        hint="Net profit ÷ Max drawdown"
+                        valueClassName={
+                            summary.recoveryFactor !== null && summary.recoveryFactor >= 1
+                                ? 'text-profit'
+                                : summary.recoveryFactor !== null && summary.recoveryFactor < 0
+                                    ? 'text-loss'
+                                    : undefined
+                        }
+                        badge={
+                            summary.recoveryFactor !== null && summary.recoveryFactor >= 1 ? (
+                                <Badge tone="profit">Tangguh</Badge>
+                            ) : undefined
+                        }
+                    />
+                    <MetricCard
+                        label="Streak Maksimal"
+                        value={`${summary.maxConsecutiveWins}W / ${summary.maxConsecutiveLosses}L`}
+                        hint="Kemenangan / kekalahan beruntun"
+                        badge={
+                            summary.maxConsecutiveWins >= 3 ? (
+                                <Badge tone="profit">{summary.maxConsecutiveWins} Win Streak</Badge>
+                            ) : undefined
+                        }
+                    />
+                </div>
+
                 {/* Equity curve */}
                 <section className="mt-4 rounded-lg border border-border bg-card">
                     <div className="flex items-center justify-between border-b border-border px-4 py-3">
