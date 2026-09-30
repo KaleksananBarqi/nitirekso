@@ -5,6 +5,7 @@ import { BackupPanel } from '../components/BackupPanel'
 import { ExchangeCredentials } from '../components/ExchangeCredentials'
 import { SyncPanel } from '../components/SyncPanel'
 import { ShareBrandingSettings } from '../components/ShareBrandingSettings'
+import { CustomColorSchemeCard } from '../components/CustomColorSchemeCard'
 import { Badge, Button, Card, CardHeader, ErrorNote, Field, Select, TextArea } from '../components/ui'
 import type { Theme } from '../hooks/useTheme'
 import { cn } from '../lib/utils'
@@ -147,6 +148,7 @@ export function Settings({
                             </div>
                         </div>
                     </Card>
+                    <CustomColorSchemeCard />
                     <ShareBrandingSettings />
                     <Card>
                         <CardHeader

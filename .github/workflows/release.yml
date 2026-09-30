@@ -8,10 +8,14 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag versi yang ingin dirilis (misal: v1.3.0, default: otomatis dari package.json)'
+        description: 'Tag versi yang ingin dirilis (misal: v1.6.0, default: otomatis dari package.json)'
         required: false
         type: string
         default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -76,6 +80,13 @@ jobs:
       - name: Build application (main, preload, renderer)
         run: npm run build
 
+      # Dependensi sistem Linux untuk packaging AppImage
+      - name: Install Linux system dependencies (FUSE)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 libfuse2t64 || sudo apt-get install -y libfuse2 || true
+
       # Packaging installer mandiri per platform (electron-builder)
       - name: Package application (electron-builder)
         run: npx electron-builder ${{ matrix.builder_args }}
@@ -99,6 +110,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

@@ -515,4 +515,124 @@ export function registerIpcHandlers(): void {
             }
         }
     )
+
+    // --- BTC Market Data (Analytics ROI) ---
+    ipcMain.handle(
+        IPC_CHANNELS.btcKlines,
+        async (
+            _event,
+            payload: { startTime: number; endTime: number }
+        ): Promise<MutationResult<{ time: number; close: number }[]>> => {
+            const adjustedStart = Math.max(0, payload.startTime - 24 * 60 * 60 * 1000)
+            const adjustedEnd = payload.endTime + 24 * 60 * 60 * 1000
+
+            // Helper fetch dengan timeout 8 detik
+            const fetchWithTimeout = async (url: string, timeoutMs = 8000): Promise<Response> => {
+                const controller = new AbortController()
+                const id = setTimeout(() => controller.abort(), timeoutMs)
+                try {
+                    const res = await fetch(url, { signal: controller.signal })
+                    clearTimeout(id)
+                    return res
+                } catch (e) {
+                    clearTimeout(id)
+                    throw e
+                }
+            }
+
+            // Provider 1: Binance Spot API
+            try {
+                const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&startTime=${adjustedStart}&endTime=${adjustedEnd}&limit=1000`
+                const res = await fetchWithTimeout(url)
+                if (res.ok) {
+                    const data = (await res.json()) as (string | number)[][]
+                    if (Array.isArray(data) && data.length > 0) {
+                        return {
+                            ok: true,
+                            data: data.map((item) => ({
+                                time: Number(item[0]),
+                                close: parseFloat(String(item[4]))
+                            }))
+                        }
+                    }
+                }
+            } catch (err) {
+                logger.warn('[btc] Binance api.binance.com gagal, mencoba provider cadangan...', err)
+            }
+
+            // Provider 2: Binance Vision (Domain alternatif)
+            try {
+                const url = `https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1d&startTime=${adjustedStart}&endTime=${adjustedEnd}&limit=1000`
+                const res = await fetchWithTimeout(url)
+                if (res.ok) {
+                    const data = (await res.json()) as (string | number)[][]
+                    if (Array.isArray(data) && data.length > 0) {
+                        return {
+                            ok: true,
+                            data: data.map((item) => ({
+                                time: Number(item[0]),
+                                close: parseFloat(String(item[4]))
+                            }))
+                        }
+                    }
+                }
+            } catch (err) {
+                logger.warn('[btc] Binance Vision gagal, mencoba Kraken...', err)
+            }
+
+            // Provider 3: Kraken Public OHLC (Sangat ramah di Indonesia dan bebas blokir)
+            try {
+                const sinceSec = Math.floor(adjustedStart / 1000)
+                const url = `https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1440&since=${sinceSec}`
+                const res = await fetchWithTimeout(url)
+                if (res.ok) {
+                    const json = (await res.json()) as { error: string[]; result?: Record<string, (string | number)[][]> }
+                    if (json.result) {
+                        const pairKey = Object.keys(json.result)[0]
+                        const rows = pairKey ? json.result[pairKey] : []
+                        if (Array.isArray(rows) && rows.length > 0) {
+                            const filtered = rows
+                                .map((r) => ({
+                                    time: Number(r[0]) * 1000,
+                                    close: parseFloat(String(r[4]))
+                                }))
+                                .filter((p) => p.time >= adjustedStart - 86400000 && p.time <= adjustedEnd + 86400000)
+                            if (filtered.length > 0) {
+                                return { ok: true, data: filtered }
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                logger.warn('[btc] Kraken API gagal, mencoba CoinGecko...', err)
+            }
+
+            // Provider 4: CoinGecko Market Chart Range
+            try {
+                const fromSec = Math.floor(adjustedStart / 1000)
+                const toSec = Math.ceil(adjustedEnd / 1000)
+                const url = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from=${fromSec}&to=${toSec}`
+                const res = await fetchWithTimeout(url)
+                if (res.ok) {
+                    const json = (await res.json()) as { prices?: [number, number][] }
+                    if (Array.isArray(json.prices) && json.prices.length > 0) {
+                        return {
+                            ok: true,
+                            data: json.prices.map((p) => ({
+                                time: p[0],
+                                close: p[1]
+                            }))
+                        }
+                    }
+                }
+            } catch (err) {
+                logger.warn('[btc] CoinGecko API gagal...', err)
+            }
+
+            return {
+                ok: false,
+                error: 'Tidak dapat mengambil data harga historis BTC dari semua provider (Binance, Kraken, CoinGecko). Pastikan koneksi internet aktif.'
+            }
+        }
+    )
 }

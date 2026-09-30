@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { applyColorSchemeToDom, getActiveCustomSchemeId, loadAllColorSchemes } from '../lib/customThemes'
 
 /**
  * Tema aplikasi: `dark` (default), `light`, atau `system`.
@@ -54,6 +55,11 @@ export function useTheme(): {
     useEffect(() => {
         applyTheme(theme, colorblindSafe)
         setIsDark(resolveIsDark(theme))
+        const activeSchemeId = getActiveCustomSchemeId()
+        if (activeSchemeId) {
+            const scheme = loadAllColorSchemes().find((s) => s.id === activeSchemeId) || null
+            applyColorSchemeToDom(scheme)
+        }
     }, [theme, colorblindSafe])
 
     // Ikuti perubahan tema OS saat mode `system` aktif.

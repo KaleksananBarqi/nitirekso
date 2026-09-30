@@ -5,7 +5,6 @@ import { summarize, buildEquityCurve, computeDrawdown } from '../lib/analytics/m
 import { formatDate, formatPnl, formatRatio } from '../lib/format'
 import { cn } from '../lib/utils'
 import {
-    BG_TEMPLATES,
     BUILTIN_TEMPLATES,
     loadShareSettings,
     loadCustomBgList,
@@ -15,6 +14,7 @@ import {
     deleteCustomShareTemplate,
     getActiveTemplateId,
     setActiveTemplateId,
+    getAllBgTemplates,
     type BgTemplate,
     type ShareCardTemplate,
     type CustomBgItem
@@ -177,10 +177,11 @@ function ShareAnalyticsModalContent({
     const [activeTemplateId, setActiveTplId] = useState<string>(() => getActiveTemplateId())
 
     const activeTemplate = templates.find((t) => t.id === activeTemplateId) || templates[0]!
+    const [allBgTemplates] = useState<BgTemplate[]>(() => getAllBgTemplates())
 
     const initialBgIdx = Math.max(
         0,
-        BG_TEMPLATES.findIndex((t) => t.id === (activeTemplate?.bgPresetId || savedSettings.bgPresetId))
+        allBgTemplates.findIndex((t) => t.id === (activeTemplate?.bgPresetId || savedSettings.bgPresetId))
     )
 
     // --- State: Skema Warna & Wallpaper ---
@@ -196,8 +197,10 @@ function ShareAnalyticsModalContent({
     // Wallpaper kustom yang sedang aktif
     const activeCustomBgItem = customBgList.find((b) => b.id === selectedCustomBgId) || customBgList[0] || null
     const activeCustomBgUrl = activeCustomBgItem ? activeCustomBgItem.dataUrl : (savedSettings.customBgUrl || null)
+    const bgPosX = activeCustomBgItem?.bgPosX ?? savedSettings.bgPosX ?? 50
+    const bgPosY = activeCustomBgItem?.bgPosY ?? savedSettings.bgPosY ?? 50
 
-    const bg: BgTemplate = BG_TEMPLATES[selectedBgIdx] ?? BG_TEMPLATES[0]!
+    const bg: BgTemplate = allBgTemplates[selectedBgIdx] ?? allBgTemplates[0]!
     const accent = isProfit ? bg.accentProfit : bg.accentLoss
 
     // Data Identitas & Branding dari Settings
@@ -282,7 +285,7 @@ function ShareAnalyticsModalContent({
         setActiveTplId(tpl.id)
         setActiveTemplateId(tpl.id)
 
-        const bgIdx = BG_TEMPLATES.findIndex((b) => b.id === tpl.bgPresetId)
+        const bgIdx = allBgTemplates.findIndex((b) => b.id === tpl.bgPresetId)
         if (bgIdx >= 0) setSelectedBgIdx(bgIdx)
 
         if (tpl.isCustomBg && tpl.customBgId) {
@@ -380,10 +383,12 @@ function ShareAnalyticsModalContent({
                 let drawY = 0
                 if (imgAspect > canvasAspect) {
                     drawW = canvasH * imgAspect
-                    drawX = (canvasW - drawW) / 2
+                    drawX = (canvasW - drawW) * (bgPosX / 100)
+                    drawY = (canvasH - drawH) * (bgPosY / 100)
                 } else {
                     drawH = canvasW / imgAspect
-                    drawY = (canvasH - drawH) / 2
+                    drawX = (canvasW - drawW) * (bgPosX / 100)
+                    drawY = (canvasH - drawH) * (bgPosY / 100)
                 }
                 ctx.drawImage(img, drawX, drawY, drawW, drawH)
                 ctx.fillStyle = `rgba(0, 0, 0, ${bgDimming / 100})`
@@ -391,7 +396,10 @@ function ShareAnalyticsModalContent({
             } else {
                 // Preset gradient
                 const grad = ctx.createLinearGradient(0, 0, 0, canvasH)
-                if (bg.id === 'cyberpunk') {
+                if (bg.isCustom && bg.bgStart && bg.bgEnd) {
+                    grad.addColorStop(0, bg.bgStart)
+                    grad.addColorStop(1, bg.bgEnd)
+                } else if (bg.id === 'cyberpunk') {
                     grad.addColorStop(0, '#1e0836')
                     grad.addColorStop(0.5, '#0a0014')
                     grad.addColorStop(1, '#000000')
@@ -712,7 +720,8 @@ function ShareAnalyticsModalContent({
         aspectRatio, isCustomBgActive, bg, accent, isProfit, customTraderNote,
         bgDimming, brandTitle, brandSubtitle, periodLabel,
         showReferral, activeReferral, hideNominal, summary, drawdown, showChart,
-        curve, showProfile, avatarUrl, traderHandle, showWatermark
+        curve, showProfile, avatarUrl, traderHandle, showWatermark,
+        bgPosX, bgPosY
     ])
 
     // Update canvas render saat dependencies berubah
@@ -887,6 +896,8 @@ function ShareAnalyticsModalContent({
                             isCustomBgActive={isCustomBgActive}
                             customBgUrl={activeCustomBgUrl}
                             bgDimming={bgDimming}
+                            bgPosX={bgPosX}
+                            bgPosY={bgPosY}
                             showProfile={showProfile}
                             showWatermark={showWatermark}
                             showChart={showChart}
@@ -911,7 +922,7 @@ function ShareAnalyticsModalContent({
                                 <span>🎨</span>
                                 <span>Skema Warna:</span>
                             </span>
-                            {BG_TEMPLATES.map((t, i) => {
+                            {allBgTemplates.map((t, i) => {
                                 const isColorSelected = selectedBgIdx === i
                                 return (
                                     <button
@@ -927,17 +938,26 @@ function ShareAnalyticsModalContent({
                                         }`}
                                         title={
                                             isCustomBgActive
-                                                ? `${t.label} (Aktif sebagai warna aksen & teks kartu)`
-                                                : `${t.label} (Aktif sebagai background & warna aksen)`
+                                                ? `${t.label}${t.isCustom ? ' (Kustom)' : ''} (Aktif sebagai warna aksen & teks kartu)`
+                                                : `${t.label}${t.isCustom ? ' (Kustom)' : ''} (Aktif sebagai background & warna aksen)`
                                         }
                                     >
                                         <span
                                             className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                                             style={{
-                                                background: t.isTransparent ? 'linear-gradient(45deg, #38bdf8 0%, #a855f7 100%)' : t.accentProfit,
+                                                background: t.isTransparent
+                                                    ? 'linear-gradient(45deg, #38bdf8 0%, #a855f7 100%)'
+                                                    : t.isCustom && t.bgStart && t.bgEnd
+                                                        ? `linear-gradient(135deg, ${t.bgStart}, ${t.bgEnd})`
+                                                        : t.accentProfit,
                                             }}
                                         />
                                         <span>{t.label}</span>
+                                        {t.isCustom && (
+                                            <span className="text-[9px] px-1 py-0.2 rounded bg-primary/20 text-primary font-mono">
+                                                custom
+                                            </span>
+                                        )}
                                         {isColorSelected && (
                                             <span className="text-[10px] opacity-75 font-mono">
                                                 {isCustomBgActive ? '(Aksen)' : '✓'}
@@ -1186,6 +1206,8 @@ interface AnalyticsCardPreviewProps {
     isCustomBgActive: boolean
     customBgUrl: string | null
     bgDimming: number
+    bgPosX?: number
+    bgPosY?: number
     showProfile: boolean
     showWatermark: boolean
     showChart: boolean
@@ -1199,7 +1221,7 @@ interface AnalyticsCardPreviewProps {
 function AnalyticsCardPreview({
     summary, curve, drawdown, bg, accent, isProfit,
     traderHandle, brandTitle, brandSubtitle, activeReferral, avatarUrl,
-    isCustomBgActive, customBgUrl, bgDimming, showProfile, showWatermark,
+    isCustomBgActive, customBgUrl, bgDimming, bgPosX = 50, bgPosY = 50, showProfile, showWatermark,
     showChart, hideNominal, showReferral, periodLabel, customTraderNote, aspectRatio
 }: AnalyticsCardPreviewProps): React.JSX.Element {
     const isTransparentMode = !isCustomBgActive && bg.isTransparent
@@ -1247,6 +1269,9 @@ function AnalyticsCardPreview({
                         src={customBgUrl}
                         alt="Background"
                         className="absolute inset-0 h-full w-full object-cover pointer-events-none"
+                        style={{
+                            objectPosition: `${bgPosX}% ${bgPosY}%`
+                        }}
                     />
                     <div
                         className="absolute inset-0 pointer-events-none"

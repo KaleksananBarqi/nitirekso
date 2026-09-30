@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { TradeDetail } from '@shared/domain'
 import { PageHeader } from '../components/AppShell'
 import { AiInsightsPanel } from '../components/AiInsightsPanel'
@@ -8,8 +8,9 @@ import { PnlValue } from '../components/PnlValue'
 import { EquityChart } from '../components/charts/EquityChart'
 import { GradeScatter } from '../components/charts/GradeScatter'
 import { RHistogram } from '../components/charts/RHistogram'
-import { Badge, Button, EmptyState, Select } from '../components/ui'
+import { Badge, Button, EmptyState, NumberInput, Select } from '../components/ui'
 import { ShareAnalyticsModal } from '../components/ShareAnalyticsModal'
+import { fetchBtcKlines, calculateRoiComparison, type BtcPricePoint } from '../lib/btc-api'
 import {
     buildBreakdown,
     collectFilterValues,
@@ -118,7 +119,11 @@ interface AnalyticsProps {
 export function Analytics({ trades, hidePnl }: AnalyticsProps): React.JSX.Element {
     const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
     const [dimension, setDimension] = useState<Dimension>('setupTag')
-    const [equityVariant, setEquityVariant] = useState<'equity' | 'drawdown'>('equity')
+    const [equityVariant, setEquityVariant] = useState<'equity' | 'drawdown' | 'roi'>('equity')
+    const [initialCapital, setInitialCapital] = useState<number>(1000)
+    const [btcKlines, setBtcKlines] = useState<BtcPricePoint[]>([])
+    const [loadingBtc, setLoadingBtc] = useState<boolean>(false)
+    const [btcError, setBtcError] = useState<string | null>(null)
     const [shareAnalyticsOpen, setShareAnalyticsOpen] = useState(false)
 
     const periodPresets = useMemo(() => getPeriodPresets(), [])
@@ -154,6 +159,39 @@ export function Analytics({ trades, hidePnl }: AnalyticsProps): React.JSX.Elemen
     const curve = useMemo(() => buildEquityCurve(filtered), [filtered])
     const drawdown = useMemo(() => computeDrawdown(curve), [curve])
     const buckets = useMemo(() => buildBreakdown(filtered, dimension), [filtered, dimension])
+
+    // Fetch data BTC Klines saat mode 'roi' dipilih dan ada data trade
+    useEffect(() => {
+        if (equityVariant !== 'roi' || curve.length === 0) return
+        const firstTime = curve[0]!.time
+        const lastTime = curve[curve.length - 1]!.time
+
+        let isMounted = true
+        setLoadingBtc(true)
+        setBtcError(null)
+
+        fetchBtcKlines(firstTime, lastTime)
+            .then((data) => {
+                if (!isMounted) return
+                setBtcKlines(data)
+                setLoadingBtc(false)
+            })
+            .catch((err) => {
+                if (!isMounted) return
+                setBtcError(err instanceof Error ? err.message : String(err))
+                setLoadingBtc(false)
+            })
+
+        return () => {
+            isMounted = false
+        }
+    }, [equityVariant, curve])
+
+    // Hitung perbandingan ROI
+    const roiComparison = useMemo(() => {
+        if (equityVariant !== 'roi') return { points: [], summary: null }
+        return calculateRoiComparison(btcKlines, curve, initialCapital)
+    }, [equityVariant, btcKlines, curve, initialCapital])
 
     const activeFilterCount = Object.values(filters).filter((v) => v !== '').length
     const maxAbsPnl = Math.max(1, ...buckets.map((b) => Math.abs(b.netPnl)))
@@ -349,25 +387,52 @@ export function Analytics({ trades, hidePnl }: AnalyticsProps): React.JSX.Elemen
                             />
                         </div>
 
-                        {/* --- Equity & drawdown --- */}
+                        {/* --- Equity, drawdown & VS ROI BTC --- */}
                         <section className="mt-4 rounded-lg border border-border bg-card">
-                            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                            <div className="flex items-center justify-between border-b border-border px-4 py-3 flex-wrap gap-2">
                                 <div>
-                                    <h2 className="text-sm font-semibold">
-                                        {equityVariant === 'equity' ? 'Kurva Equity' : 'Kurva Drawdown (Underwater)'}
+                                    <h2 className="text-sm font-semibold flex items-center gap-2">
+                                        {equityVariant === 'equity' && 'Kurva Equity'}
+                                        {equityVariant === 'drawdown' && 'Kurva Drawdown (Underwater)'}
+                                        {equityVariant === 'roi' && (
+                                            <>
+                                                <span>Performa Trading vs Buy & Hold BTC</span>
+                                                <Badge tone={roiComparison.summary?.isOutperforming ? 'profit' : 'warning'}>
+                                                    {roiComparison.summary?.isOutperforming
+                                                        ? `+${roiComparison.summary.alpha.toFixed(1)}% Alpha 🚀 (Menang)`
+                                                        : roiComparison.summary
+                                                          ? `${roiComparison.summary.alpha.toFixed(1)}% Alpha (Kalah)`
+                                                          : 'Perbandingan ROI'}
+                                                </Badge>
+                                            </>
+                                        )}
                                     </h2>
                                     <p className="text-[11px] text-muted-foreground">
-                                        {equityVariant === 'equity'
-                                            ? 'Kumulatif P&L bersih menurut waktu exit'
-                                            : 'Penurunan dari puncak equity — selalu ≤ 0'}
+                                        {equityVariant === 'equity' && 'Kumulatif P&L bersih menurut waktu exit'}
+                                        {equityVariant === 'drawdown' && 'Penurunan dari puncak equity — selalu ≤ 0'}
+                                        {equityVariant === 'roi' && 'Apakah strategi trading Anda mengalahkan kinerja memegang (HODL) Bitcoin di periode yang sama?'}
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {equityVariant === 'roi' && (
+                                        <div className="flex items-center gap-1.5 bg-muted/30 px-2 py-0.5 rounded border border-border/60">
+                                            <span className="text-[10px] text-muted-foreground">Modal Awal ($):</span>
+                                            <div className="w-20">
+                                                <NumberInput
+                                                    value={initialCapital}
+                                                    onValueChange={(val) => setInitialCapital(val && val > 0 ? val : 1000)}
+                                                    className="h-6 text-[10px] px-1 py-0"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
                                         {(
                                             [
                                                 { id: 'equity', label: 'Equity' },
-                                                { id: 'drawdown', label: 'Drawdown' }
+                                                { id: 'drawdown', label: 'Drawdown' },
+                                                { id: 'roi', label: 'VS ROI BTC ⚡' }
                                             ] as const
                                         ).map((option) => (
                                             <button
@@ -377,7 +442,7 @@ export function Analytics({ trades, hidePnl }: AnalyticsProps): React.JSX.Elemen
                                                 className={cn(
                                                     'rounded px-2 py-0.5 text-[10px] font-medium transition-colors',
                                                     equityVariant === option.id
-                                                        ? 'bg-primary text-primary-foreground'
+                                                        ? 'bg-primary text-primary-foreground font-semibold'
                                                         : 'text-muted-foreground hover:text-foreground'
                                                 )}
                                             >
@@ -392,11 +457,69 @@ export function Analytics({ trades, hidePnl }: AnalyticsProps): React.JSX.Elemen
                                             className={cn('text-sm font-semibold', pnlColorClass(curve[curve.length - 1]?.equity ?? 0))}
                                         />
                                     )}
+                                    {equityVariant === 'roi' && roiComparison.summary && (
+                                        <div className="flex items-center gap-2 text-xs font-semibold tabular">
+                                            <span className={cn(pnlColorClass(roiComparison.summary.userFinalRoi))}>
+                                                User: {roiComparison.summary.userFinalRoi >= 0 ? '+' : ''}{roiComparison.summary.userFinalRoi.toFixed(1)}%
+                                            </span>
+                                            <span className="text-muted-foreground">vs</span>
+                                            <span className="text-[#F7931A]">
+                                                BTC: {roiComparison.summary.btcFinalRoi >= 0 ? '+' : ''}{roiComparison.summary.btcFinalRoi.toFixed(1)}%
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
+
+                            {equityVariant === 'roi' && btcError && (
+                                <div className="px-4 py-2 bg-destructive/10 text-destructive text-xs border-b border-border">
+                                    ⚠️ {btcError}
+                                </div>
+                            )}
+
+                            {equityVariant === 'roi' && loadingBtc && (
+                                <div className="px-4 py-1.5 bg-primary/10 text-primary text-[11px] animate-pulse">
+                                    ⏳ Menghubungi API Binance untuk mengambil data harga historis BTC/USDT...
+                                </div>
+                            )}
+
                             <div className="px-2 py-3">
-                                <EquityChart points={curve} variant={equityVariant} height={260} />
+                                <EquityChart
+                                    points={curve}
+                                    roiPoints={roiComparison.points}
+                                    variant={equityVariant}
+                                    height={260}
+                                />
                             </div>
+
+                            {equityVariant === 'roi' && roiComparison.summary && (
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 border-t border-border px-4 py-2.5 bg-muted/10 text-[11px]">
+                                    <div>
+                                        <span className="text-muted-foreground">Status Alpha:</span>
+                                        <p className="font-semibold">
+                                            {roiComparison.summary.isOutperforming ? (
+                                                <span className="text-profit">🚀 Mengalahkan BTC (+{roiComparison.summary.alpha.toFixed(2)}%)</span>
+                                            ) : (
+                                                <span className="text-loss">📉 Di Bawah BTC ({roiComparison.summary.alpha.toFixed(2)}%)</span>
+                                            )}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <span className="text-muted-foreground">Harga BTC Awal:</span>
+                                        <p className="font-mono font-medium">${roiComparison.summary.startBtcPrice.toLocaleString()}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-muted-foreground">Harga BTC Terakhir:</span>
+                                        <p className="font-mono font-medium">${roiComparison.summary.endBtcPrice.toLocaleString()}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-muted-foreground">P&L Kumulatif:</span>
+                                        <p className={cn('font-mono font-semibold', pnlColorClass(curve[curve.length - 1]?.equity ?? 0))}>
+                                            {formatPnl(curve[curve.length - 1]?.equity ?? 0)}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
                         </section>
 
                         {/* --- Drawdown stats --- */}

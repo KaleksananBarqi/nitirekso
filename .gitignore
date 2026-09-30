@@ -13,6 +13,7 @@ data/
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
+*.db
 
 # Pastikan aset gambar dokumentasi selalu ter-track
 !docs/assets/screenshots/

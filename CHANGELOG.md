@@ -3,6 +3,36 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.6.0] - 2026-10-01
+
+### 🚀 Fitur Baru
+- **Analytics VS ROI BTC (Alpha Benchmark)**:
+  - Bandingkan performa return portofolio trading Anda langsung terhadap strategi *Buy & Hold* Bitcoin (BTC) pada rentang waktu trading yang sama secara objektif (*apple-to-apple*).
+  - Penarikan data kline historis harian BTCUSDT otomatis via IPC Node.js Main Process dengan ketahanan failover 4 tingkat (Binance Spot &rarr; Binance Vision &rarr; Kraken &rarr; CoinGecko) yang kebal terhadap pembatasan CSP Chromium dan blokir ISP.
+  - Grafik garis ganda *Equity Curve* terformat persentase (Portfolio % vs BTC %) dengan indikator status performa dinamis (*Outperformed BTC* / *Alpha Positif*).
+- **Video Wallpaper & Ekspor Video HQ (MP4 / WebM)**:
+  - Dukungan latar belakang wallpaper animasi video kustom (MP4 / WebM hingga 25MB) pada kartu Share PnL dengan pemutaran otomatis (*looping*).
+  - Perekaman animasi kartu secara mulus langsung dari HTML5 Canvas menggunakan MediaRecorder API ke berkas video resolusi tinggi TrueColor tanpa *color banding* untuk postingan media sosial.
+- **Ekspor GIF Animasi Offline (Pure TypeScript GIF89a)**:
+  - Fitur ekspor kartu Share PnL berlatar video menjadi GIF animasi mandiri secara offline dengan kompresi LZW murni tanpa dependensi library C++ atau native node-gyp.
+- **Background Dimming Gradient Terarah**:
+  - Kontrol kepekatan dan arah gradien pencahayaan kartu Share PnL (Top-Right ala bursa kripto tier-1, Top-Bottom, Left-Right, Radial Glow, dan Flat Dimming) dengan pratinjau instan di Settings dan Modal Ekspor.
+- **Kustomisasi Tema Warna Penuh & Template Kartu**:
+  - Kebebasan penuh merancang, memberi nama, dan menyimpan skema warna aplikasi (aksen utama, profit hijau, loss merah, latar belakang, dan permukaan kartu) yang diinjeksi seketika ke variabel CSS root tanpa *reload*.
+  - Generator skema warna kartu Share PnL mandiri dengan color picker interaktif untuk gradien background awal/akhir, warna aksen, dan border kartu.
+- **Dukungan Input Desimal Natural Rencana Risiko**:
+  - Peningkatan kontrol `NumberInput` di formulir rencana risiko trade agar menerima angka berkoma atau bertitik (misal `14.05` atau `0.5%`) secara responsif tanpa menghapus posisi kursor.
+
+### 🐛 Perbaikan Bug & Peningkatan Kualitas
+- **Bypass CSP IPC Outbound**:
+  - Mengalihkan pengambilan harga benchmark BTC dari Renderer Process ke Node.js Main Process via channel IPC `btc:klines` untuk mengatasi error koneksi akibat Content Security Policy ketat.
+- **Pratinjau Responsif Kartu di Settings**:
+  - Memperbaiki tata letak kartu pratinjau di halaman Settings agar tidak terpotong vertikal/horizontal pada layar resolusi standar.
+- **Pembersihan & Idempotensi Tipe Media Storage**:
+  - Memperbaiki penanganan resolusi tipe media saat menyimpan wallpaper kustom ke `localStorage` untuk mencegah error tipe data `undefined`.
+
+---
+
 ## [1.5.3] - 2026-09-25
 
 ### 🚀 Fitur Baru

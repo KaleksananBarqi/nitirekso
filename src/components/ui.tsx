@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import {
     badgeClass,
     buttonClass,
@@ -76,6 +76,10 @@ interface NumberInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, '
  * Menyimpan nilai sebagai number|null, bukan string. `null` berarti kosong —
  * penting agar field opsional (mis. stop loss) benar-benar bisa kosong dan
  * menghasilkan R = NULL, bukan 0 (brief §5.2).
+ *
+ * Mendukung input koma (,) dan titik (.) secara transparan untuk pengguna lokal & internasional.
+ * Menggunakan state teks lokal selama fokus agar pengetikan titik desimal (mis. '14.') tidak langsung
+ * terpotong oleh konversi Number.
  */
 export function NumberInput({
     value,
@@ -84,28 +88,55 @@ export function NumberInput({
     className,
     ...props
 }: NumberInputProps): React.JSX.Element {
-    const display = value === null || Number.isNaN(value) ? '' : String(value)
+    const [text, setText] = useState<string>(() => (value === null || Number.isNaN(value) ? '' : String(value)))
+    const isFocusedRef = useRef(false)
+
+    // Sinkronisasi dari luar hanya saat input sedang tidak difokuskan user
+    useEffect(() => {
+        if (!isFocusedRef.current) {
+            setText(value === null || Number.isNaN(value) ? '' : String(value))
+        }
+    }, [value])
 
     return (
         <input
             type="text"
             inputMode="decimal"
-            value={display}
+            value={text}
+            onFocus={() => {
+                isFocusedRef.current = true
+            }}
             onChange={(event) => {
-                const raw = event.target.value.trim()
-                if (raw === '') {
+                // Ganti koma dengan titik agar fleksibel untuk keyboard format Indo/Eropa
+                const raw = event.target.value.replace(/,/g, '.')
+                // Hanya izinkan angka, minus, dan satu titik desimal
+                if (!/^-?\d*\.?\d*$/.test(raw)) return
+
+                setText(raw)
+
+                if (raw === '' || raw === '-' || raw === '.') {
                     onValueChange(null)
                     return
                 }
-                // Hanya izinkan angka, minus, dan satu titik desimal.
-                if (!/^-?\d*\.?\d*$/.test(raw)) return
                 const parsed = Number(raw)
-                onValueChange(Number.isNaN(parsed) ? null : parsed)
+                if (!Number.isNaN(parsed)) {
+                    onValueChange(parsed)
+                }
             }}
             onBlur={() => {
-                // Rapikan tampilan saat blur, tapi jangan ubah nilainya.
+                isFocusedRef.current = false
                 if (value !== null && decimals !== undefined) {
-                    onValueChange(Number(value.toFixed(decimals)))
+                    const rounded = Number(value.toFixed(decimals))
+                    onValueChange(rounded)
+                    setText(String(rounded))
+                } else if (text === '' || text === '-' || text === '.') {
+                    setText('')
+                    onValueChange(null)
+                } else {
+                    const parsed = Number(text)
+                    if (!Number.isNaN(parsed)) {
+                        setText(String(parsed))
+                    }
                 }
             }}
             className={inputClass(className, true)}

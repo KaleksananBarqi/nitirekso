@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import {
     AreaSeries,
+    LineSeries,
+    LineStyle,
     ColorType,
     createChart,
     type IChartApi,
@@ -8,33 +10,20 @@ import {
     type UTCTimestamp
 } from 'lightweight-charts'
 import type { EquityPoint } from '../../lib/analytics/metrics'
+import type { RoiComparisonPoint } from '../../lib/btc-api'
 import { cn } from '../../lib/utils'
 
 /**
- * Kurva equity + drawdown (underwater) memakai `lightweight-charts`.
- *
- * Brief §3 menyarankan library ini khusus untuk data finansial. Dua hal yang
- * membuatnya tepat di sini:
- *
- * 1. Sumbu waktu-nya sadar akan celah data. Equity hanya berubah saat trade
- *    ditutup, jadi antara dua trade tidak ada titik. Chart biasa akan
- *    menggambar garis lurus antar waktu kosong, menyembunyikan bahwa tidak ada
- *    aktivitas di rentang itu.
- *
- * 2. Skala harga-nya menangani nilai negatif dengan benar. Equity bisa di bawah
- *    nol (drawdown), dan itu harus terlihat sebagai area terpisah — brief §6
- *    meminta "area di bawah nol beda warna".
- *
- * Warna dibaca dari CSS variable lewat getComputedStyle supaya chart ikut
- * berubah saat user mengganti tema atau mengaktifkan mode colorblind-safe,
- * tanpa perlu kode tambahan.
+ * Kurva equity, drawdown (underwater), dan perbandingan VS ROI BTC memakai `lightweight-charts`.
  */
 
 interface EquityChartProps {
     /** Kurva equity kumulatif. */
     points: EquityPoint[]
-    /** Mode drawdown: gambar nilai drawdown (<= 0) alih-alih equity. */
-    variant?: 'equity' | 'drawdown'
+    /** Titik data perbandingan ROI (khusus mode 'roi') */
+    roiPoints?: RoiComparisonPoint[]
+    /** Mode tampilan chart: equity ($), drawdown, atau VS ROI BTC (%). */
+    variant?: 'equity' | 'drawdown' | 'roi'
     /** Tinggi chart dalam px. */
     height?: number
     className?: string
@@ -48,6 +37,7 @@ function readThemeColor(variable: string, fallback: string): string {
 
 export function EquityChart({
     points,
+    roiPoints = [],
     variant = 'equity',
     height = 260,
     className
@@ -55,15 +45,17 @@ export function EquityChart({
     const containerRef = useRef<HTMLDivElement | null>(null)
     const chartRef = useRef<IChartApi | null>(null)
     const seriesRef = useRef<ISeriesApi<'Area'> | null>(null)
+    const btcSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
 
-    // Buat chart sekali. Pembuatan ulang setiap render akan menghapus canvas
-    // dan membuat tampilan berkedip.
+    // Buat chart sekali. Pembuatan ulang hanya bila variant atau height berubah
     useEffect(() => {
         const container = containerRef.current
         if (!container) return
 
         const textColor = readThemeColor('--muted-foreground', '#8b949e')
         const borderColor = readThemeColor('--border', '#2a313c')
+
+        const isRoiMode = variant === 'roi'
 
         const chart = createChart(container, {
             height,
@@ -80,12 +72,23 @@ export function EquityChart({
             },
             rightPriceScale: {
                 borderColor,
-                // Equity bisa negatif; skala harus mengizinkannya.
-                scaleMargins: { top: 0.1, bottom: 0.1 }
+                scaleMargins: { top: 0.1, bottom: 0.1 },
+                // Format persentase untuk mode ROI
+                ...(isRoiMode
+                    ? {
+                          format: {
+                              type: 'percent'
+                          }
+                      }
+                    : {})
             },
+            localization: isRoiMode
+                ? {
+                      priceFormatter: (val: number) => `${val >= 0 ? '+' : ''}${val.toFixed(2)}%`
+                  }
+                : undefined,
             timeScale: {
                 borderColor,
-                // Izinkan celah waktu; jangan paksa bar berurutan.
                 timeVisible: true,
                 secondsVisible: false
             },
@@ -106,14 +109,28 @@ export function EquityChart({
             topColor: `${lineColor}40`,
             bottomColor: `${lineColor}05`,
             lineWidth: 2,
-            // Garis nol ditampilkan sebagai referensi: di atas nol = profit,
-            // di bawah nol = drawdown.
             priceLineVisible: false,
-            lastValueVisible: true
+            lastValueVisible: true,
+            title: isRoiMode ? 'Portofolio' : undefined
         })
 
         chartRef.current = chart
         seriesRef.current = series
+
+        // Jika mode ROI, tambahkan garis pembanding BTC
+        if (isRoiMode) {
+            const btcSeries = chart.addSeries(LineSeries, {
+                color: '#F7931A', // Bitcoin iconic orange
+                lineWidth: 2,
+                lineStyle: LineStyle.Dashed,
+                priceLineVisible: false,
+                lastValueVisible: true,
+                title: 'BTC Hold'
+            })
+            btcSeriesRef.current = btcSeries
+        } else {
+            btcSeriesRef.current = null
+        }
 
         const observer = new ResizeObserver(() => {
             chart.applyOptions({ width: container.clientWidth })
@@ -126,25 +143,55 @@ export function EquityChart({
             chart.remove()
             chartRef.current = null
             seriesRef.current = null
+            btcSeriesRef.current = null
         }
     }, [height, variant])
 
-    // Perbarui data tanpa membuat ulang chart.
+    // Perbarui data tanpa membuat ulang chart
     useEffect(() => {
         const series = seriesRef.current
         if (!series) return
 
-        const data = points.map((point) => ({
-            // lightweight-charts memakai detik, bukan milidetik.
-            time: Math.floor(point.time / 1000) as UTCTimestamp,
-            value: variant === 'drawdown' ? point.drawdown : point.equity
-        }))
+        if (variant === 'roi') {
+            if (roiPoints.length > 0) {
+                const userData = roiPoints.map((p) => ({
+                    time: Math.floor(p.time / 1000) as UTCTimestamp,
+                    value: p.userRoi
+                }))
+                series.setData(userData)
 
-        series.setData(data)
-        chartRef.current?.timeScale().fitContent()
-    }, [points, variant])
+                if (btcSeriesRef.current) {
+                    const btcData = roiPoints.map((p) => ({
+                        time: Math.floor(p.time / 1000) as UTCTimestamp,
+                        value: p.btcRoi
+                    }))
+                    btcSeriesRef.current.setData(btcData)
+                }
+                chartRef.current?.timeScale().fitContent()
+            }
+        } else {
+            const data = points.map((point) => ({
+                time: Math.floor(point.time / 1000) as UTCTimestamp,
+                value: variant === 'drawdown' ? point.drawdown : point.equity
+            }))
 
-    if (points.length === 0) {
+            series.setData(data)
+            chartRef.current?.timeScale().fitContent()
+        }
+    }, [points, roiPoints, variant])
+
+    if (variant === 'roi' && roiPoints.length === 0) {
+        return (
+            <div
+                className={cn('flex items-center justify-center text-xs text-muted-foreground', className)}
+                style={{ height }}
+            >
+                Memuat atau data perbandingan BTC belum tersedia...
+            </div>
+        )
+    }
+
+    if (variant !== 'roi' && points.length === 0) {
         return (
             <div
                 className={cn('flex items-center justify-center text-xs text-muted-foreground', className)}
@@ -155,5 +202,22 @@ export function EquityChart({
         )
     }
 
-    return <div ref={containerRef} className={cn('w-full', className)} style={{ height }} />
+    return (
+        <div className="relative">
+            {variant === 'roi' && (
+                <div className="absolute top-2 left-3 z-10 flex items-center gap-4 text-[11px] font-mono bg-background/80 px-2.5 py-1 rounded-md border border-border backdrop-blur-xs">
+                    <span className="flex items-center gap-1.5 text-primary">
+                        <span className="inline-block h-2 w-2 rounded-full bg-primary" />
+                        Portofolio ROI (%)
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[#F7931A]">
+                        <span className="inline-block h-0.5 w-3 bg-[#F7931A]" />
+                        BTC Buy & Hold (%)
+                    </span>
+                </div>
+            )}
+            <div ref={containerRef} className={cn('w-full', className)} style={{ height }} />
+        </div>
+    )
 }
+

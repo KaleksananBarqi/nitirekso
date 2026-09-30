@@ -24,6 +24,14 @@ export interface BgTemplate {
     border: string
     /** Mode transparan murni untuk export PNG tanpa backdrop solid */
     isTransparent: boolean
+    /** Menandakan apakah skema ini kustom buatan pengguna */
+    isCustom?: boolean
+    /** Warna awal latar belakang (Hex) */
+    bgStart?: string
+    /** Warna akhir latar belakang (Hex) */
+    bgEnd?: string
+    /** Timestamp pembuatan */
+    createdAt?: number
 }
 
 export const BG_TEMPLATES: BgTemplate[] = [
@@ -89,6 +97,8 @@ export const BG_TEMPLATES: BgTemplate[] = [
     }
 ]
 
+export type BgDimmingDirection = 'uniform' | 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left' | 'left' | 'right'
+
 export const SHARE_STORAGE_KEYS = {
     AVATAR: 'trading_journal_share_avatar',
     HANDLE: 'trading_journal_share_handle',
@@ -111,10 +121,15 @@ export const SHARE_STORAGE_KEYS = {
     CUSTOM_BG_LIST: 'trading_journal_share_custom_bg_list',
     IS_CUSTOM_BG: 'trading_journal_share_is_custom_bg',
     BG_DIMMING: 'trading_journal_share_bg_dimming',
+    BG_DIMMING_DIRECTION: 'trading_journal_share_bg_dimming_direction',
+    CUSTOM_BG_MEDIA_TYPE: 'trading_journal_share_custom_bg_media_type',
     FULL_TEXT: 'trading_journal_share_full_text',
     CUSTOM_TEMPLATES: 'trading_journal_share_custom_templates',
+    CUSTOM_COLOR_SCHEMES: 'trading_journal_share_custom_color_schemes',
     ACTIVE_TEMPLATE_ID: 'trading_journal_share_active_template_id',
-    SHOW_TRADE_TIMES: 'trading_journal_share_show_trade_times'
+    SHOW_TRADE_TIMES: 'trading_journal_share_show_trade_times',
+    BG_POS_X: 'trading_journal_share_bg_pos_x',
+    BG_POS_Y: 'trading_journal_share_bg_pos_y'
 } as const
 
 export interface ShareSettings {
@@ -138,16 +153,25 @@ export interface ShareSettings {
     customBgUrl: string | null
     isCustomBg: boolean
     bgDimming: number
+    bgDimmingDirection: BgDimmingDirection
+    customBgMediaType: 'image' | 'video'
+    bgPosX: number // 0 - 100% (default 50)
+    bgPosY: number // 0 - 100% (default 50)
     showFullText: boolean
     showTradeTimes: boolean
 }
 
-/** Item Gambar Wallpaper Kustom di Galeri Pengguna */
+/** Item Gambar/Video Wallpaper Kustom di Galeri Pengguna */
 export interface CustomBgItem {
     id: string
     name: string
     dataUrl: string
     createdAt: number
+    mediaType?: 'image' | 'video'
+    posX?: number // Posisi default X (%)
+    posY?: number // Posisi default Y (%)
+    bgPosX?: number // Posisi default X (%)
+    bgPosY?: number // Posisi default Y (%)
 }
 
 /** Struktur Template Desain Kartu Share PnL */
@@ -160,6 +184,8 @@ export interface ShareCardTemplate {
     customBgId?: string | null // ID background kustom yang ditautkan ke template ini
     isCustomBg: boolean
     bgDimming: number
+    bgPosX?: number
+    bgPosY?: number
     // Visibility Toggles
     showSide: boolean
     showPnl: boolean          // Toggle profit USD
@@ -276,6 +302,150 @@ export const BUILTIN_TEMPLATES: ShareCardTemplate[] = [
     }
 ]
 
+/** Membaca seluruh skema warna kartu share kustom yang disimpan oleh pengguna */
+export function loadCustomShareColorSchemes(): BgTemplate[] {
+    try {
+        const raw = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_COLOR_SCHEMES)
+        if (!raw) return []
+        const parsed = JSON.parse(raw)
+        return Array.isArray(parsed) ? parsed : []
+    } catch {
+        return []
+    }
+}
+
+/** Menggabungkan template bawaan dengan skema warna kustom pengguna */
+export function getAllBgTemplates(): BgTemplate[] {
+    const custom = loadCustomShareColorSchemes()
+    return [...BG_TEMPLATES, ...custom]
+}
+
+/** Menyimpan atau memperbarui skema warna kartu share kustom */
+export function saveCustomShareColorScheme(scheme: {
+    id?: string
+    label: string
+    bgStart: string
+    bgEnd: string
+    accentProfit: string
+    accentLoss: string
+    border?: string
+    textSub?: string
+    isTransparent?: boolean
+}): BgTemplate {
+    const list = loadCustomShareColorSchemes()
+    const now = Date.now()
+    const id = scheme.id || `custom_color_${now}_${Math.random().toString(36).slice(2, 6)}`
+    const isTransparent = !!scheme.isTransparent
+
+    const bgCss = isTransparent
+        ? `linear-gradient(135deg, ${scheme.bgStart} 0%, ${scheme.bgEnd} 100%)`
+        : `linear-gradient(145deg, ${scheme.bgStart} 0%, ${scheme.bgEnd} 100%)`
+
+    const newScheme: BgTemplate = {
+        id,
+        label: scheme.label.trim() || 'Skema Kustom',
+        bg: bgCss,
+        accentProfit: scheme.accentProfit,
+        accentLoss: scheme.accentLoss,
+        border: scheme.border || `${scheme.accentProfit}44`,
+        textSub: scheme.textSub || 'rgba(255, 255, 255, 0.65)',
+        isTransparent,
+        isCustom: true,
+        bgStart: scheme.bgStart,
+        bgEnd: scheme.bgEnd,
+        createdAt: now
+    }
+
+    const existingIdx = list.findIndex((s) => s.id === id)
+    let updated: BgTemplate[]
+    if (existingIdx >= 0) {
+        updated = [...list]
+        updated[existingIdx] = newScheme
+    } else {
+        updated = [...list, newScheme]
+    }
+
+    localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_COLOR_SCHEMES, JSON.stringify(updated))
+    return newScheme
+}
+
+/** Memperbarui skema warna kartu share kustom */
+export function updateCustomShareColorScheme(
+    id: string,
+    updates: Partial<Omit<BgTemplate, 'id' | 'isBuiltin'>>
+): BgTemplate | null {
+    const list = loadCustomShareColorSchemes()
+    const target = list.find((s) => s.id === id)
+    if (!target) return null
+
+    if (updates.label !== undefined) target.label = updates.label.trim() || target.label
+    if (updates.bgStart !== undefined) target.bgStart = updates.bgStart
+    if (updates.bgEnd !== undefined) target.bgEnd = updates.bgEnd
+    if (updates.accentProfit !== undefined) target.accentProfit = updates.accentProfit
+    if (updates.accentLoss !== undefined) target.accentLoss = updates.accentLoss
+    if (updates.border !== undefined) target.border = updates.border
+    if (updates.textSub !== undefined) target.textSub = updates.textSub
+    if (updates.isTransparent !== undefined) target.isTransparent = updates.isTransparent
+
+    if (target.bgStart && target.bgEnd) {
+        target.bg = `linear-gradient(145deg, ${target.bgStart} 0%, ${target.bgEnd} 100%)`
+    }
+
+    localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_COLOR_SCHEMES, JSON.stringify(list))
+    return target
+}
+
+/** Memperbarui wallpaper kustom (nama, posX, posY) */
+export function updateCustomBgItem(
+    id: string,
+    updates: Partial<Omit<CustomBgItem, 'id' | 'dataUrl' | 'createdAt'>>
+): CustomBgItem | null {
+    const list = loadCustomBgList()
+    const target = list.find((b) => b.id === id)
+    if (!target) return null
+
+    if (updates.name !== undefined) target.name = updates.name.trim() || target.name
+    if (updates.mediaType !== undefined) target.mediaType = updates.mediaType
+    if (updates.posX !== undefined || updates.bgPosX !== undefined) {
+        const val = updates.bgPosX ?? updates.posX
+        target.posX = val
+        target.bgPosX = val
+    }
+    if (updates.posY !== undefined || updates.bgPosY !== undefined) {
+        const val = updates.bgPosY ?? updates.posY
+        target.posY = val
+        target.bgPosY = val
+    }
+
+    saveCustomBgList(list)
+    return target
+}
+
+/** Memperbarui template kustom */
+export function updateCustomShareTemplate(
+    id: string,
+    updates: Partial<Omit<ShareCardTemplate, 'id' | 'isBuiltin'>>
+): ShareCardTemplate | null {
+    const list = loadCustomShareTemplates()
+    const target = list.find((t) => t.id === id)
+    if (!target) return null
+
+    Object.assign(target, updates)
+    target.updatedAt = Date.now()
+
+    localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_TEMPLATES, JSON.stringify(list))
+    return target
+}
+
+/** Menghapus skema warna kartu share kustom berdasarkan ID */
+export function deleteCustomShareColorScheme(id: string): boolean {
+    const list = loadCustomShareColorSchemes()
+    const filtered = list.filter((s) => s.id !== id)
+    if (filtered.length === list.length) return false
+    localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_COLOR_SCHEMES, JSON.stringify(filtered))
+    return true
+}
+
 /** Membaca seluruh template kustom yang disimpan oleh pengguna */
 export function loadCustomShareTemplates(): ShareCardTemplate[] {
     try {
@@ -349,12 +519,41 @@ export function setActiveTemplateId(id: string): void {
     localStorage.setItem(SHARE_STORAGE_KEYS.ACTIVE_TEMPLATE_ID, id)
 }
 
-/** Membaca seluruh gambar background kustom dari localStorage dengan auto-migrasi data lama */
+/**
+ * Mendeteksi secara andal apakah sebuah item media adalah 'image' atau 'video'
+ * berdasarkan mediaType eksplisit atau pola URL/DataURL.
+ */
+export function resolveMediaType(
+    mediaType?: 'image' | 'video',
+    dataUrl?: string | null,
+    fallback: 'image' | 'video' = 'image'
+): 'image' | 'video' {
+    if (dataUrl) {
+        if (dataUrl.startsWith('data:video/') || /\.(mp4|webm|mov|ogg)(\?.*)?$/i.test(dataUrl)) {
+            return 'video'
+        }
+        if (dataUrl.startsWith('data:image/') || /\.(png|jpe?g|webp|svg|gif|avif)(\?.*)?$/i.test(dataUrl)) {
+            return 'image'
+        }
+    }
+    if (mediaType === 'video' || mediaType === 'image') {
+        return mediaType
+    }
+    return fallback
+}
+
+/** Membaca seluruh gambar/video background kustom dari localStorage dengan auto-migrasi data lama & normalisasi mediaType */
 export function loadCustomBgList(): CustomBgItem[] {
     try {
         const raw = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST)
         let list: CustomBgItem[] = raw ? JSON.parse(raw) : []
         if (!Array.isArray(list)) list = []
+
+        // Normalisasi setiap item agar selalu memiliki mediaType akurat (menghindari bug gambar lama dianggap video)
+        list = list.map((item) => ({
+            ...item,
+            mediaType: resolveMediaType(item.mediaType, item.dataUrl, 'image')
+        }))
 
         // Migrasi data lama jika CUSTOM_BG ada tapi list belum terisi
         const legacyBg = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
@@ -363,11 +562,16 @@ export function loadCustomBgList(): CustomBgItem[] {
                 id: `bg_${Date.now()}_default`,
                 name: 'Wallpaper Kustom 1',
                 dataUrl: legacyBg,
-                createdAt: Date.now()
+                createdAt: Date.now(),
+                mediaType: resolveMediaType(undefined, legacyBg, 'image')
             }
             list = [legacyItem]
-            localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST, JSON.stringify(list))
-            localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID, legacyItem.id)
+            try {
+                localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST, JSON.stringify(list))
+                localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID, legacyItem.id)
+            } catch {
+                // Abaikan jika quota storage terlampaui
+            }
         }
 
         return list
@@ -376,26 +580,37 @@ export function loadCustomBgList(): CustomBgItem[] {
     }
 }
 
-/** Menyimpan seluruh daftar background kustom ke localStorage */
+/** Menyimpan seluruh daftar background kustom ke localStorage dengan proteksi quota */
 export function saveCustomBgList(list: CustomBgItem[]): void {
-    localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST, JSON.stringify(list))
+    try {
+        localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST, JSON.stringify(list))
+    } catch (err) {
+        console.warn('Gagal menyimpan daftar wallpaper kustom ke localStorage (mungkin kuota penuh):', err)
+    }
 }
 
 /** Menambahkan background kustom baru ke galeri */
-export function addCustomBgItem(item: { name: string; dataUrl: string }): CustomBgItem {
+export function addCustomBgItem(item: { name: string; dataUrl: string; mediaType?: 'image' | 'video' }): CustomBgItem {
     const list = loadCustomBgList()
     const now = Date.now()
+    const resolvedType = resolveMediaType(item.mediaType, item.dataUrl, 'image')
     const newItem: CustomBgItem = {
         id: `bg_${now}_${Math.random().toString(36).slice(2, 7)}`,
-        name: item.name.trim() || `Wallpaper ${list.length + 1}`,
+        name: item.name.trim() || `${resolvedType === 'video' ? 'Video' : 'Wallpaper'} ${list.length + 1}`,
         dataUrl: item.dataUrl,
-        createdAt: now
+        createdAt: now,
+        mediaType: resolvedType
     }
     const updated = [newItem, ...list]
     saveCustomBgList(updated)
-    // Sinkronkan ke CUSTOM_BG dan CUSTOM_BG_ID untuk fallback
-    localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, newItem.dataUrl)
-    localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID, newItem.id)
+    try {
+        // Sinkronkan ke CUSTOM_BG dan CUSTOM_BG_ID untuk fallback
+        localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, newItem.dataUrl)
+        localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID, newItem.id)
+        localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_MEDIA_TYPE, newItem.mediaType || 'image')
+    } catch (err) {
+        console.warn('Gagal menyinkronkan background aktif ke localStorage:', err)
+    }
     return newItem
 }
 
@@ -466,6 +681,16 @@ export function loadShareSettings(): ShareSettings {
         customBgUrl: activeBgItem ? activeBgItem.dataUrl : (localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG) || null),
         isCustomBg: localStorage.getItem(SHARE_STORAGE_KEYS.IS_CUSTOM_BG) === 'true',
         bgDimming: Number(localStorage.getItem(SHARE_STORAGE_KEYS.BG_DIMMING)) || 75,
+        bgDimmingDirection: (localStorage.getItem(SHARE_STORAGE_KEYS.BG_DIMMING_DIRECTION) as BgDimmingDirection) || 'uniform',
+        customBgMediaType: activeBgItem
+            ? resolveMediaType(activeBgItem.mediaType, activeBgItem.dataUrl, 'image')
+            : resolveMediaType(
+                (localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_MEDIA_TYPE) as 'image' | 'video') || undefined,
+                localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG),
+                'image'
+            ),
+        bgPosX: localStorage.getItem(SHARE_STORAGE_KEYS.BG_POS_X) !== null ? Number(localStorage.getItem(SHARE_STORAGE_KEYS.BG_POS_X)) : (activeBgItem?.posX ?? 50),
+        bgPosY: localStorage.getItem(SHARE_STORAGE_KEYS.BG_POS_Y) !== null ? Number(localStorage.getItem(SHARE_STORAGE_KEYS.BG_POS_Y)) : (activeBgItem?.posY ?? 50),
         showFullText: localStorage.getItem(SHARE_STORAGE_KEYS.FULL_TEXT) !== 'false', // default true
         showTradeTimes: localStorage.getItem(SHARE_STORAGE_KEYS.SHOW_TRADE_TIMES) !== 'false' // default true
     }
@@ -540,6 +765,18 @@ export function saveShareSettings(settings: Partial<ShareSettings>): void {
     }
     if (settings.bgDimming !== undefined) {
         localStorage.setItem(SHARE_STORAGE_KEYS.BG_DIMMING, String(settings.bgDimming))
+    }
+    if (settings.bgDimmingDirection !== undefined) {
+        localStorage.setItem(SHARE_STORAGE_KEYS.BG_DIMMING_DIRECTION, settings.bgDimmingDirection)
+    }
+    if (settings.customBgMediaType !== undefined) {
+        localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_MEDIA_TYPE, settings.customBgMediaType)
+    }
+    if (settings.bgPosX !== undefined) {
+        localStorage.setItem(SHARE_STORAGE_KEYS.BG_POS_X, String(settings.bgPosX))
+    }
+    if (settings.bgPosY !== undefined) {
+        localStorage.setItem(SHARE_STORAGE_KEYS.BG_POS_Y, String(settings.bgPosY))
     }
     if (settings.showFullText !== undefined) {
         localStorage.setItem(SHARE_STORAGE_KEYS.FULL_TEXT, String(settings.showFullText))

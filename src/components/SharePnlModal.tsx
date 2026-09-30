@@ -4,23 +4,29 @@ import { Modal } from './ui'
 import { formatDate, formatDateTime, formatDuration, formatPercent, formatPnl, formatPrice, formatR } from '../lib/format'
 import { cn } from '../lib/utils'
 import {
-    BG_TEMPLATES,
     BUILTIN_TEMPLATES,
     EXCHANGES,
     loadShareSettings,
+    saveShareSettings,
     loadCustomBgList,
     addCustomBgItem,
+    updateCustomBgItem,
     getAllShareTemplates,
     saveCustomShareTemplate,
     deleteCustomShareTemplate,
     getActiveTemplateId,
     setActiveTemplateId,
+    getAllBgTemplates,
+    resolveMediaType,
     type BgTemplate,
     type ExchangeName,
     type ShareCardTemplate,
-    type CustomBgItem
+    type CustomBgItem,
+    type BgDimmingDirection
 } from '../lib/shareSettings'
 import { nitireksoLogo, getExchangeDefaultLogo } from '../lib/exchangeAssets'
+import { captureAndExportGif } from '../lib/gif-export'
+import { captureAndExportVideo } from '../lib/video-export'
 
 // ---------------------------------------------------------------------------
 // Tipe Props
@@ -31,6 +37,115 @@ export interface SharePnlModalProps {
     detail?: TradeDetail | null
     isOpen?: boolean
     onClose: () => void
+}
+
+// ---------------------------------------------------------------------------
+// Helper Dimming Gradient (CSS & Canvas)
+// ---------------------------------------------------------------------------
+
+export function getGradientDimmingStyle(bgDimming: number, direction: BgDimmingDirection = 'uniform'): React.CSSProperties {
+    const baseOpacity = bgDimming / 100
+    const darkOpacity = Math.min(0.96, baseOpacity * 1.15)
+    const lightOpacity = Math.max(0.12, baseOpacity * 0.28)
+
+    switch (direction) {
+        case 'top-right':
+            return {
+                background: `linear-gradient(to top right, rgba(0,0,0,${darkOpacity}) 0%, rgba(0,0,0,${baseOpacity}) 45%, rgba(0,0,0,${lightOpacity}) 100%)`
+            }
+        case 'top-left':
+            return {
+                background: `linear-gradient(to top left, rgba(0,0,0,${darkOpacity}) 0%, rgba(0,0,0,${baseOpacity}) 45%, rgba(0,0,0,${lightOpacity}) 100%)`
+            }
+        case 'bottom-right':
+            return {
+                background: `linear-gradient(to bottom right, rgba(0,0,0,${darkOpacity}) 0%, rgba(0,0,0,${baseOpacity}) 45%, rgba(0,0,0,${lightOpacity}) 100%)`
+            }
+        case 'bottom-left':
+            return {
+                background: `linear-gradient(to bottom left, rgba(0,0,0,${darkOpacity}) 0%, rgba(0,0,0,${baseOpacity}) 45%, rgba(0,0,0,${lightOpacity}) 100%)`
+            }
+        case 'left':
+            return {
+                background: `linear-gradient(to right, rgba(0,0,0,${lightOpacity}) 0%, rgba(0,0,0,${darkOpacity}) 100%)`
+            }
+        case 'right':
+            return {
+                background: `linear-gradient(to left, rgba(0,0,0,${lightOpacity}) 0%, rgba(0,0,0,${darkOpacity}) 100%)`
+            }
+        case 'uniform':
+        default:
+            return {
+                backgroundColor: `rgba(0, 0, 0, ${baseOpacity})`
+            }
+    }
+}
+
+export function applyCanvasDimming(
+    ctx: CanvasRenderingContext2D,
+    W: number,
+    H: number,
+    bgDimming: number,
+    direction: BgDimmingDirection = 'uniform'
+): void {
+    const baseOpacity = bgDimming / 100
+    const darkOpacity = Math.min(0.96, baseOpacity * 1.15)
+    const lightOpacity = Math.max(0.12, baseOpacity * 0.28)
+
+    switch (direction) {
+        case 'top-right': {
+            const grad = ctx.createLinearGradient(0, H, W, 0)
+            grad.addColorStop(0, `rgba(0, 0, 0, ${darkOpacity})`)
+            grad.addColorStop(0.45, `rgba(0, 0, 0, ${baseOpacity})`)
+            grad.addColorStop(1, `rgba(0, 0, 0, ${lightOpacity})`)
+            ctx.fillStyle = grad
+            break
+        }
+        case 'top-left': {
+            const grad = ctx.createLinearGradient(W, H, 0, 0)
+            grad.addColorStop(0, `rgba(0, 0, 0, ${darkOpacity})`)
+            grad.addColorStop(0.45, `rgba(0, 0, 0, ${baseOpacity})`)
+            grad.addColorStop(1, `rgba(0, 0, 0, ${lightOpacity})`)
+            ctx.fillStyle = grad
+            break
+        }
+        case 'bottom-right': {
+            const grad = ctx.createLinearGradient(0, 0, W, H)
+            grad.addColorStop(0, `rgba(0, 0, 0, ${darkOpacity})`)
+            grad.addColorStop(0.45, `rgba(0, 0, 0, ${baseOpacity})`)
+            grad.addColorStop(1, `rgba(0, 0, 0, ${lightOpacity})`)
+            ctx.fillStyle = grad
+            break
+        }
+        case 'bottom-left': {
+            const grad = ctx.createLinearGradient(W, 0, 0, H)
+            grad.addColorStop(0, `rgba(0, 0, 0, ${darkOpacity})`)
+            grad.addColorStop(0.45, `rgba(0, 0, 0, ${baseOpacity})`)
+            grad.addColorStop(1, `rgba(0, 0, 0, ${lightOpacity})`)
+            ctx.fillStyle = grad
+            break
+        }
+        case 'left': {
+            const grad = ctx.createLinearGradient(W, 0, 0, 0)
+            grad.addColorStop(0, `rgba(0, 0, 0, ${darkOpacity})`)
+            grad.addColorStop(1, `rgba(0, 0, 0, ${lightOpacity})`)
+            ctx.fillStyle = grad
+            break
+        }
+        case 'right': {
+            const grad = ctx.createLinearGradient(0, 0, W, 0)
+            grad.addColorStop(0, `rgba(0, 0, 0, ${darkOpacity})`)
+            grad.addColorStop(1, `rgba(0, 0, 0, ${lightOpacity})`)
+            ctx.fillStyle = grad
+            break
+        }
+        case 'uniform':
+        default: {
+            ctx.fillStyle = `rgba(0, 0, 0, ${baseOpacity})`
+            break
+        }
+    }
+    ctx.fillRect(0, 0, W, H)
 }
 
 // ---------------------------------------------------------------------------
@@ -93,10 +208,11 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const [activeTemplateId, setActiveTplId] = useState<string>(() => getActiveTemplateId())
 
     const activeTemplate = templates.find((t) => t.id === activeTemplateId) || templates[0]!
+    const [allBgTemplates] = useState<BgTemplate[]>(() => getAllBgTemplates())
 
     const initialBgIdx = Math.max(
         0,
-        BG_TEMPLATES.findIndex((t) => t.id === (activeTemplate?.bgPresetId || savedSettings.bgPresetId))
+        allBgTemplates.findIndex((t) => t.id === (activeTemplate?.bgPresetId || savedSettings.bgPresetId))
     )
 
     // --- State: Background & Galeri ---
@@ -110,8 +226,78 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     // Wallpaper kustom yang sedang aktif
     const activeCustomBgItem = customBgList.find((b) => b.id === selectedCustomBgId) || customBgList[0] || null
     const activeCustomBgUrl = activeCustomBgItem ? activeCustomBgItem.dataUrl : (savedSettings.customBgUrl || null)
+    const activeCustomBgMediaType = resolveMediaType(activeCustomBgItem?.mediaType, activeCustomBgUrl, 'image')
+    const bgDimmingDirection = savedSettings.bgDimmingDirection || 'uniform'
 
-    const bg: BgTemplate = BG_TEMPLATES[selectedBgIdx] ?? BG_TEMPLATES[0]!
+    // --- State: Posisi Wallpaper Kustom (Pan X & Pan Y dalam %) ---
+    const initialBgPosX = activeTemplate?.bgPosX ?? activeCustomBgItem?.bgPosX ?? savedSettings.bgPosX ?? 50
+    const initialBgPosY = activeTemplate?.bgPosY ?? activeCustomBgItem?.bgPosY ?? savedSettings.bgPosY ?? 50
+    const [bgPosX, setBgPosX] = useState<number>(initialBgPosX)
+    const [bgPosY, setBgPosY] = useState<number>(initialBgPosY)
+    const [isSavedDefaultBgPos, setIsSavedDefaultBgPos] = useState<boolean>(false)
+    const [confirmDeleteTplId, setConfirmDeleteTplId] = useState<string | null>(null)
+
+    // Ref dan state untuk Drag-to-Pan Background Live Preview
+    const cardContainerRef = useRef<HTMLDivElement>(null)
+    const [isDraggingBg, setIsDraggingBg] = useState<boolean>(false)
+    const dragStartRef = useRef<{ x: number; y: number; startBgPosX: number; startBgPosY: number } | null>(null)
+
+    const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+        if (!isCustomBgActive) return
+        const target = e.target as HTMLElement
+        if (target.closest('button, input, select, textarea, a')) return
+
+        setIsDraggingBg(true)
+        dragStartRef.current = {
+            x: e.clientX,
+            y: e.clientY,
+            startBgPosX: bgPosX,
+            startBgPosY: bgPosY,
+        }
+        ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    }
+
+    const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+        if (!isDraggingBg || !dragStartRef.current) return
+        const container = cardContainerRef.current
+        if (!container) return
+
+        const rect = container.getBoundingClientRect()
+        const deltaX = e.clientX - dragStartRef.current.x
+        const deltaY = e.clientY - dragStartRef.current.y
+
+        // Sensitivitas drag: 1x lebar container = 100% pergeseran
+        const moveRatioX = (deltaX / rect.width) * 100
+        const moveRatioY = (deltaY / rect.height) * 100
+
+        const nextX = Math.round(Math.max(0, Math.min(100, dragStartRef.current.startBgPosX - moveRatioX)))
+        const nextY = Math.round(Math.max(0, Math.min(100, dragStartRef.current.startBgPosY - moveRatioY)))
+
+        setBgPosX(nextX)
+        setBgPosY(nextY)
+    }
+
+    const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+        if (isDraggingBg) {
+            setIsDraggingBg(false)
+            dragStartRef.current = null
+            try {
+                ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+            } catch {
+                // Abaikan jika pointer capture gagal dilepas
+            }
+        }
+    }
+
+    const handleSaveDefaultBgPos = () => {
+        if (!selectedCustomBgId) return
+        updateCustomBgItem(selectedCustomBgId, { bgPosX, bgPosY })
+        setCustomBgList(loadCustomBgList())
+        setIsSavedDefaultBgPos(true)
+        setTimeout(() => setIsSavedDefaultBgPos(false), 2000)
+    }
+
+    const bg: BgTemplate = allBgTemplates[selectedBgIdx] ?? allBgTemplates[0]!
     const accent = isWin ? bg.accentProfit : bg.accentLoss
 
     // Data Identitas & Branding dari Settings
@@ -168,27 +354,40 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
 
     const uploadBgModalInputRef = useRef<HTMLInputElement>(null)
 
-    // Upload background gambar baru langsung dari modal
+    // Upload background gambar atau video baru langsung dari modal
     const handleUploadNewBg = (file: File | undefined) => {
         if (!file) return
-        if (!file.type.startsWith('image/')) {
-            alert('Harap pilih berkas gambar (PNG, JPG, SVG, WebP).')
+        const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|svg|gif|avif)$/i.test(file.name)
+        const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov|ogg)$/i.test(file.name)
+        if (!isImage && !isVideo) {
+            alert('Harap pilih berkas gambar (PNG, JPG, SVG, WebP) atau video (MP4, WebM).')
             return
         }
-        if (file.size > 8 * 1024 * 1024) {
-            alert('Ukuran berkas maksimal 8MB.')
+        if (file.size > 25 * 1024 * 1024) {
+            alert('Ukuran berkas maksimal 25MB.')
             return
         }
         const reader = new FileReader()
         reader.onload = (e) => {
             const dataUrl = e.target?.result as string
             if (dataUrl) {
-                const cleanName = file.name.replace(/\.[^/.]+$/, '').slice(0, 18) || `Wallpaper ${customBgList.length + 1}`
-                const created = addCustomBgItem({ name: cleanName, dataUrl })
+                const detectedType: 'image' | 'video' = isVideo ? 'video' : 'image'
+                const cleanName = file.name.replace(/\.[^/.]+$/, '').slice(0, 18) || `${detectedType === 'video' ? 'Video' : 'Wallpaper'} ${customBgList.length + 1}`
+                const created = addCustomBgItem({ name: cleanName, dataUrl, mediaType: detectedType })
                 const updatedList = loadCustomBgList()
                 setCustomBgList(updatedList)
                 setSelectedCustomBgId(created.id)
                 setIsCustomBgActive(true)
+                setBgPosX(50)
+                setBgPosY(50)
+                saveShareSettings({
+                    customBgId: created.id,
+                    isCustomBg: true,
+                    customBgMediaType: detectedType,
+                    customBgUrl: created.dataUrl,
+                    bgPosX: 50,
+                    bgPosY: 50
+                })
             }
         }
         reader.readAsDataURL(file)
@@ -198,7 +397,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const handleSelectTemplate = (tpl: ShareCardTemplate) => {
         setActiveTplId(tpl.id)
         setActiveTemplateId(tpl.id)
-        const bgIdx = BG_TEMPLATES.findIndex((b) => b.id === tpl.bgPresetId)
+        const bgIdx = allBgTemplates.findIndex((b) => b.id === tpl.bgPresetId)
         if (bgIdx >= 0) setSelectedBgIdx(bgIdx)
         if (tpl.isCustomBg) {
             setIsCustomBgActive(true)
@@ -210,6 +409,8 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         } else {
             setIsCustomBgActive(false)
         }
+        setBgPosX(tpl.bgPosX ?? 50)
+        setBgPosY(tpl.bgPosY ?? 50)
         setShowSide(tpl.showSide)
         setShowPnl(tpl.showPnl)
         setShowRoi(tpl.showRoi)
@@ -231,13 +432,15 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const handleSaveNewTemplate = () => {
         const trimmed = newTemplateName.trim()
         if (!trimmed) return
-        const currentBgId = BG_TEMPLATES[selectedBgIdx]?.id || 'dark-navy'
+        const currentBgId = allBgTemplates[selectedBgIdx]?.id || 'dark-navy'
         const saved = saveCustomShareTemplate({
             name: trimmed,
             bgPresetId: currentBgId,
             customBgId: isCustomBgActive ? selectedCustomBgId : null,
             isCustomBg: isCustomBgActive,
             bgDimming: savedSettings.bgDimming,
+            bgPosX,
+            bgPosY,
             showSide,
             showPnl,
             showRoi,
@@ -265,7 +468,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     // Perbarui konfigurasi template kustom aktif
     const handleUpdateActiveTemplate = () => {
         if (!activeTemplate || activeTemplate.isBuiltin) return
-        const currentBgId = BG_TEMPLATES[selectedBgIdx]?.id || 'dark-navy'
+        const currentBgId = allBgTemplates[selectedBgIdx]?.id || 'dark-navy'
         saveCustomShareTemplate({
             id: activeTemplate.id,
             name: activeTemplate.name,
@@ -273,6 +476,8 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             customBgId: isCustomBgActive ? selectedCustomBgId : null,
             isCustomBg: isCustomBgActive,
             bgDimming: savedSettings.bgDimming,
+            bgPosX,
+            bgPosY,
             showSide,
             showPnl,
             showRoi,
@@ -304,11 +509,13 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     }
 
     // Deteksi apakah konfigurasi telah dimodifikasi dari template aktif
-    const currentBgId = BG_TEMPLATES[selectedBgIdx]?.id || 'dark-navy'
+    const currentBgId = allBgTemplates[selectedBgIdx]?.id || 'dark-navy'
     const isModified = activeTemplate ? (
         activeTemplate.bgPresetId !== currentBgId ||
         activeTemplate.isCustomBg !== isCustomBgActive ||
         (isCustomBgActive && activeTemplate.customBgId !== selectedCustomBgId) ||
+        (activeTemplate.bgPosX ?? 50) !== bgPosX ||
+        (activeTemplate.bgPosY ?? 50) !== bgPosY ||
         activeTemplate.showSide !== showSide ||
         activeTemplate.showPnl !== showPnl ||
         activeTemplate.showRoi !== showRoi ||
@@ -333,6 +540,10 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     // --- State: Status Aksi ---
     const [copySuccess, setCopySuccess] = useState(false)
     const [downloading, setDownloading] = useState(false)
+    const [exportingGif, setExportingGif] = useState(false)
+    const [gifProgress, setGifProgress] = useState(0)
+    const [exportingVideo, setExportingVideo] = useState(false)
+    const [videoProgress, setVideoProgress] = useState(0)
 
     // Logo & Referral aktif berdasarkan exchange terpilih (otomatis fallback ke logo resmi bawaan)
     const customExchangeLogo = (savedSettings[`${selectedExchange}LogoUrl` as keyof typeof savedSettings] as string | null) || null
@@ -342,9 +553,10 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     // Ref elemen canvas
     const canvasRef = useRef<HTMLCanvasElement>(null)
 
-    // Preloader image refs untuk canvas export
+    // Preloader image & video refs untuk canvas export
     const avatarImgRef = useRef<HTMLImageElement | null>(null)
     const customBgImgRef = useRef<HTMLImageElement | null>(null)
+    const customBgVideoRef = useRef<HTMLVideoElement | null>(null)
     const exchangeLogoImgRef = useRef<HTMLImageElement | null>(null)
     const nitireksoLogoImgRef = useRef<HTMLImageElement | null>(null)
 
@@ -368,17 +580,33 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         }
     }, [avatarUrl])
 
-    // Preload gambar Custom Background Aktif
+    // Preload gambar atau video Custom Background Aktif
     useEffect(() => {
         if (activeCustomBgUrl) {
-            const img = new Image()
-            img.crossOrigin = 'anonymous'
-            img.src = activeCustomBgUrl
-            img.onload = () => { customBgImgRef.current = img }
+            if (activeCustomBgMediaType === 'video') {
+                const vid = document.createElement('video')
+                vid.crossOrigin = 'anonymous'
+                vid.src = activeCustomBgUrl
+                vid.muted = true
+                vid.loop = true
+                vid.playsInline = true
+                vid.onloadeddata = () => {
+                    customBgVideoRef.current = vid
+                    void vid.play().catch(() => {})
+                }
+                customBgImgRef.current = null
+            } else {
+                const img = new Image()
+                img.crossOrigin = 'anonymous'
+                img.src = activeCustomBgUrl
+                img.onload = () => { customBgImgRef.current = img }
+                customBgVideoRef.current = null
+            }
         } else {
             customBgImgRef.current = null
+            customBgVideoRef.current = null
         }
-    }, [activeCustomBgUrl])
+    }, [activeCustomBgUrl, activeCustomBgMediaType])
 
     // Preload logo exchange aktif
     useEffect(() => {
@@ -397,8 +625,8 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     // -----------------------------------------------------------------------
     // Mesin Render Canvas Dinamis (Auto-Flow Y Layout Engine)
     // -----------------------------------------------------------------------
-    const drawToCanvas = useCallback((): HTMLCanvasElement => {
-        const canvas = canvasRef.current || document.createElement('canvas')
+    const drawToCanvas = useCallback((targetCanvas?: HTMLCanvasElement): HTMLCanvasElement => {
+        const canvas = targetCanvas || canvasRef.current || document.createElement('canvas')
         const ctx = canvas.getContext('2d')
         if (!ctx) return canvas
 
@@ -478,7 +706,11 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             ctx.clearRect(0, 0, W, H)
         } else {
             const bgGrad = ctx.createLinearGradient(0, 0, W, H)
-            if (bg.id === 'cyberpunk') {
+            if (bg.isCustom && bg.bgStart && bg.bgEnd) {
+                bgGrad.addColorStop(0, bg.bgStart)
+                bgGrad.addColorStop(1, bg.bgEnd)
+                ctx.fillStyle = bgGrad
+            } else if (bg.id === 'cyberpunk') {
                 const radGrad = ctx.createRadialGradient(W * 0.3, H * 0.2, 50, W * 0.5, H * 0.5, W)
                 radGrad.addColorStop(0, '#1e0836')
                 radGrad.addColorStop(0.6, '#0a0014')
@@ -508,26 +740,57 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             ctx.fillRect(0, 0, W, H)
         }
 
-        // 6. Custom Background (dari Settings) jika aktif
-        if (isCustomBgActive && customBgImgRef.current && customBgImgRef.current.complete) {
-            const img = customBgImgRef.current
-            const imgAspect = img.width / img.height
-            const canvasAspect = W / H
-            let dw = W, dh = H, dx = 0, dy = 0
+        // 6. Custom Background (Gambar atau Video) jika aktif
+        if (isCustomBgActive) {
+            let drewMedia = false
 
-            if (imgAspect > canvasAspect) {
-                dh = H
-                dw = H * imgAspect
-                dx = (W - dw) / 2
-            } else {
-                dw = W
-                dh = W / imgAspect
-                dy = (H - dh) / 2
+            if (activeCustomBgMediaType === 'video' && customBgVideoRef.current) {
+                const vid = customBgVideoRef.current
+                if (vid.readyState >= 2) {
+                    const vidW = vid.videoWidth || 1920
+                    const vidH = vid.videoHeight || 1080
+                    const vidAspect = vidW / vidH
+                    const canvasAspect = W / H
+                    let dw = W, dh = H, dx = 0, dy = 0
+
+                    if (vidAspect > canvasAspect) {
+                        dh = H
+                        dw = H * vidAspect
+                        dx = (W - dw) * (bgPosX / 100)
+                        dy = (H - dh) * (bgPosY / 100)
+                    } else {
+                        dw = W
+                        dh = W / vidAspect
+                        dx = (W - dw) * (bgPosX / 100)
+                        dy = (H - dh) * (bgPosY / 100)
+                    }
+                    ctx.drawImage(vid, dx, dy, dw, dh)
+                    drewMedia = true
+                }
+            } else if (customBgImgRef.current && customBgImgRef.current.complete) {
+                const img = customBgImgRef.current
+                const imgAspect = img.width / img.height
+                const canvasAspect = W / H
+                let dw = W, dh = H, dx = 0, dy = 0
+
+                if (imgAspect > canvasAspect) {
+                    dh = H
+                    dw = H * imgAspect
+                    dx = (W - dw) * (bgPosX / 100)
+                    dy = (H - dh) * (bgPosY / 100)
+                } else {
+                    dw = W
+                    dh = W / imgAspect
+                    dx = (W - dw) * (bgPosX / 100)
+                    dy = (H - dh) * (bgPosY / 100)
+                }
+                ctx.drawImage(img, dx, dy, dw, dh)
+                drewMedia = true
             }
-            ctx.drawImage(img, dx, dy, dw, dh)
 
-            ctx.fillStyle = `rgba(0, 0, 0, ${bgDimming / 100})`
-            ctx.fillRect(0, 0, W, H)
+            if (drewMedia) {
+                applyCanvasDimming(ctx, W, H, bgDimming, bgDimmingDirection)
+            }
         }
 
         // 7. Grid Texture & Ambient Glow
@@ -1032,7 +1295,8 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         showThesis, customThesis, showReview, customReview, showFullText, showReferral,
         traderHandle, brandTitle, brandSubtitle, activeLogoImg, activeReferral,
         duration, roiPercent, leverage,
-        isCustomBgActive, bgDimming
+        isCustomBgActive, activeCustomBgMediaType, bgDimming, bgDimmingDirection,
+        bgPosX, bgPosY
     ])
 
     // Update canvas preview saat parameter berubah
@@ -1041,7 +1305,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     }, [drawToCanvas])
 
     // -----------------------------------------------------------------------
-    // Aksi Export (Download PNG & Copy Clipboard)
+    // Aksi Export (Download PNG, GIF Animasi & Copy Clipboard)
     // -----------------------------------------------------------------------
     const handleDownload = () => {
         setDownloading(true)
@@ -1057,6 +1321,70 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         }
     }
 
+    const handleExportVideo = async () => {
+        setExportingVideo(true)
+        setVideoProgress(0)
+        try {
+            // Jika wallpaper video aktif, pastikan video sedang berputar
+            if (activeCustomBgMediaType === 'video' && customBgVideoRef.current) {
+                try {
+                    void customBgVideoRef.current.play()
+                } catch {
+                    // Abaikan jika autoplay dicegah
+                }
+            }
+
+            const result = await captureAndExportVideo((targetCanvas) => {
+                drawToCanvas(targetCanvas)
+            }, {
+                durationMs: 15_000, // Default 15 detik
+                fps: 30,
+                videoBitsPerSecond: 8_000_000,
+                onProgress: (pct) => setVideoProgress(pct)
+            })
+
+            const url = URL.createObjectURL(result.blob)
+            const link = document.createElement('a')
+            const dateStr = new Date().toISOString().slice(0, 10)
+            link.download = `${brandTitle}-${trade.trade.symbol}-${dateStr}.${result.extension}`
+            link.href = url
+            link.click()
+            URL.revokeObjectURL(url)
+        } catch (err) {
+            console.error('Gagal mengekspor video:', err)
+        } finally {
+            setExportingVideo(false)
+            setVideoProgress(0)
+        }
+    }
+
+    const handleExportGif = async () => {
+        setExportingGif(true)
+        setGifProgress(0)
+        try {
+            const blob = await captureAndExportGif((targetCanvas) => {
+                drawToCanvas(targetCanvas)
+            }, {
+                frameCount: 16,
+                fps: 8,
+                onProgress: (pct) => setGifProgress(pct)
+            })
+
+            const url = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            const dateStr = new Date().toISOString().slice(0, 10)
+            link.download = `${brandTitle}-${trade.trade.symbol}-${dateStr}.gif`
+            link.href = url
+            link.click()
+            URL.revokeObjectURL(url)
+        } catch (err) {
+            console.error('Gagal membuat GIF:', err)
+        } finally {
+            setExportingGif(false)
+            setGifProgress(0)
+        }
+    }
+
     const handleCopy = async () => {
         try {
             const canvas = drawToCanvas()
@@ -1066,12 +1394,12 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
                     setCopySuccess(true)
                     setTimeout(() => setCopySuccess(false), 2500)
-                } catch {
-                    alert('Clipboard browser tidak mendukung penulisan gambar. Silakan gunakan tombol "Save PNG".')
+                } catch (err) {
+                    console.error('Gagal menyalin gambar ke clipboard:', err)
                 }
             }, 'image/png')
-        } catch {
-            // Abaikan kesalahan clipboard
+        } catch (err) {
+            console.error('Gagal memproses gambar untuk clipboard:', err)
         }
     }
 
@@ -1086,9 +1414,50 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             size="xl"
         >
             <div className="flex flex-col gap-0 max-h-[85vh] overflow-y-auto">
-                {/* ── CARD LIVE PREVIEW ── */}
-                <div className="p-3 bg-muted/20 rounded-2xl flex items-center justify-center">
-                    <div className="w-full max-w-[540px]">
+                {/* ── CARD LIVE PREVIEW DENGAN DRAG-TO-PAN ── */}
+                <div className="p-3 bg-muted/20 rounded-2xl flex flex-col items-center justify-center gap-1.5">
+                    {/* Petunjuk Drag Reposisi saat wallpaper kustom aktif */}
+                    {isCustomBgActive && (
+                        <div className="flex items-center justify-between w-full max-w-[540px] px-1 text-[11px] text-muted-foreground select-none">
+                            <span className="flex items-center gap-1.5">
+                                <span className="text-primary font-bold">✋ Geser Wallpaper:</span>
+                                <span>Tarik langsung kartu di bawah untuk mengubah sudut pandang</span>
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="font-mono text-[10px] bg-background/80 px-2 py-0.5 rounded border border-border/60">
+                                    X: {bgPosX}% | Y: {bgPosY}%
+                                </span>
+                                {(bgPosX !== 50 || bgPosY !== 50) && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setBgPosX(50)
+                                            setBgPosY(50)
+                                        }}
+                                        className="text-[10px] text-primary hover:underline"
+                                    >
+                                        ↺ 50%
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    <div
+                        ref={cardContainerRef}
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                        onPointerCancel={handlePointerUp}
+                        className={cn(
+                            "w-full max-w-[540px] transition-all",
+                            isCustomBgActive && (
+                                isDraggingBg
+                                    ? "cursor-grabbing touch-none ring-2 ring-primary/80 rounded-[26px] shadow-2xl scale-[1.008]"
+                                    : "cursor-grab touch-none hover:ring-1 hover:ring-primary/40 rounded-[26px]"
+                            )
+                        )}
+                    >
                         <PnlCard
                             trade={trade}
                             bg={bg}
@@ -1105,7 +1474,12 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                             avatarUrl={avatarUrl}
                             isCustomBgActive={isCustomBgActive}
                             customBgUrl={activeCustomBgUrl}
+                            customBgMediaType={activeCustomBgMediaType}
                             bgDimming={bgDimming}
+                            bgDimmingDirection={bgDimmingDirection}
+                            bgPosX={bgPosX}
+                            bgPosY={bgPosY}
+                            videoRef={customBgVideoRef}
                             showSide={showSide}
                             showPnl={showPnl}
                             showRoi={showRoi}
@@ -1202,19 +1576,44 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                         <span>{tpl.name}</span>
                                     </button>
                                     {!tpl.isBuiltin && (
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.stopPropagation()
-                                                if (confirm(`Hapus template "${tpl.name}"?`)) {
-                                                    handleDeleteTemplate(tpl.id)
-                                                }
-                                            }}
-                                            title="Hapus template kustom ini"
-                                            className="ml-1 p-0.5 text-muted-foreground hover:text-destructive text-[11px] rounded transition-colors"
-                                        >
-                                            ✕
-                                        </button>
+                                        confirmDeleteTplId === tpl.id ? (
+                                            <div className="flex items-center gap-1 ml-1 bg-destructive/15 border border-destructive/30 px-1 py-0.5 rounded">
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        handleDeleteTemplate(tpl.id)
+                                                        setConfirmDeleteTplId(null)
+                                                    }}
+                                                    className="text-[10px] font-bold text-destructive hover:underline"
+                                                    title="Yakin ingin menghapus template ini?"
+                                                >
+                                                    Hapus?
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        setConfirmDeleteTplId(null)
+                                                    }}
+                                                    className="text-[10px] text-muted-foreground hover:text-foreground"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    setConfirmDeleteTplId(tpl.id)
+                                                }}
+                                                title="Hapus template kustom ini"
+                                                className="ml-1 p-0.5 text-muted-foreground hover:text-destructive text-[11px] rounded transition-colors"
+                                            >
+                                                ✕
+                                            </button>
+                                        )
                                     )}
                                 </div>
                             )
@@ -1250,7 +1649,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                 <span>🎨</span>
                                 <span>Skema Warna:</span>
                             </span>
-                            {BG_TEMPLATES.map((t, i) => {
+                            {allBgTemplates.map((t, i) => {
                                 const isColorSelected = selectedBgIdx === i
                                 return (
                                     <button
@@ -1268,17 +1667,26 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                         }`}
                                         title={
                                             isCustomBgActive
-                                                ? `${t.label} (Aktif sebagai warna aksen & teks kartu)`
-                                                : `${t.label} (Aktif sebagai background & warna aksen)`
+                                                ? `${t.label}${t.isCustom ? ' (Kustom)' : ''} (Aktif sebagai warna aksen & teks kartu)`
+                                                : `${t.label}${t.isCustom ? ' (Kustom)' : ''} (Aktif sebagai background & warna aksen)`
                                         }
                                     >
                                         <span
                                             className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                                             style={{
-                                                background: t.isTransparent ? 'linear-gradient(45deg, #38bdf8 0%, #a855f7 100%)' : t.accentProfit,
+                                                background: t.isTransparent
+                                                    ? 'linear-gradient(45deg, #38bdf8 0%, #a855f7 100%)'
+                                                    : t.isCustom && t.bgStart && t.bgEnd
+                                                        ? `linear-gradient(135deg, ${t.bgStart}, ${t.bgEnd})`
+                                                        : t.accentProfit,
                                             }}
                                         />
                                         <span>{t.label}</span>
+                                        {t.isCustom && (
+                                            <span className="text-[9px] px-1 py-0.2 rounded bg-primary/20 text-primary font-mono">
+                                                custom
+                                            </span>
+                                        )}
                                         {isColorSelected && (
                                             <span className="text-[10px] opacity-75 font-mono">
                                                 {isCustomBgActive ? '(Aksen)' : '✓'}
@@ -1304,7 +1712,10 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                         {/* Opsi Polos (Gunakan Warna Tema Saja) */}
                         <button
                             type="button"
-                            onClick={() => setIsCustomBgActive(false)}
+                            onClick={() => {
+                                setIsCustomBgActive(false)
+                                saveShareSettings({ isCustomBg: false })
+                            }}
                             className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
                                 !isCustomBgActive
                                     ? 'border-primary bg-primary/20 text-foreground font-bold shadow-xs ring-1 ring-primary/50'
@@ -1318,6 +1729,8 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
 
                         {customBgList.map((bgItem) => {
                             const isSelected = isCustomBgActive && selectedCustomBgId === bgItem.id
+                            const resolvedItemType = resolveMediaType(bgItem.mediaType, bgItem.dataUrl, 'image')
+                            const isVideo = resolvedItemType === 'video'
                             return (
                                 <button
                                     key={bgItem.id}
@@ -1325,6 +1738,18 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                     onClick={() => {
                                         setSelectedCustomBgId(bgItem.id)
                                         setIsCustomBgActive(true)
+                                        const px = bgItem.bgPosX ?? bgItem.posX ?? 50
+                                        const py = bgItem.bgPosY ?? bgItem.posY ?? 50
+                                        setBgPosX(px)
+                                        setBgPosY(py)
+                                        saveShareSettings({
+                                            customBgId: bgItem.id,
+                                            isCustomBg: true,
+                                            customBgMediaType: resolvedItemType,
+                                            customBgUrl: bgItem.dataUrl,
+                                            bgPosX: px,
+                                            bgPosY: py
+                                        })
                                     }}
                                     className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
                                         isSelected
@@ -1332,12 +1757,19 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                             : 'border-border/60 bg-muted/20 text-muted-foreground hover:text-foreground hover:border-border'
                                     }`}
                                 >
-                                    <img
-                                        src={bgItem.dataUrl}
-                                        alt={bgItem.name}
-                                        className="w-4 h-4 rounded object-cover border border-white/20"
-                                    />
+                                    {isVideo ? (
+                                        <span className="w-4 h-4 rounded bg-amber-500/20 text-amber-400 flex items-center justify-center text-[10px] font-bold">
+                                            ▶
+                                        </span>
+                                    ) : (
+                                        <img
+                                            src={bgItem.dataUrl}
+                                            alt={bgItem.name}
+                                            className="w-4 h-4 rounded object-cover border border-white/20"
+                                        />
+                                    )}
                                     <span className="truncate max-w-[100px]">{bgItem.name}</span>
+                                    {isVideo && <span className="text-[9px] text-amber-400 font-mono">vid</span>}
                                 </button>
                             )
                         })}
@@ -1346,7 +1778,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                         <input
                             ref={uploadBgModalInputRef}
                             type="file"
-                            accept="image/*"
+                            accept="image/*,video/mp4,video/webm"
                             onChange={(e) => {
                                 handleUploadNewBg(e.target.files?.[0])
                                 if (uploadBgModalInputRef.current) uploadBgModalInputRef.current.value = ''
@@ -1359,11 +1791,83 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                             type="button"
                             onClick={() => uploadBgModalInputRef.current?.click()}
                             className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border border-dashed border-border bg-muted/30 text-muted-foreground hover:text-primary hover:border-primary/60 transition-all"
-                            title="Upload gambar wallpaper baru ke koleksi Anda"
+                            title="Upload gambar atau klip video (MP4/WebM) baru ke koleksi Anda"
                         >
-                            <span>+ Upload BG</span>
+                            <span>+ Upload Media</span>
                         </button>
                     </div>
+
+                    {/* Panel Kontrol Reposisi Wallpaper Kustom */}
+                    {isCustomBgActive && (
+                        <div className="p-2.5 rounded-xl bg-muted/30 border border-border/50 flex flex-col gap-2">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[11px] font-bold text-foreground">
+                                        🧭 Reposisi Wallpaper:
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground">
+                                        (Geser langsung pada kartu live di atas, atau gunakan slider berikut)
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setBgPosX(50)
+                                            setBgPosY(50)
+                                        }}
+                                        className="text-[10px] px-2 py-0.5 rounded border border-border bg-background hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                                        title="Kembalikan posisi ke tengah (50% 50%)"
+                                    >
+                                        ↺ Tengah (50%)
+                                    </button>
+                                    {selectedCustomBgId && (
+                                        <button
+                                            type="button"
+                                            onClick={handleSaveDefaultBgPos}
+                                            className={`text-[10px] px-2.5 py-0.5 rounded font-semibold border transition-all ${
+                                                isSavedDefaultBgPos
+                                                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                                                    : 'bg-primary/15 text-primary border-primary/30 hover:bg-primary/25'
+                                            }`}
+                                            title="Simpan posisi X & Y ini sebagai nilai bawaan wallpaper saat ini"
+                                        >
+                                            {isSavedDefaultBgPos ? '✓ Tersimpan!' : '💾 Simpan Posisi Bawaan'}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0.5">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-semibold text-muted-foreground min-w-[58px]">
+                                        Posisi X: <span className="font-mono text-foreground">{bgPosX}%</span>
+                                    </span>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="100"
+                                        value={bgPosX}
+                                        onChange={(e) => setBgPosX(Number(e.target.value))}
+                                        className="flex-1 accent-primary h-1.5 cursor-ew-resize"
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-semibold text-muted-foreground min-w-[58px]">
+                                        Posisi Y: <span className="font-mono text-foreground">{bgPosY}%</span>
+                                    </span>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="100"
+                                        value={bgPosY}
+                                        onChange={(e) => setBgPosY(Number(e.target.value))}
+                                        className="flex-1 accent-primary h-1.5 cursor-ns-resize"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="text-[11px] text-muted-foreground/80 italic flex items-center gap-1">
                         <span>💡</span>
@@ -1496,7 +2000,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 </div>
 
                 {/* ── ACTION BUTTONS ── */}
-                <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-border/40 bg-card/30">
+                <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border/40 bg-card/30">
                     {[
                         {
                             icon: (
@@ -1508,7 +2012,31 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                             ),
                             label: downloading ? 'Menyimpan...' : 'Save PNG (HQ)',
                             onClick: handleDownload,
-                            disabled: downloading,
+                            disabled: downloading || exportingVideo || exportingGif,
+                        },
+                        {
+                            icon: (
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                    <path d="M15 10l5-3v10l-5-3v-4z" />
+                                    <rect x="2" y="6" width="13" height="12" rx="3" />
+                                </svg>
+                            ),
+                            label: exportingVideo ? `Proses (${videoProgress}%)` : (activeCustomBgMediaType === 'video' ? 'Save Video 15s (HQ 🎬)' : 'Save Video 15s (HQ)'),
+                            onClick: () => void handleExportVideo(),
+                            disabled: exportingVideo || downloading || exportingGif,
+                        },
+                        {
+                            icon: (
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                    <rect x="3" y="5" width="18" height="14" rx="3" />
+                                    <path d="M7 15V9h3a2 2 0 0 1 0 4H7" />
+                                    <path d="M14 9v6" />
+                                    <path d="M17 9h3v2h-2v2h2v2h-3V9" />
+                                </svg>
+                            ),
+                            label: exportingGif ? `Proses (${gifProgress}%)` : 'Save GIF',
+                            onClick: () => void handleExportGif(),
+                            disabled: exportingGif || exportingVideo || downloading,
                         },
                         {
                             icon: (
@@ -1583,7 +2111,12 @@ interface PnlCardProps {
     avatarUrl: string | null
     isCustomBgActive: boolean
     customBgUrl: string | null
+    customBgMediaType?: 'image' | 'video'
     bgDimming: number
+    bgDimmingDirection?: BgDimmingDirection
+    bgPosX?: number
+    bgPosY?: number
+    videoRef?: React.RefObject<HTMLVideoElement | null>
     showSide: boolean
     showPnl: boolean
     showRoi: boolean
@@ -1612,7 +2145,8 @@ interface PnlCardProps {
 function PnlCard({
     trade, bg, accent, roiPercent, duration, leverage, selectedExchange,
     traderHandle, brandTitle, brandSubtitle, activeLogoUrl, activeReferral,
-    avatarUrl, isCustomBgActive, customBgUrl, bgDimming,
+    avatarUrl, isCustomBgActive, customBgUrl, customBgMediaType = 'image',
+    bgDimming, bgDimmingDirection = 'uniform', bgPosX = 50, bgPosY = 50, videoRef,
     showSide, showPnl, showRoi, showTradeTimes, showProfile, showWatermark, showDuration,
     showPlan, plannedStop, plannedTarget, plannedRr,
     setupTag, executionGrade, emotionTag, showSetup, showGrade, showEmotion,
@@ -1636,16 +2170,34 @@ function PnlCard({
                 boxShadow: isTransparentMode ? `0 8px 32px rgba(0, 0, 0, 0.5), 0 0 24px ${accent}22` : '0 12px 36px rgba(0, 0, 0, 0.35)',
             }}
         >
-            {/* Custom Image Background */}
+            {/* Custom Image or Video Background */}
             {isCustomBgActive && customBgUrl && (
                 <>
-                    <div
-                        className="pointer-events-none absolute inset-0 bg-cover bg-center"
-                        style={{ backgroundImage: `url(${customBgUrl})` }}
-                    />
+                    {customBgMediaType === 'video' ? (
+                        <video
+                            ref={videoRef}
+                            src={customBgUrl}
+                            className="pointer-events-none absolute inset-0 w-full h-full object-cover"
+                            muted
+                            loop
+                            autoPlay
+                            playsInline
+                            style={{
+                                objectPosition: `${bgPosX}% ${bgPosY}%`,
+                            }}
+                        />
+                    ) : (
+                        <div
+                            className="pointer-events-none absolute inset-0 bg-cover"
+                            style={{
+                                backgroundImage: `url(${customBgUrl})`,
+                                backgroundPosition: `${bgPosX}% ${bgPosY}%`,
+                            }}
+                        />
+                    )}
                     <div
                         className="pointer-events-none absolute inset-0"
-                        style={{ backgroundColor: `rgba(0, 0, 0, ${bgDimming / 100})` }}
+                        style={getGradientDimmingStyle(bgDimming, bgDimmingDirection)}
                     />
                 </>
             )}

@@ -181,7 +181,11 @@ const api: PreloadApi = {
         ipcRenderer.invoke(IPC_CHANNELS.getAppVersion),
 
     checkForUpdates: (): Promise<MutationResult<AppUpdateInfo>> =>
-        ipcRenderer.invoke(IPC_CHANNELS.checkForUpdates)
+        ipcRenderer.invoke(IPC_CHANNELS.checkForUpdates),
+
+    // --- BTC Market Data (Analytics ROI) ---
+    getBtcKlines: (payload: { startTime: number; endTime: number }): Promise<MutationResult<{ time: number; close: number }[]>> =>
+        ipcRenderer.invoke(IPC_CHANNELS.btcKlines, payload)
 }
 
 contextBridge.exposeInMainWorld('api', api)

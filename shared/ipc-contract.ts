@@ -66,7 +66,10 @@ export const IPC_CHANNELS = {
     // --- Utilitas Aplikasi & Pembaruan ---
     openExternalUrl: 'app:openExternalUrl',
     getAppVersion: 'app:getVersion',
-    checkForUpdates: 'app:checkForUpdates'
+    checkForUpdates: 'app:checkForUpdates',
+
+    // --- BTC Market Data (Analytics ROI) ---
+    btcKlines: 'btc:klines'
 } as const
 
 /** Exchange yang bisa disinkronkan. */
@@ -360,6 +363,14 @@ export interface PreloadApi {
     openExternalUrl(url: string): Promise<MutationResult<void>>
     getAppVersion(): Promise<string>
     checkForUpdates(): Promise<MutationResult<AppUpdateInfo>>
+
+    // --- BTC Market Data (Analytics ROI) ---
+    getBtcKlines(payload: { startTime: number; endTime: number }): Promise<MutationResult<{ time: number; close: number }[]>>
+}
+
+export interface BtcKlinePoint {
+    time: number
+    close: number
 }
 
 // Re-export tipe domain yang dipakai renderer, supaya renderer cukup
