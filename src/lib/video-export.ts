@@ -81,6 +81,8 @@ export interface VideoExportOptions {
     formatPreference?: 'auto' | 'mp4' | 'webm'
     /** Callback persentase progress (0 - 100) */
     onProgress?: (percent: number) => void
+    /** Elemen HTMLVideoElement sumber audio (jika ada) */
+    audioSourceVideo?: HTMLVideoElement | null
 }
 
 export interface VideoExportResult {
@@ -135,6 +137,44 @@ export async function captureAndExportVideo(
         throw new Error('Metode captureStream tidak didukung pada elemen kanvas browser.')
     }
 
+    // Ekstrak trek audio dari video sumber jika ada
+    let cloneAudio: HTMLAudioElement | null = null
+    let audioCtx: AudioContext | null = null
+    let mediaElementSource: MediaElementAudioSourceNode | null = null
+    if (options.audioSourceVideo) {
+        try {
+            // Gunakan AudioContext agar tetap mendapat audio meskipun elemen video muted
+            audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume().catch(() => {})
+            }
+            // Kloning audio agar kita bisa unmute tanpa memengaruhi video asli
+            // dan tidak memicu InvalidStateError jika di-export berkali-kali
+            cloneAudio = new Audio(options.audioSourceVideo.currentSrc || options.audioSourceVideo.src)
+            cloneAudio.crossOrigin = 'anonymous'
+            cloneAudio.currentTime = options.audioSourceVideo.currentTime
+            cloneAudio.loop = options.audioSourceVideo.loop
+            cloneAudio.playbackRate = options.audioSourceVideo.playbackRate
+            cloneAudio.muted = false // Harus false agar ada sinyal ke AudioContext
+
+            mediaElementSource = audioCtx.createMediaElementSource(cloneAudio)
+            const destination = audioCtx.createMediaStreamDestination()
+            mediaElementSource.connect(destination)
+            // Sengaja TIDAK dikoneksikan ke audioCtx.destination agar tidak bunyi ke speaker
+
+            // Mulai play dari kloningan
+            cloneAudio.play().catch(e => console.warn('Kloningan audio gagal play', e))
+
+            const audioTracks = destination.stream.getAudioTracks()
+            const firstAudioTrack = audioTracks[0]
+            if (firstAudioTrack) {
+                stream.addTrack(firstAudioTrack)
+            }
+        } catch (err) {
+            console.warn('Gagal menangkap trek audio dari sumber video:', err)
+        }
+    }
+
     // 4. Inisialisasi MediaRecorder
     let recorder: MediaRecorder
     try {
@@ -165,12 +205,30 @@ export async function captureAndExportVideo(
             isAborted = true
             if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
             stream.getTracks().forEach((track) => track.stop())
+            if (cloneAudio) {
+                cloneAudio.pause()
+                cloneAudio.removeAttribute('src')
+                cloneAudio.load()
+            }
+            if (mediaElementSource && audioCtx) {
+                mediaElementSource.disconnect()
+                audioCtx.close().catch(() => {})
+            }
             reject(err)
         }
 
         recorder.onstop = () => {
             if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
             stream.getTracks().forEach((track) => track.stop())
+            if (cloneAudio) {
+                cloneAudio.pause()
+                cloneAudio.removeAttribute('src')
+                cloneAudio.load()
+            }
+            if (mediaElementSource && audioCtx) {
+                mediaElementSource.disconnect()
+                audioCtx.close().catch(() => {})
+            }
 
             options.onProgress?.(100)
             const finalBlob = new Blob(recordedChunks, { type: formatSupport.mimeType })

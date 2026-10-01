@@ -4,6 +4,7 @@ import { closeDb, getDbPath, initializeDb } from './db/index'
 import { registerIpcHandlers } from './ipc/handlers'
 import { registerSyncHandlers } from './ipc/sync-handlers'
 import { logger } from './utils/logger'
+import { autoUpdater } from 'electron-updater'
 
 /**
  * Entry point main process.
@@ -138,6 +139,18 @@ if (!gotLock) {
             handleStartupFatalError(error)
             return
         }
+
+        // Setup auto updater
+        autoUpdater.logger = {
+            info: (msg: string) => logger.info(`[updater] ${msg}`),
+            warn: (msg: string) => logger.warn(`[updater] ${msg}`),
+            error: (msg: string) => logger.error(`[updater] ${msg}`),
+            debug: (msg: string) => logger.info(`[updater-debug] ${msg}`)
+        } as any
+        
+        autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+            logger.error('[updater] Gagal memeriksa pembaruan:', err)
+        })
 
         app.on('activate', () => {
             if (BrowserWindow.getAllWindows().length === 0) {

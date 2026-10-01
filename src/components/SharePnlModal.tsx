@@ -544,6 +544,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const [gifProgress, setGifProgress] = useState(0)
     const [exportingVideo, setExportingVideo] = useState(false)
     const [videoProgress, setVideoProgress] = useState(0)
+    const [videoQuality, setVideoQuality] = useState<'standard' | 'jernih' | 'super'>('jernih')
 
     // Logo & Referral aktif berdasarkan exchange terpilih (otomatis fallback ke logo resmi bawaan)
     const customExchangeLogo = (savedSettings[`${selectedExchange}LogoUrl` as keyof typeof savedSettings] as string | null) || null
@@ -1334,13 +1335,24 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 }
             }
 
+            let fps = 30
+            let videoBitsPerSecond = 8_000_000
+            if (videoQuality === 'standard') {
+                fps = 30
+                videoBitsPerSecond = 2_500_000
+            } else if (videoQuality === 'super') {
+                fps = 60
+                videoBitsPerSecond = 16_000_000
+            }
+
             const result = await captureAndExportVideo((targetCanvas) => {
                 drawToCanvas(targetCanvas)
             }, {
                 durationMs: 15_000, // Default 15 detik
-                fps: 30,
-                videoBitsPerSecond: 8_000_000,
-                onProgress: (pct) => setVideoProgress(pct)
+                fps,
+                videoBitsPerSecond,
+                onProgress: (pct) => setVideoProgress(pct),
+                audioSourceVideo: activeCustomBgMediaType === 'video' ? customBgVideoRef.current : undefined
             })
 
             const url = URL.createObjectURL(result.blob)
@@ -2000,7 +2012,20 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 </div>
 
                 {/* ── ACTION BUTTONS ── */}
-                <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border/40 bg-card/30">
+                <div className="flex flex-col gap-2 px-4 py-3 border-t border-border/40 bg-card/30">
+                    <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Kualitas Video:</span>
+                        <select
+                            value={videoQuality}
+                            onChange={(e) => setVideoQuality(e.target.value as any)}
+                            className="text-xs bg-background/50 border border-border/60 rounded px-2 py-1 outline-none text-foreground cursor-pointer hover:bg-background/80"
+                        >
+                            <option value="standard">Standard (2.5 Mbps, 30fps)</option>
+                            <option value="jernih">Jernih (8.0 Mbps, 30fps)</option>
+                            <option value="super">Super Jernih (16.0 Mbps, 60fps)</option>
+                        </select>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
                     {[
                         {
                             icon: (
@@ -2085,6 +2110,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                             <span className="text-[11px] font-medium leading-tight">{label}</span>
                         </button>
                     ))}
+                    </div>
                 </div>
             </div>
         </Modal>
