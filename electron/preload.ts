@@ -185,7 +185,11 @@ const api: PreloadApi = {
 
     // --- BTC Market Data (Analytics ROI) ---
     getBtcKlines: (payload: { startTime: number; endTime: number }): Promise<MutationResult<{ time: number; close: number }[]>> =>
-        ipcRenderer.invoke(IPC_CHANNELS.btcKlines, payload)
+        ipcRenderer.invoke(IPC_CHANNELS.btcKlines, payload),
+
+    // --- Utilitas Video (Remux fMP4 ke Standard MP4 +faststart) ---
+    remuxVideoMp4: (data: Uint8Array): Promise<MutationResult<Uint8Array>> =>
+        ipcRenderer.invoke(IPC_CHANNELS.videoRemuxMp4, data)
 }
 
 contextBridge.exposeInMainWorld('api', api)

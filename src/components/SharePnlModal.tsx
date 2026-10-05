@@ -1507,7 +1507,22 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 audioSourceVideo: activeCustomBgMediaType === 'video' ? customBgVideoRef.current : undefined
             })
 
-            const url = URL.createObjectURL(result.blob)
+            let finalBlob = result.blob
+
+            // Otomatis remux fMP4 Chromium menjadi Standard Linear MP4 (+faststart) agar terbaca utuh di TikTok & medsos
+            if (result.extension === 'mp4' && typeof window !== 'undefined' && window.api?.remuxVideoMp4) {
+                try {
+                    const arrayBuffer = await result.blob.arrayBuffer()
+                    const remuxRes = await window.api.remuxVideoMp4(new Uint8Array(arrayBuffer))
+                    if (remuxRes?.ok && remuxRes.data && remuxRes.data.length > 0) {
+                        finalBlob = new Blob([remuxRes.data as unknown as BlobPart], { type: 'video/mp4' })
+                    }
+                } catch (remuxErr) {
+                    console.warn('Remuxing video gagal, fallback ke rekaman asli:', remuxErr)
+                }
+            }
+
+            const url = URL.createObjectURL(finalBlob)
             const link = document.createElement('a')
             const dateStr = new Date().toISOString().slice(0, 10)
             const aspectSuffix = exportAspect === '9:16' ? '-9x16' : ''

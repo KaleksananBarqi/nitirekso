@@ -18,6 +18,7 @@ import {
 } from '../../shared/ipc-contract'
 import { getDb, getDbPath, runSmokeTest } from '../db/index'
 import { logger } from '../utils/logger'
+import { remuxMp4WithFaststart } from '../utils/video-remux'
 import { deleteScreenshot, readScreenshotDataUrl, saveScreenshot } from '../screenshots/index'
 import {
     countTrades,
@@ -632,6 +633,21 @@ export function registerIpcHandlers(): void {
             return {
                 ok: false,
                 error: 'Tidak dapat mengambil data harga historis BTC dari semua provider (Binance, Kraken, CoinGecko). Pastikan koneksi internet aktif.'
+            }
+        }
+    )
+
+    // --- Utilitas Video: Remux fMP4 ke Standard Linear MP4 (+faststart) ---
+    ipcMain.handle(
+        IPC_CHANNELS.videoRemuxMp4,
+        async (_event, data: Uint8Array): Promise<MutationResult<Uint8Array>> => {
+            try {
+                const remuxed = await remuxMp4WithFaststart(data)
+                return { ok: true, data: remuxed }
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err)
+                logger.error('[ipc] videoRemuxMp4 error:', message)
+                return { ok: false, error: message, data }
             }
         }
     )

@@ -69,7 +69,10 @@ export const IPC_CHANNELS = {
     checkForUpdates: 'app:checkForUpdates',
 
     // --- BTC Market Data (Analytics ROI) ---
-    btcKlines: 'btc:klines'
+    btcKlines: 'btc:klines',
+
+    // --- Utilitas Video (Remux fMP4 ke Standard MP4 +faststart) ---
+    videoRemuxMp4: 'video:remuxMp4'
 } as const
 
 /** Exchange yang bisa disinkronkan. */
@@ -366,6 +369,9 @@ export interface PreloadApi {
 
     // --- BTC Market Data (Analytics ROI) ---
     getBtcKlines(payload: { startTime: number; endTime: number }): Promise<MutationResult<{ time: number; close: number }[]>>
+
+    // --- Utilitas Video (Remux fMP4 ke Standard MP4 +faststart) ---
+    remuxVideoMp4?: (data: Uint8Array) => Promise<MutationResult<Uint8Array>>
 }
 
 export interface BtcKlinePoint {

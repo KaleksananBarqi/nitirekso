@@ -3,6 +3,17 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.7.1] - 2026-10-05
+
+### 🐛 Perbaikan Bug & Peningkatan Kompatibilitas Media Sosial
+- **Lossless MP4 +faststart Remuxing (Solusi Video Terbaca 3 Detik di TikTok)**:
+  - Mengatasi masalah video hasil ekspor yang dipotong menjadi 3 detik saat diunggah ke TikTok akibat struktur *Fragmented MP4 (fMP4)* bawaan Chromium `MediaRecorder` yang memiliki durasi header `0` dan fragmen awal berdurasi ~3.42 detik.
+  - Mengintegrasikan modul background remuxer via IPC Node.js Main Process (`ffmpeg -c copy -movflags +faststart`) yang secara otomatis menyatukan fragmen fMP4 menjadi Standard Linear MP4 dengan atom `moov` utuh di awal berkas.
+  - Proses berjalan instan (~50ms) secara *lossless* tanpa re-encode (kualitas dan frame rate 100% terjaga) sebelum berkas diunduh.
+  - Menyertakan *defensive cleanup* berkas sementara dan *graceful fallback* jika sistem tidak memiliki enkoder eksternal.
+
+---
+
 ## [1.7.0] - 2026-10-05
 
 ### 🚀 Fitur Baru
