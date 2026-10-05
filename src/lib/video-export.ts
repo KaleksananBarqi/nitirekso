@@ -203,7 +203,7 @@ export async function captureAndExportVideo(
 
         recorder.onerror = (err) => {
             isAborted = true
-            if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
+            cleanupTimers()
             stream.getTracks().forEach((track) => track.stop())
             if (cloneAudio) {
                 cloneAudio.pause()
@@ -218,7 +218,7 @@ export async function captureAndExportVideo(
         }
 
         recorder.onstop = () => {
-            if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
+            cleanupTimers()
             stream.getTracks().forEach((track) => track.stop())
             if (cloneAudio) {
                 cloneAudio.pause()
@@ -240,17 +240,35 @@ export async function captureAndExportVideo(
             })
         }
 
-        // Mulai merekam dengan timeslice 100ms
-        recorder.start(100)
+        // Mulai merekam dengan timeslice 1000ms agar cluster fragment MP4 stabil
+        recorder.start(1000)
         options.onProgress?.(5)
 
-        // 5. Loop render setiap frame secara presisi
+        // 5. Dual-Clock Engine: Loop render presisi tinggi tahan background throttling
         const frameCanvas = document.createElement('canvas')
+        const videoTrack = stream.getVideoTracks()[0] as (MediaStreamTrack & { requestFrame?: () => void }) | undefined
+        let timerFallbackId: any = null
+        let lastProgressReportTime = 0
+        let lastReportedPercent = -1
 
-        const renderLoop = (currentTime: number) => {
+        const cleanupTimers = () => {
+            if (animationFrameId !== null) {
+                cancelAnimationFrame(animationFrameId)
+                animationFrameId = null
+            }
+            if (timerFallbackId !== null) {
+                clearTimeout(timerFallbackId)
+                timerFallbackId = null
+            }
+        }
+
+        const step = () => {
             if (isAborted) return
+            cleanupTimers()
 
+            const currentTime = performance.now()
             const elapsed = currentTime - startTime
+
             if (elapsed >= durationMs) {
                 // Selesai durasi perekaman
                 options.onProgress?.(98)
@@ -260,19 +278,35 @@ export async function captureAndExportVideo(
                 return
             }
 
-            // Gambar frame jika interval waktu mencukupi
-            if (currentTime - lastFrameTime >= frameIntervalMs * 0.9) {
-                renderFrameToCanvas(frameCanvas)
-                recordCtx.drawImage(frameCanvas, 0, 0, exportW, exportH)
+            // Gambar frame jika interval waktu mencukupi (toleransi 0.85 frameInterval)
+            if (currentTime - lastFrameTime >= frameIntervalMs * 0.85) {
+                try {
+                    renderFrameToCanvas(frameCanvas)
+                    recordCtx.drawImage(frameCanvas, 0, 0, exportW, exportH)
+                    // Paksa encoder menangkap frame kanvas terbaru secara deterministik
+                    if (videoTrack && typeof videoTrack.requestFrame === 'function') {
+                        videoTrack.requestFrame()
+                    }
+                } catch (renderErr) {
+                    console.warn('Gagal merender frame video:', renderErr)
+                }
                 lastFrameTime = currentTime
 
+                // Throttle pembaruan progress ke React UI maksimal setiap 200ms
                 const progressPercent = Math.min(95, Math.max(5, Math.round((elapsed / durationMs) * 100)))
-                options.onProgress?.(progressPercent)
+                if (progressPercent !== lastReportedPercent && currentTime - lastProgressReportTime >= 200) {
+                    lastReportedPercent = progressPercent
+                    lastProgressReportTime = currentTime
+                    options.onProgress?.(progressPercent)
+                }
             }
 
-            animationFrameId = requestAnimationFrame(renderLoop)
+            // Jadwalkan frame berikutnya: utamakan requestAnimationFrame saat window fokus,
+            // dan pasang setTimeout sebagai fallback jika jendela terminimize / blur.
+            animationFrameId = requestAnimationFrame(step)
+            timerFallbackId = setTimeout(step, Math.max(8, Math.round(frameIntervalMs * 0.95)))
         }
 
-        animationFrameId = requestAnimationFrame(renderLoop)
+        animationFrameId = requestAnimationFrame(step)
     })
 }

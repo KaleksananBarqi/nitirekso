@@ -19,6 +19,7 @@ import {
     updateCustomShareColorScheme,
     deleteCustomShareColorScheme,
     resolveMediaType,
+    DIMMING_DIRECTION_OPTIONS,
     type ShareSettings,
     type ExchangeName,
     type ShareCardTemplate,
@@ -534,7 +535,7 @@ export function ShareBrandingSettings(): React.JSX.Element {
                                     </span>
                                     <input
                                         type="range"
-                                        min="20"
+                                        min="0"
                                         max="95"
                                         value={settings.bgDimming}
                                         onChange={(e) => updateSettings({ bgDimming: Number(e.target.value) })}
@@ -548,15 +549,13 @@ export function ShareBrandingSettings(): React.JSX.Element {
                                     <select
                                         value={settings.bgDimmingDirection || 'uniform'}
                                         onChange={(e) => updateSettings({ bgDimmingDirection: e.target.value as BgDimmingDirection })}
-                                        className="h-7 text-xs rounded bg-background border border-border px-2 text-foreground focus:border-primary focus:outline-none"
+                                        className="h-7 text-xs rounded bg-background border border-border px-2 text-foreground focus:border-primary focus:outline-none cursor-pointer"
                                     >
-                                        <option value="uniform">Merata (Uniform)</option>
-                                        <option value="top-right">Terang Kanan Atas (Gaya Exchange ⚡)</option>
-                                        <option value="top-left">Terang Kiri Atas</option>
-                                        <option value="bottom-right">Terang Kanan Bawah</option>
-                                        <option value="bottom-left">Terang Kiri Bawah</option>
-                                        <option value="left">Terang Sisi Kiri</option>
-                                        <option value="right">Terang Sisi Kanan</option>
+                                        {DIMMING_DIRECTION_OPTIONS.map((opt) => (
+                                            <option key={opt.value} value={opt.value}>
+                                                {opt.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                             </div>

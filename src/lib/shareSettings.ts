@@ -99,6 +99,33 @@ export const BG_TEMPLATES: BgTemplate[] = [
 
 export type BgDimmingDirection = 'uniform' | 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left' | 'left' | 'right'
 
+export const DIMMING_DIRECTION_OPTIONS: Array<{ value: BgDimmingDirection; label: string }> = [
+    { value: 'uniform', label: 'Merata (Uniform)' },
+    { value: 'top-right', label: 'Terang Kanan Atas (Gaya Exchange ⚡)' },
+    { value: 'top-left', label: 'Terang Kiri Atas' },
+    { value: 'bottom-right', label: 'Terang Kanan Bawah' },
+    { value: 'bottom-left', label: 'Terang Kiri Bawah' },
+    { value: 'left', label: 'Terang Sisi Kiri' },
+    { value: 'right', label: 'Terang Sisi Kanan' }
+]
+
+export type ExportAspect = 'original' | '9:16'
+export type FrameBgSource = 'card-blur' | 'wallpaper-blur' | 'solid'
+
+export const ASPECT_PRESETS: Record<ExportAspect, { w: number; h: number; label: string; desc: string }> = {
+    'original': { w: 1080, h: 0, label: 'Asli', desc: 'Rasio asli kartu dinamis' },
+    '9:16': { w: 1080, h: 1920, label: 'TikTok 9:16', desc: 'Portrait 1080×1920 dengan overlay blur' }
+}
+
+export type VideoDurationMode = 'source' | '15' | '30' | '60'
+
+export const VIDEO_DURATION_OPTIONS: Array<{ value: VideoDurationMode; label: string; desc: string }> = [
+    { value: 'source', label: 'Sesuai Video Sumber', desc: 'Durasi penuh sesuai file video latar belakang' },
+    { value: '15', label: '15 Detik', desc: 'Cocok untuk Story / video singkat' },
+    { value: '30', label: '30 Detik', desc: 'Standar Reels & TikTok' },
+    { value: '60', label: '60 Detik (1 Menit)', desc: 'Format video panjang' }
+]
+
 export const SHARE_STORAGE_KEYS = {
     AVATAR: 'trading_journal_share_avatar',
     HANDLE: 'trading_journal_share_handle',
@@ -129,7 +156,14 @@ export const SHARE_STORAGE_KEYS = {
     ACTIVE_TEMPLATE_ID: 'trading_journal_share_active_template_id',
     SHOW_TRADE_TIMES: 'trading_journal_share_show_trade_times',
     BG_POS_X: 'trading_journal_share_bg_pos_x',
-    BG_POS_Y: 'trading_journal_share_bg_pos_y'
+    BG_POS_Y: 'trading_journal_share_bg_pos_y',
+    EXPORT_ASPECT: 'trading_journal_share_export_aspect',
+    FRAME_BG_SOURCE: 'trading_journal_share_frame_bg_source',
+    FRAME_BLUR: 'trading_journal_share_frame_blur',
+    FRAME_DIM: 'trading_journal_share_frame_dim',
+    CAPTION_PRESET_ID: 'trading_journal_share_caption_preset_id',
+    CAPTION_CUSTOM_TEMPLATES: 'trading_journal_share_caption_custom_templates',
+    VIDEO_DURATION_MODE: 'trading_journal_share_video_duration_mode'
 } as const
 
 export interface ShareSettings {
@@ -159,6 +193,12 @@ export interface ShareSettings {
     bgPosY: number // 0 - 100% (default 50)
     showFullText: boolean
     showTradeTimes: boolean
+    exportAspect: ExportAspect
+    frameBgSource: FrameBgSource
+    frameBlur: number
+    frameDim: number
+    captionPresetId: string
+    videoDurationMode: VideoDurationMode
 }
 
 /** Item Gambar/Video Wallpaper Kustom di Galeri Pengguna */
@@ -184,8 +224,16 @@ export interface ShareCardTemplate {
     customBgId?: string | null // ID background kustom yang ditautkan ke template ini
     isCustomBg: boolean
     bgDimming: number
+    bgDimmingDirection?: BgDimmingDirection
     bgPosX?: number
     bgPosY?: number
+    // Aspect Frame Video & Caption
+    exportAspect?: ExportAspect
+    frameBgSource?: FrameBgSource
+    frameBlur?: number
+    frameDim?: number
+    captionPresetId?: string
+    videoDurationMode?: VideoDurationMode
     // Visibility Toggles
     showSide: boolean
     showPnl: boolean          // Toggle profit USD
@@ -680,7 +728,10 @@ export function loadShareSettings(): ShareSettings {
         customBgId: activeBgItem ? activeBgItem.id : null,
         customBgUrl: activeBgItem ? activeBgItem.dataUrl : (localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG) || null),
         isCustomBg: localStorage.getItem(SHARE_STORAGE_KEYS.IS_CUSTOM_BG) === 'true',
-        bgDimming: Number(localStorage.getItem(SHARE_STORAGE_KEYS.BG_DIMMING)) || 75,
+        bgDimming: (() => {
+            const raw = localStorage.getItem(SHARE_STORAGE_KEYS.BG_DIMMING)
+            return raw !== null && !isNaN(Number(raw)) ? Number(raw) : 75
+        })(),
         bgDimmingDirection: (localStorage.getItem(SHARE_STORAGE_KEYS.BG_DIMMING_DIRECTION) as BgDimmingDirection) || 'uniform',
         customBgMediaType: activeBgItem
             ? resolveMediaType(activeBgItem.mediaType, activeBgItem.dataUrl, 'image')
@@ -692,7 +743,13 @@ export function loadShareSettings(): ShareSettings {
         bgPosX: localStorage.getItem(SHARE_STORAGE_KEYS.BG_POS_X) !== null ? Number(localStorage.getItem(SHARE_STORAGE_KEYS.BG_POS_X)) : (activeBgItem?.posX ?? 50),
         bgPosY: localStorage.getItem(SHARE_STORAGE_KEYS.BG_POS_Y) !== null ? Number(localStorage.getItem(SHARE_STORAGE_KEYS.BG_POS_Y)) : (activeBgItem?.posY ?? 50),
         showFullText: localStorage.getItem(SHARE_STORAGE_KEYS.FULL_TEXT) !== 'false', // default true
-        showTradeTimes: localStorage.getItem(SHARE_STORAGE_KEYS.SHOW_TRADE_TIMES) !== 'false' // default true
+        showTradeTimes: localStorage.getItem(SHARE_STORAGE_KEYS.SHOW_TRADE_TIMES) !== 'false', // default true
+        exportAspect: (localStorage.getItem(SHARE_STORAGE_KEYS.EXPORT_ASPECT) as ExportAspect) || '9:16',
+        frameBgSource: (localStorage.getItem(SHARE_STORAGE_KEYS.FRAME_BG_SOURCE) as FrameBgSource) || 'card-blur',
+        frameBlur: localStorage.getItem(SHARE_STORAGE_KEYS.FRAME_BLUR) !== null ? Number(localStorage.getItem(SHARE_STORAGE_KEYS.FRAME_BLUR)) : 25,
+        frameDim: localStorage.getItem(SHARE_STORAGE_KEYS.FRAME_DIM) !== null ? Number(localStorage.getItem(SHARE_STORAGE_KEYS.FRAME_DIM)) : 40,
+        captionPresetId: localStorage.getItem(SHARE_STORAGE_KEYS.CAPTION_PRESET_ID) || 'tiktok-jurnal',
+        videoDurationMode: (localStorage.getItem(SHARE_STORAGE_KEYS.VIDEO_DURATION_MODE) as VideoDurationMode) || 'source'
     }
 }
 
@@ -783,5 +840,23 @@ export function saveShareSettings(settings: Partial<ShareSettings>): void {
     }
     if (settings.showTradeTimes !== undefined) {
         localStorage.setItem(SHARE_STORAGE_KEYS.SHOW_TRADE_TIMES, String(settings.showTradeTimes))
+    }
+    if (settings.exportAspect !== undefined) {
+        localStorage.setItem(SHARE_STORAGE_KEYS.EXPORT_ASPECT, settings.exportAspect)
+    }
+    if (settings.frameBgSource !== undefined) {
+        localStorage.setItem(SHARE_STORAGE_KEYS.FRAME_BG_SOURCE, settings.frameBgSource)
+    }
+    if (settings.frameBlur !== undefined) {
+        localStorage.setItem(SHARE_STORAGE_KEYS.FRAME_BLUR, String(settings.frameBlur))
+    }
+    if (settings.frameDim !== undefined) {
+        localStorage.setItem(SHARE_STORAGE_KEYS.FRAME_DIM, String(settings.frameDim))
+    }
+    if (settings.captionPresetId !== undefined) {
+        localStorage.setItem(SHARE_STORAGE_KEYS.CAPTION_PRESET_ID, settings.captionPresetId)
+    }
+    if (settings.videoDurationMode !== undefined) {
+        localStorage.setItem(SHARE_STORAGE_KEYS.VIDEO_DURATION_MODE, settings.videoDurationMode)
     }
 }

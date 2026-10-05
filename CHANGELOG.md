@@ -3,6 +3,34 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.7.0] - 2026-10-05
+
+### 🚀 Fitur Baru
+- **Format Frame Portrait 9:16 (Siap TikTok, Instagram Reels, & YouTube Shorts)**:
+  - Opsi ekspor kartu PnL dalam kanvas portrait vertikal 1080×1920 yang dirancang khusus untuk platform media sosial tanpa terpotong (*anti-crop*).
+  - Latar belakang blur adaptif dinamis dengan pilihan sumber: blur dari kartu PnL (`card-blur`), blur dari video/gambar wallpaper kustom (`wallpaper-blur`), atau warna solid minimalis (`solid`).
+  - Safe-zone cerdas untuk antarmuka TikTok (Top HUD profil & Bottom HUD deskripsi/audio) memastikan teks metrik trade tetap terbaca jelas di tengah layar.
+- **Generator Caption Otomatis (Caption Maker) Ramah SEO Media Sosial**:
+  - Panel pembuatan caption otomatis langsung di modal Share PnL berbasis data riil transaksi (Simbol, Posisi Long/Short, PnL, ROI, R-Multiple, Durasi Holding, Setup, Rating Eksekusi, dan Emosi).
+  - Pembedaan narasi cerdas antara skenario Menang (fokus pada disiplin eksekusi, RR, dan edukasi) dan Kalah (evaluasi objektif, pengendalian risiko, dan refleksi psikologis).
+  - Dilengkapi rekomendasi tagar SEO relevan (#tradingjournal, #kripto, #cryptoindonesia, dll) dan tombol salin caption ke clipboard sekali klik.
+- **Pengaturan Latar Belakang & Dimming Inline di Modal Share PnL**:
+  - Kontrol intensitas peredupan wallpaper (*dimming* 0–95%) dan arah gradien pencahayaan (*Top-Right*, *Uniform*, *Bottom-Left*, dll) langsung dari modal Share PnL tanpa perlu navigasi ke halaman Settings.
+  - Kemudahan mengganti atau menghapus wallpaper kustom secara instan langsung dari bilah kontrol modal.
+- **Opsi Durasi Fleksibel untuk Ekspor Video**:
+  - Pilihan durasi perekaman video: 15 Detik, 30 Detik, 60 Detik, serta opsi pintar **Sesuai Durasi Sumber** yang otomatis menyesuaikan panjang rekaman dengan durasi video wallpaper (misal 63 detik) hingga 5 menit.
+
+### 🐛 Perbaikan Bug & Peningkatan Kualitas
+- **Dual-Clock Rendering Engine (Solusi Video Freeze Detik 14/15)**:
+  - Mengatasi masalah video hasil ekspor membeku di detik ke-14/15 akibat *background throttling* agresif oleh Chromium/Electron saat jendela kehilangan fokus.
+  - Mengimplementasikan Dual-Clock Engine yang menggabungkan `requestAnimationFrame` dengan fallback timer presisi tinggi `setTimeout`, menjamin perekaman kanvas video tetap berjalan mulus meskipun jendela aplikasi diminimalkan.
+  - Pemanggilan deterministik `videoTrack.requestFrame()` pada setiap frame yang digambar untuk mencegah *clock desync* antara trek audio dan video.
+  - Peningkatan interval timeslice `MediaRecorder` ke 1000ms dan pembatasan frekuensi pelaporan progress UI (200ms *throttle*) guna mengurangi beban komputasi *main thread* secara drastis.
+- **Continuous Background Video Playback Guard**:
+  - Penjaga otomatis yang memastikan video latar belakang tetap diputar tanpa jeda selama proses perekaman kanvas berlangsung.
+
+---
+
 ## [1.6.0] - 2026-10-01
 
 ### 🚀 Fitur Baru

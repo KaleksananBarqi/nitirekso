@@ -11,6 +11,7 @@ import {
     loadCustomBgList,
     addCustomBgItem,
     updateCustomBgItem,
+    deleteCustomBgItem,
     getAllShareTemplates,
     saveCustomShareTemplate,
     deleteCustomShareTemplate,
@@ -22,11 +23,20 @@ import {
     type ExchangeName,
     type ShareCardTemplate,
     type CustomBgItem,
-    type BgDimmingDirection
+    type BgDimmingDirection,
+    type ExportAspect,
+    type FrameBgSource,
+    type VideoDurationMode,
+    VIDEO_DURATION_OPTIONS
 } from '../lib/shareSettings'
 import { nitireksoLogo, getExchangeDefaultLogo } from '../lib/exchangeAssets'
 import { captureAndExportGif } from '../lib/gif-export'
 import { captureAndExportVideo } from '../lib/video-export'
+import { composeAspectFrame } from '../lib/share-frame'
+import { BackgroundAdjustBar } from './share/BackgroundAdjustBar'
+import { AspectFrameControls } from './share/AspectFrameControls'
+import { CaptionMakerPanel } from './share/CaptionMakerPanel'
+import { buildCaptionContext, renderCaption } from '../lib/caption-generator'
 
 // ---------------------------------------------------------------------------
 // Tipe Props
@@ -227,7 +237,28 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const activeCustomBgItem = customBgList.find((b) => b.id === selectedCustomBgId) || customBgList[0] || null
     const activeCustomBgUrl = activeCustomBgItem ? activeCustomBgItem.dataUrl : (savedSettings.customBgUrl || null)
     const activeCustomBgMediaType = resolveMediaType(activeCustomBgItem?.mediaType, activeCustomBgUrl, 'image')
-    const bgDimmingDirection = savedSettings.bgDimmingDirection || 'uniform'
+
+    // State: Dimming & Arah Gradien Reaktif Langsung di Modal
+    const [bgDimming, setBgDimming] = useState<number>(() => (savedSettings.bgDimming !== undefined ? savedSettings.bgDimming : 75))
+    const [bgDimmingDirection, setBgDimmingDirection] = useState<BgDimmingDirection>(() => savedSettings.bgDimmingDirection || 'uniform')
+
+    // State: Opsi Rasio Video 9:16 TikTok & Frame Backdrop
+    const [exportAspect, setExportAspect] = useState<ExportAspect>(() => savedSettings.exportAspect || 'original')
+    const [frameBgSource, setFrameBgSource] = useState<FrameBgSource>(() => savedSettings.frameBgSource || 'card-blur')
+    const [frameBlur, setFrameBlur] = useState<number>(() => savedSettings.frameBlur ?? 25)
+    const [frameDim, setFrameDim] = useState<number>(() => savedSettings.frameDim ?? 40)
+
+    // State: Caption Maker Preset ID
+    const [captionPresetId, setCaptionPresetId] = useState<string>(() => savedSettings.captionPresetId || 'tiktok-jurnal')
+
+    // State: Opsi Durasi Ekspor Video (source, 15s, 30s, 60s) & Deteksi Durasi Sumber
+    const [videoDurationMode, setVideoDurationMode] = useState<VideoDurationMode>(
+        () => savedSettings.videoDurationMode || 'source'
+    )
+    const [sourceVideoDurationSec, setSourceVideoDurationSec] = useState<number | null>(null)
+
+    // State: Konfirmasi Hapus Background Kustom Inline
+    const [confirmDeleteBgId, setConfirmDeleteBgId] = useState<string | null>(null)
 
     // --- State: Posisi Wallpaper Kustom (Pan X & Pan Y dalam %) ---
     const initialBgPosX = activeTemplate?.bgPosX ?? activeCustomBgItem?.bgPosX ?? savedSettings.bgPosX ?? 50
@@ -305,7 +336,6 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const traderHandle = savedSettings.traderHandle
     const brandTitle = savedSettings.brandTitle || 'NITIREKSO'
     const brandSubtitle = savedSettings.brandSubtitle || 'JOURNAL'
-    const bgDimming = savedSettings.bgDimming
 
     // Data Planned Risk
     const plannedStop = trade.plannedRisk?.plannedStop ?? null
@@ -393,6 +423,39 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         reader.readAsDataURL(file)
     }
 
+    // Hapus wallpaper kustom langsung dari modal
+    const handleDeleteCustomBg = (id: string) => {
+        deleteCustomBgItem(id)
+        const updated = loadCustomBgList()
+        setCustomBgList(updated)
+        setConfirmDeleteBgId(null)
+        if (selectedCustomBgId === id) {
+            if (updated.length > 0) {
+                const next = updated[0]!
+                setSelectedCustomBgId(next.id)
+                const px = next.bgPosX ?? 50
+                const py = next.bgPosY ?? 50
+                setBgPosX(px)
+                setBgPosY(py)
+                saveShareSettings({
+                    customBgId: next.id,
+                    customBgUrl: next.dataUrl,
+                    customBgMediaType: resolveMediaType(next.mediaType, next.dataUrl, 'image'),
+                    bgPosX: px,
+                    bgPosY: py,
+                })
+            } else {
+                setSelectedCustomBgId(null)
+                setIsCustomBgActive(false)
+                saveShareSettings({
+                    isCustomBg: false,
+                    customBgId: null,
+                    customBgUrl: null,
+                })
+            }
+        }
+    }
+
     // Switch ke template terpilih
     const handleSelectTemplate = (tpl: ShareCardTemplate) => {
         setActiveTplId(tpl.id)
@@ -411,6 +474,14 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         }
         setBgPosX(tpl.bgPosX ?? 50)
         setBgPosY(tpl.bgPosY ?? 50)
+        if (tpl.bgDimming !== undefined) setBgDimming(tpl.bgDimming)
+        if (tpl.bgDimmingDirection !== undefined) setBgDimmingDirection(tpl.bgDimmingDirection)
+        if (tpl.exportAspect !== undefined) setExportAspect(tpl.exportAspect)
+        if (tpl.frameBgSource !== undefined) setFrameBgSource(tpl.frameBgSource)
+        if (tpl.frameBlur !== undefined) setFrameBlur(tpl.frameBlur)
+        if (tpl.frameDim !== undefined) setFrameDim(tpl.frameDim)
+        if (tpl.captionPresetId !== undefined) setCaptionPresetId(tpl.captionPresetId)
+        if (tpl.videoDurationMode !== undefined) setVideoDurationMode(tpl.videoDurationMode)
         setShowSide(tpl.showSide)
         setShowPnl(tpl.showPnl)
         setShowRoi(tpl.showRoi)
@@ -438,9 +509,15 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             bgPresetId: currentBgId,
             customBgId: isCustomBgActive ? selectedCustomBgId : null,
             isCustomBg: isCustomBgActive,
-            bgDimming: savedSettings.bgDimming,
+            bgDimming,
+            bgDimmingDirection,
             bgPosX,
             bgPosY,
+            exportAspect,
+            frameBgSource,
+            frameBlur,
+            frameDim,
+            captionPresetId,
             showSide,
             showPnl,
             showRoi,
@@ -475,9 +552,15 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             bgPresetId: currentBgId,
             customBgId: isCustomBgActive ? selectedCustomBgId : null,
             isCustomBg: isCustomBgActive,
-            bgDimming: savedSettings.bgDimming,
+            bgDimming,
+            bgDimmingDirection,
             bgPosX,
             bgPosY,
+            exportAspect,
+            frameBgSource,
+            frameBlur,
+            frameDim,
+            captionPresetId,
             showSide,
             showPnl,
             showRoi,
@@ -516,6 +599,13 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         (isCustomBgActive && activeTemplate.customBgId !== selectedCustomBgId) ||
         (activeTemplate.bgPosX ?? 50) !== bgPosX ||
         (activeTemplate.bgPosY ?? 50) !== bgPosY ||
+        (activeTemplate.bgDimming !== undefined && activeTemplate.bgDimming !== bgDimming) ||
+        (activeTemplate.bgDimmingDirection !== undefined && activeTemplate.bgDimmingDirection !== bgDimmingDirection) ||
+        (activeTemplate.exportAspect !== undefined && activeTemplate.exportAspect !== exportAspect) ||
+        (activeTemplate.frameBgSource !== undefined && activeTemplate.frameBgSource !== frameBgSource) ||
+        (activeTemplate.frameBlur !== undefined && activeTemplate.frameBlur !== frameBlur) ||
+        (activeTemplate.frameDim !== undefined && activeTemplate.frameDim !== frameDim) ||
+        (activeTemplate.captionPresetId !== undefined && activeTemplate.captionPresetId !== captionPresetId) ||
         activeTemplate.showSide !== showSide ||
         activeTemplate.showPnl !== showPnl ||
         activeTemplate.showRoi !== showRoi ||
@@ -591,12 +681,20 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 vid.muted = true
                 vid.loop = true
                 vid.playsInline = true
+                const updateDuration = () => {
+                    if (vid.duration && !isNaN(vid.duration) && isFinite(vid.duration) && vid.duration > 0) {
+                        setSourceVideoDurationSec(Math.round(vid.duration))
+                    }
+                }
+                vid.onloadedmetadata = updateDuration
                 vid.onloadeddata = () => {
                     customBgVideoRef.current = vid
+                    updateDuration()
                     void vid.play().catch(() => {})
                 }
                 customBgImgRef.current = null
             } else {
+                setSourceVideoDurationSec(null)
                 const img = new Image()
                 img.crossOrigin = 'anonymous'
                 img.src = activeCustomBgUrl
@@ -604,6 +702,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 customBgVideoRef.current = null
             }
         } else {
+            setSourceVideoDurationSec(null)
             customBgImgRef.current = null
             customBgVideoRef.current = null
         }
@@ -1322,16 +1421,43 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         }
     }
 
+    // Menghitung durasi efektif ekspor video dalam detik
+    const getEffectiveDurationSec = (): number => {
+        if (videoDurationMode === '15') return 15
+        if (videoDurationMode === '30') return 30
+        if (videoDurationMode === '60') return 60
+
+        // Mode 'source': gunakan durasi video latar belakang jika tersedia
+        if (activeCustomBgMediaType === 'video') {
+            const liveDuration = customBgVideoRef.current?.duration
+            if (liveDuration && !isNaN(liveDuration) && isFinite(liveDuration) && liveDuration > 0) {
+                // Batas aman maksimal 300 detik (5 menit) dan minimal 3 detik
+                return Math.min(300, Math.max(3, Math.round(liveDuration)))
+            }
+            if (sourceVideoDurationSec && sourceVideoDurationSec > 0) {
+                return Math.min(300, Math.max(3, sourceVideoDurationSec))
+            }
+        }
+
+        // Fallback default jika bukan video atau belum terbaca
+        return 15
+    }
+
     const handleExportVideo = async () => {
         setExportingVideo(true)
         setVideoProgress(0)
         try {
-            // Jika wallpaper video aktif, pastikan video sedang berputar
+            // Hitung durasi rekaman berdasarkan opsi terpilih
+            const effectiveSec = getEffectiveDurationSec()
+            const durationMs = effectiveSec * 1000
+
+            // Jika wallpaper video aktif, setel ulang ke awal (detik 0) agar rekaman utuh
             if (activeCustomBgMediaType === 'video' && customBgVideoRef.current) {
                 try {
+                    customBgVideoRef.current.currentTime = 0
                     void customBgVideoRef.current.play()
                 } catch {
-                    // Abaikan jika autoplay dicegah
+                    // Abaikan jika autoplay dicegah oleh browser
                 }
             }
 
@@ -1345,10 +1471,36 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 videoBitsPerSecond = 16_000_000
             }
 
+            let rawCardCanvas: HTMLCanvasElement | null = null
+
             const result = await captureAndExportVideo((targetCanvas) => {
-                drawToCanvas(targetCanvas)
+                // Pastikan video latar belakang terus berputar selama proses render
+                if (activeCustomBgMediaType === 'video' && customBgVideoRef.current) {
+                    const vid = customBgVideoRef.current
+                    if (vid.paused && !vid.ended) {
+                        void vid.play().catch(() => {})
+                    }
+                }
+
+                if (exportAspect === '9:16') {
+                    if (!rawCardCanvas) {
+                        rawCardCanvas = document.createElement('canvas')
+                    }
+                    drawToCanvas(rawCardCanvas)
+                    composeAspectFrame(rawCardCanvas, targetCanvas, {
+                        aspect: '9:16',
+                        bgSource: frameBgSource,
+                        blurPx: frameBlur,
+                        dimPercent: frameDim,
+                        wallpaperSource: (frameBgSource === 'wallpaper-blur' && isCustomBgActive)
+                            ? (activeCustomBgMediaType === 'video' ? (customBgVideoRef.current || null) : (customBgImgRef.current || null))
+                            : null,
+                    })
+                } else {
+                    drawToCanvas(targetCanvas)
+                }
             }, {
-                durationMs: 15_000, // Default 15 detik
+                durationMs,
                 fps,
                 videoBitsPerSecond,
                 onProgress: (pct) => setVideoProgress(pct),
@@ -1358,7 +1510,8 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             const url = URL.createObjectURL(result.blob)
             const link = document.createElement('a')
             const dateStr = new Date().toISOString().slice(0, 10)
-            link.download = `${brandTitle}-${trade.trade.symbol}-${dateStr}.${result.extension}`
+            const aspectSuffix = exportAspect === '9:16' ? '-9x16' : ''
+            link.download = `${brandTitle}-${trade.trade.symbol}-${dateStr}${aspectSuffix}.${result.extension}`
             link.href = url
             link.click()
             URL.revokeObjectURL(url)
@@ -1743,46 +1896,87 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                             const isSelected = isCustomBgActive && selectedCustomBgId === bgItem.id
                             const resolvedItemType = resolveMediaType(bgItem.mediaType, bgItem.dataUrl, 'image')
                             const isVideo = resolvedItemType === 'video'
+                            const isConfirmingDelete = confirmDeleteBgId === bgItem.id
                             return (
-                                <button
-                                    key={bgItem.id}
-                                    type="button"
-                                    onClick={() => {
-                                        setSelectedCustomBgId(bgItem.id)
-                                        setIsCustomBgActive(true)
-                                        const px = bgItem.bgPosX ?? bgItem.posX ?? 50
-                                        const py = bgItem.bgPosY ?? bgItem.posY ?? 50
-                                        setBgPosX(px)
-                                        setBgPosY(py)
-                                        saveShareSettings({
-                                            customBgId: bgItem.id,
-                                            isCustomBg: true,
-                                            customBgMediaType: resolvedItemType,
-                                            customBgUrl: bgItem.dataUrl,
-                                            bgPosX: px,
-                                            bgPosY: py
-                                        })
-                                    }}
-                                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
-                                        isSelected
-                                            ? 'border-primary bg-primary/20 text-foreground font-bold shadow-xs ring-1 ring-primary/50'
-                                            : 'border-border/60 bg-muted/20 text-muted-foreground hover:text-foreground hover:border-border'
-                                    }`}
-                                >
-                                    {isVideo ? (
-                                        <span className="w-4 h-4 rounded bg-amber-500/20 text-amber-400 flex items-center justify-center text-[10px] font-bold">
-                                            ▶
-                                        </span>
+                                <div key={bgItem.id} className="relative group/bg flex items-center">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedCustomBgId(bgItem.id)
+                                            setIsCustomBgActive(true)
+                                            const px = bgItem.bgPosX ?? bgItem.posX ?? 50
+                                            const py = bgItem.bgPosY ?? bgItem.posY ?? 50
+                                            setBgPosX(px)
+                                            setBgPosY(py)
+                                            saveShareSettings({
+                                                customBgId: bgItem.id,
+                                                isCustomBg: true,
+                                                customBgMediaType: resolvedItemType,
+                                                customBgUrl: bgItem.dataUrl,
+                                                bgPosX: px,
+                                                bgPosY: py
+                                            })
+                                        }}
+                                        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
+                                            isSelected
+                                                ? 'border-primary bg-primary/20 text-foreground font-bold shadow-xs ring-1 ring-primary/50'
+                                                : 'border-border/60 bg-muted/20 text-muted-foreground hover:text-foreground hover:border-border'
+                                        }`}
+                                    >
+                                        {isVideo ? (
+                                            <span className="w-4 h-4 rounded bg-amber-500/20 text-amber-400 flex items-center justify-center text-[10px] font-bold">
+                                                ▶
+                                            </span>
+                                        ) : (
+                                            <img
+                                                src={bgItem.dataUrl}
+                                                alt={bgItem.name}
+                                                className="w-4 h-4 rounded object-cover border border-white/20"
+                                            />
+                                        )}
+                                        <span className="truncate max-w-[95px]">{bgItem.name}</span>
+                                        {isVideo && <span className="text-[9px] text-amber-400 font-mono">vid</span>}
+                                    </button>
+
+                                    {/* Tombol Hapus Wallpaper Kustom Langsung di Modal */}
+                                    {isConfirmingDelete ? (
+                                        <div className="absolute left-0 bottom-full mb-1 z-30 flex items-center gap-1 bg-background/95 backdrop-blur border border-destructive/50 px-2 py-1 rounded-md shadow-lg whitespace-nowrap">
+                                            <span className="text-[10px] text-destructive font-medium">Hapus?</span>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    handleDeleteCustomBg(bgItem.id)
+                                                }}
+                                                className="text-[10px] px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground font-bold hover:bg-destructive/90 transition-colors"
+                                            >
+                                                Ya
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    setConfirmDeleteBgId(null)
+                                                }}
+                                                className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                                            >
+                                                Batal
+                                            </button>
+                                        </div>
                                     ) : (
-                                        <img
-                                            src={bgItem.dataUrl}
-                                            alt={bgItem.name}
-                                            className="w-4 h-4 rounded object-cover border border-white/20"
-                                        />
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                setConfirmDeleteBgId(bgItem.id)
+                                            }}
+                                            title="Hapus wallpaper ini dari koleksi"
+                                            className="opacity-0 group-hover/bg:opacity-100 -ml-2 mr-0.5 p-0.5 text-[11px] text-muted-foreground hover:text-destructive transition-all rounded"
+                                        >
+                                            ✕
+                                        </button>
                                     )}
-                                    <span className="truncate max-w-[100px]">{bgItem.name}</span>
-                                    {isVideo && <span className="text-[9px] text-amber-400 font-mono">vid</span>}
-                                </button>
+                                </div>
                             )
                         })}
 
@@ -1878,6 +2072,24 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                     />
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {/* Panel Kontrol Dimming & Arah Gradien Langsung di Modal */}
+                    {isCustomBgActive && (
+                        <div className="pt-0.5">
+                            <BackgroundAdjustBar
+                                bgDimming={bgDimming}
+                                bgDimmingDirection={bgDimmingDirection}
+                                onDimmingChange={(val) => {
+                                    setBgDimming(val)
+                                    saveShareSettings({ bgDimming: val })
+                                }}
+                                onDirectionChange={(dir) => {
+                                    setBgDimmingDirection(dir)
+                                    saveShareSettings({ bgDimmingDirection: dir })
+                                }}
+                            />
                         </div>
                     )}
 
@@ -1979,6 +2191,25 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                     )}
                 </div>
 
+                {/* ── CAPTION MAKER AUTO-GENERATOR (TIKTOK / REELS / TWITTER) ── */}
+                <div className="border-t border-border/40 px-4 py-2.5 bg-card/25">
+                    <CaptionMakerPanel
+                        tradeDetail={trade}
+                        showPnl={showPnl}
+                        traderHandle={traderHandle}
+                        brandTitle={brandTitle}
+                        selectedExchange={selectedExchange}
+                        activeReferral={showReferral ? activeReferral : ''}
+                        customThesis={customThesis}
+                        customReview={customReview}
+                        captionPresetId={captionPresetId}
+                        onPresetChange={(id) => {
+                            setCaptionPresetId(id)
+                            saveShareSettings({ captionPresetId: id })
+                        }}
+                    />
+                </div>
+
                 {/* ── EXCHANGE SELECTOR BAR (HANYA MEXC & BITUNIX) ── */}
                 <div className="flex items-center justify-between gap-3 px-4 py-2 border-t border-border/40 bg-card/20">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -2012,18 +2243,83 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 </div>
 
                 {/* ── ACTION BUTTONS ── */}
-                <div className="flex flex-col gap-2 px-4 py-3 border-t border-border/40 bg-card/30">
-                    <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Kualitas Video:</span>
-                        <select
-                            value={videoQuality}
-                            onChange={(e) => setVideoQuality(e.target.value as any)}
-                            className="text-xs bg-background/50 border border-border/60 rounded px-2 py-1 outline-none text-foreground cursor-pointer hover:bg-background/80"
-                        >
-                            <option value="standard">Standard (2.5 Mbps, 30fps)</option>
-                            <option value="jernih">Jernih (8.0 Mbps, 30fps)</option>
-                            <option value="super">Super Jernih (16.0 Mbps, 60fps)</option>
-                        </select>
+                <div className="flex flex-col gap-2.5 px-4 py-3 border-t border-border/40 bg-card/30">
+                    {/* Kontrol Rasio Video (TikTok 9:16 vs Asli) */}
+                    <AspectFrameControls
+                        exportAspect={exportAspect}
+                        frameBgSource={frameBgSource}
+                        frameBlur={frameBlur}
+                        frameDim={frameDim}
+                        hasCustomWallpaper={isCustomBgActive && !!activeCustomBgUrl}
+                        onAspectChange={(asp) => {
+                            setExportAspect(asp)
+                            saveShareSettings({ exportAspect: asp })
+                        }}
+                        onBgSourceChange={(src) => {
+                            setFrameBgSource(src)
+                            saveShareSettings({ frameBgSource: src })
+                        }}
+                        onBlurChange={(b) => {
+                            setFrameBlur(b)
+                            saveShareSettings({ frameBlur: b })
+                        }}
+                        onDimChange={(d) => {
+                            setFrameDim(d)
+                            saveShareSettings({ frameDim: d })
+                        }}
+                    />
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-border/30">
+                        <div className="flex flex-wrap items-center gap-3">
+                            {/* Selector Durasi Video */}
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Durasi:</span>
+                                <select
+                                    value={videoDurationMode}
+                                    onChange={(e) => {
+                                        const val = e.target.value as VideoDurationMode
+                                        setVideoDurationMode(val)
+                                        saveShareSettings({ videoDurationMode: val })
+                                    }}
+                                    className="text-xs bg-background/50 border border-border/60 rounded px-2 py-1 outline-none text-foreground cursor-pointer hover:bg-background/80"
+                                >
+                                    {VIDEO_DURATION_OPTIONS.map((opt) => {
+                                        let label = opt.label
+                                        if (opt.value === 'source') {
+                                            label = activeCustomBgMediaType === 'video' && (sourceVideoDurationSec || customBgVideoRef.current?.duration)
+                                                ? `Sesuai Video Sumber (~${Math.round(sourceVideoDurationSec || customBgVideoRef.current?.duration || 0)}s)`
+                                                : 'Sesuai Video Sumber (Default 15s)'
+                                        }
+                                        return (
+                                            <option key={opt.value} value={opt.value}>
+                                                {label}
+                                            </option>
+                                        )
+                                    })}
+                                </select>
+                            </div>
+
+                            {/* Selector Kualitas Video */}
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Kualitas:</span>
+                                <select
+                                    value={videoQuality}
+                                    onChange={(e) => setVideoQuality(e.target.value as any)}
+                                    className="text-xs bg-background/50 border border-border/60 rounded px-2 py-1 outline-none text-foreground cursor-pointer hover:bg-background/80"
+                                >
+                                    <option value="standard">Standard (2.5 Mbps, 30fps)</option>
+                                    <option value="jernih">Jernih (8.0 Mbps, 30fps)</option>
+                                    <option value="super">Super Jernih (16.0 Mbps, 60fps)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {exportAspect === '9:16' && (
+                            <span className="text-[11px] text-primary font-medium flex items-center gap-1">
+                                <span>📱</span>
+                                <span>Video Rasio 9:16 (Format TikTok & IG Reels)</span>
+                            </span>
+                        )}
                     </div>
                     <div className="flex items-center justify-between gap-2">
                     {[
@@ -2046,7 +2342,11 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                     <rect x="2" y="6" width="13" height="12" rx="3" />
                                 </svg>
                             ),
-                            label: exportingVideo ? `Proses (${videoProgress}%)` : (activeCustomBgMediaType === 'video' ? 'Save Video 15s (HQ 🎬)' : 'Save Video 15s (HQ)'),
+                            label: exportingVideo
+                                ? `Proses (${videoProgress}%)`
+                                : exportAspect === '9:16'
+                                    ? `Save Video 9:16 (${getEffectiveDurationSec()}s 📱)`
+                                    : `Save Video (${getEffectiveDurationSec()}s${activeCustomBgMediaType === 'video' ? ' 🎬' : ''})`,
                             onClick: () => void handleExportVideo(),
                             disabled: exportingVideo || downloading || exportingGif,
                         },
@@ -2082,8 +2382,17 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                             ),
                             label: 'Share Twitter / X',
                             onClick: () => {
-                                const refStr = showReferral && activeReferral ? `\nRef Code: ${activeReferral}` : ''
-                                const text = `${trade.trade.symbol} ${trade.trade.direction.toUpperCase()} ${leverage}x | ${formatPercent(roiPercent)} ROI | ${formatPnl(trade.trade.realizedPnl)} USDT${refStr}\n\n#Trading #Crypto #${brandTitle} ${traderHandle}`
+                                const captionCtx = buildCaptionContext(trade, {
+                                    traderHandle,
+                                    brandTitle,
+                                    selectedExchange,
+                                    activeReferral: showReferral && activeReferral ? activeReferral : '',
+                                    customThesis,
+                                    customReview
+                                })
+                                const text = renderCaption('twitter-x', captionCtx, {
+                                    hidePnl: !showPnl
+                                })
                                 const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`
                                 if (window.api?.openExternalUrl) {
                                     void window.api.openExternalUrl(tweetUrl)
