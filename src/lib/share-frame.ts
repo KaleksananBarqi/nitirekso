@@ -13,7 +13,7 @@ export interface ComposeAspectFrameOptions {
     bgSource?: FrameBgSource
     blurPx?: number
     dimPercent?: number
-    wallpaperSource?: HTMLImageElement | HTMLVideoElement | null
+    wallpaperSource?: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement | null
     solidColor?: string
 }
 
@@ -93,6 +93,8 @@ export function composeAspectFrame(
                 }
             } else if (wallpaperSource instanceof HTMLImageElement && wallpaperSource.complete) {
                 mediaSrc = wallpaperSource
+            } else if (wallpaperSource instanceof HTMLCanvasElement) {
+                mediaSrc = wallpaperSource
             }
         }
 
@@ -121,6 +123,9 @@ export function composeAspectFrame(
             } else if (mediaSrc instanceof HTMLImageElement) {
                 mWidth = mediaSrc.naturalWidth || srcW
                 mHeight = mediaSrc.naturalHeight || srcH
+            } else if (mediaSrc instanceof HTMLCanvasElement) {
+                mWidth = mediaSrc.width || srcW
+                mHeight = mediaSrc.height || srcH
             }
 
             const mediaAspect = mWidth / mHeight

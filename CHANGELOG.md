@@ -3,6 +3,17 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.7.3] - 2026-10-05
+
+### 🐛 Perbaikan Bug & Optimasi Render Video
+- **Eliminasi Kedipan Gelap / Flickering ("LAP-LAP") pada Ekspor Video MP4**:
+  - Mengatasi kedipan gelap (frame tidak termuat/hitam) saat mengekspor kartu PnL dengan wallpaper video bergerak pada rasio 9:16 TikTok maupun rasio asli.
+  - Menghapus pembatasan *premature timeout* 35ms yang memotong proses *decoding* video Chromium di tengah jalan, menggantinya dengan sinkronisasi deterministik event `seeked` resmi W3C beserta *safety timeout* proporsional (800ms).
+  - Mengimplementasikan sistem pertahanan *Defensive Last-Frame Cache* (`lastValidBgCanvasRef`) pada kanvas kartu dan modul komposisi frame blur 9:16 (`share-frame.ts`), memastikan frame valid sebelumnya dipertahankan jika GPU menunda decoding sehingga tidak ada frame hitam yang terselip sama sekali.
+  - Mempertahankan keutuhan penuh pipa ekspor audio latar belakang dan remuxing MP4 tanpa gangguan.
+
+---
+
 ## [1.7.2] - 2026-10-05
 
 ### 🚀 Fitur Baru & Peningkatan Audio-Visual

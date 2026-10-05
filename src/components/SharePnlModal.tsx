@@ -648,6 +648,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const avatarImgRef = useRef<HTMLImageElement | null>(null)
     const customBgImgRef = useRef<HTMLImageElement | null>(null)
     const customBgVideoRef = useRef<HTMLVideoElement | null>(null)
+    const lastValidBgCanvasRef = useRef<HTMLCanvasElement | null>(null)
     const exchangeLogoImgRef = useRef<HTMLImageElement | null>(null)
     const nitireksoLogoImgRef = useRef<HTMLImageElement | null>(null)
 
@@ -865,6 +866,27 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                         dy = (H - dh) * (bgPosY / 100)
                     }
                     ctx.drawImage(vid, dx, dy, dw, dh)
+                    drewMedia = true
+
+                    // Cache frame video yang valid ke canvas offscreen sebagai benteng anti-flicker
+                    try {
+                        if (!lastValidBgCanvasRef.current) {
+                            lastValidBgCanvasRef.current = document.createElement('canvas')
+                        }
+                        if (lastValidBgCanvasRef.current.width !== W || lastValidBgCanvasRef.current.height !== H) {
+                            lastValidBgCanvasRef.current.width = W
+                            lastValidBgCanvasRef.current.height = H
+                        }
+                        const cacheCtx = lastValidBgCanvasRef.current.getContext('2d')
+                        if (cacheCtx) {
+                            cacheCtx.drawImage(vid, dx, dy, dw, dh)
+                        }
+                    } catch {
+                        // Abaikan jika alokasi cache dicegah
+                    }
+                } else if (lastValidBgCanvasRef.current) {
+                    // Fallback defensif: gunakan frame video terakhir yang valid agar tidak pernah terjadi kedip hitam
+                    ctx.drawImage(lastValidBgCanvasRef.current, 0, 0, W, H)
                     drewMedia = true
                 }
             } else if (customBgImgRef.current && customBgImgRef.current.complete) {
@@ -1485,15 +1507,16 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                         if (Math.abs(vid.currentTime - targetTime) > 0.001) {
                             vid.currentTime = targetTime
                             await new Promise<void>((resolve) => {
-                                const onSeeked = () => {
-                                    vid.removeEventListener('seeked', onSeeked)
+                                let resolved = false
+                                const onDone = () => {
+                                    if (resolved) return
+                                    resolved = true
+                                    vid.removeEventListener('seeked', onDone)
                                     resolve()
                                 }
-                                vid.addEventListener('seeked', onSeeked)
-                                setTimeout(() => {
-                                    vid.removeEventListener('seeked', onSeeked)
-                                    resolve()
-                                }, 35)
+                                vid.addEventListener('seeked', onDone, { once: true })
+                                // Safety timeout 800ms jika seek event terhambat browser (bukan 35ms prematur)
+                                setTimeout(onDone, 800)
                             })
                         }
                     }
@@ -1504,13 +1527,19 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                         rawCardCanvas = document.createElement('canvas')
                     }
                     drawToCanvas(rawCardCanvas)
+                    const activeWp = activeCustomBgMediaType === 'video'
+                        ? ((customBgVideoRef.current && customBgVideoRef.current.readyState >= 2)
+                            ? customBgVideoRef.current
+                            : (lastValidBgCanvasRef.current || customBgVideoRef.current || null))
+                        : (customBgImgRef.current || null)
+
                     composeAspectFrame(rawCardCanvas, targetCanvas, {
                         aspect: '9:16',
                         bgSource: frameBgSource,
                         blurPx: frameBlur,
                         dimPercent: frameDim,
                         wallpaperSource: (frameBgSource === 'wallpaper-blur' && isCustomBgActive)
-                            ? (activeCustomBgMediaType === 'video' ? (customBgVideoRef.current || null) : (customBgImgRef.current || null))
+                            ? activeWp
                             : null,
                     })
                 } else {
