@@ -31,7 +31,7 @@ import {
 } from '../lib/shareSettings'
 import { nitireksoLogo, getExchangeDefaultLogo } from '../lib/exchangeAssets'
 import { captureAndExportGif } from '../lib/gif-export'
-import { captureAndExportVideo } from '../lib/video-export'
+import { captureAndExportVideo, mediaUrlToBytes } from '../lib/video-export'
 import { composeAspectFrame } from '../lib/share-frame'
 import { BackgroundAdjustBar } from './share/BackgroundAdjustBar'
 import { AspectFrameControls } from './share/AspectFrameControls'
@@ -1451,13 +1451,13 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             const effectiveSec = getEffectiveDurationSec()
             const durationMs = effectiveSec * 1000
 
-            // Jika wallpaper video aktif, setel ulang ke awal (detik 0) agar rekaman utuh
+            // Jika wallpaper video aktif, pause dan setel ke awal agar frame dapat dikendalikan per frame
             if (activeCustomBgMediaType === 'video' && customBgVideoRef.current) {
                 try {
+                    customBgVideoRef.current.pause()
                     customBgVideoRef.current.currentTime = 0
-                    void customBgVideoRef.current.play()
                 } catch {
-                    // Abaikan jika autoplay dicegah oleh browser
+                    // Abaikan jika kontrol video dicegah oleh browser
                 }
             }
 
@@ -1473,12 +1473,29 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
 
             let rawCardCanvas: HTMLCanvasElement | null = null
 
-            const result = await captureAndExportVideo((targetCanvas) => {
-                // Pastikan video latar belakang terus berputar selama proses render
-                if (activeCustomBgMediaType === 'video' && customBgVideoRef.current) {
+            const result = await captureAndExportVideo(async (targetCanvas, context) => {
+                // Selaraskan waktu video latar belakang secara deterministik per frame
+                if (isCustomBgActive && activeCustomBgMediaType === 'video' && customBgVideoRef.current) {
                     const vid = customBgVideoRef.current
-                    if (vid.paused && !vid.ended) {
-                        void vid.play().catch(() => {})
+                    if (!vid.paused) {
+                        vid.pause()
+                    }
+                    if (vid.duration && isFinite(vid.duration) && vid.duration > 0) {
+                        const targetTime = context ? (context.currentTimeSec % vid.duration) : 0
+                        if (Math.abs(vid.currentTime - targetTime) > 0.001) {
+                            vid.currentTime = targetTime
+                            await new Promise<void>((resolve) => {
+                                const onSeeked = () => {
+                                    vid.removeEventListener('seeked', onSeeked)
+                                    resolve()
+                                }
+                                vid.addEventListener('seeked', onSeeked)
+                                setTimeout(() => {
+                                    vid.removeEventListener('seeked', onSeeked)
+                                    resolve()
+                                }, 35)
+                            })
+                        }
                     }
                 }
 
@@ -1513,7 +1530,18 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             if (result.extension === 'mp4' && typeof window !== 'undefined' && window.api?.remuxVideoMp4) {
                 try {
                     const arrayBuffer = await result.blob.arrayBuffer()
-                    const remuxRes = await window.api.remuxVideoMp4(new Uint8Array(arrayBuffer))
+                    
+                    let bgAudioData: Uint8Array | undefined = undefined
+                    if (isCustomBgActive && activeCustomBgMediaType === 'video' && activeCustomBgUrl) {
+                        try {
+                            bgAudioData = await mediaUrlToBytes(activeCustomBgUrl)
+                            console.log(`[video-export] File video latar berhasil dimuat (${bgAudioData.length} bytes) untuk muxing audio via ffmpeg.`)
+                        } catch (bgErr) {
+                            console.warn('Gagal memuat file audio background untuk remux:', bgErr)
+                        }
+                    }
+
+                    const remuxRes = await window.api.remuxVideoMp4(new Uint8Array(arrayBuffer), bgAudioData)
                     if (remuxRes?.ok && remuxRes.data && remuxRes.data.length > 0) {
                         finalBlob = new Blob([remuxRes.data as unknown as BlobPart], { type: 'video/mp4' })
                     }
@@ -1533,6 +1561,13 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         } catch (err) {
             console.error('Gagal mengekspor video:', err)
         } finally {
+            if (activeCustomBgMediaType === 'video' && customBgVideoRef.current) {
+                try {
+                    void customBgVideoRef.current.play().catch(() => {})
+                } catch {
+                    // Abaikan jika pemutaran preview dicegah
+                }
+            }
             setExportingVideo(false)
             setVideoProgress(0)
         }

@@ -640,9 +640,9 @@ export function registerIpcHandlers(): void {
     // --- Utilitas Video: Remux fMP4 ke Standard Linear MP4 (+faststart) ---
     ipcMain.handle(
         IPC_CHANNELS.videoRemuxMp4,
-        async (_event, data: Uint8Array): Promise<MutationResult<Uint8Array>> => {
+        async (_event, data: Uint8Array, audioData?: Uint8Array): Promise<MutationResult<Uint8Array>> => {
             try {
-                const remuxed = await remuxMp4WithFaststart(data)
+                const remuxed = await remuxMp4WithFaststart(data, audioData)
                 return { ok: true, data: remuxed }
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err)

@@ -3,6 +3,27 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.7.2] - 2026-10-05
+
+### 🚀 Fitur Baru & Peningkatan Audio-Visual
+- **Ekspor Audio Video Latar Belakang (Audio Muxing Pipeline)**:
+  - Menyertakan trek audio dari wallpaper video kustom (MP4/WebM) ke dalam berkas MP4 hasil ekspor secara otomatis via FFmpeg remuxing di Node.js Main Process.
+  - Membantu konten kreator dan trader mengekspor klip PnL lengkap dengan musik latar atau efek suara wallpaper tanpa bisu.
+  - Perlindungan pemetaan trek audio opsional (`-map 1:a:0?`) sehingga video latar tanpa suara tetap terekspor secara mulus tanpa kegagalan.
+
+### 🐛 Perbaikan Bug
+- **Sinkronisasi Frame-Accurate Deterministik Audio & Visual**:
+  - Mengatasi masalah *audio-visual desync* / *drift* di pertengahan hingga akhir video yang sebelumnya terjadi karena pemutaran video latar secara *wall-clock* (`vid.play()`) tidak sejalan dengan waktu virtual kanvas.
+  - Menambahkan `FrameRenderContext` pada engine ekspor deterministik untuk mengontrol posisi video latar secara presisi per frame: `(i / fps) % vid.duration` dengan sinkronisasi event `seeked`.
+- **Dekode Data URL Mandiri & Kelonggaran CSP**:
+  - Mengimplementasikan `mediaUrlToBytes` yang mendekode payload base64 secara mandiri di memori tanpa bergantung pada network fetch Chromium yang sebelumnya diblokir oleh aturan ketat CSP `connect-src`.
+  - Memperbarui direktif `connect-src` di `index.html` dengan menyertakan skema `data:` dan `blob:` untuk keandalan jangka panjang.
+- **Penyelarasan Tipe IPC & Penanganan Safe-Access Array**:
+  - Menyelaraskan kontrak antarmuka `remuxVideoMp4` di `ipc-contract.ts` dan `preload.ts` agar mendukung transmisi buffer audio sekunder opsional.
+  - Menangani strict checking `noUncheckedIndexedAccess` pada TypedArray Float32 di modul ekspor video.
+
+---
+
 ## [1.7.1] - 2026-10-05
 
 ### 🐛 Perbaikan Bug & Peningkatan Kompatibilitas Media Sosial

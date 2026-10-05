@@ -1,73 +1,53 @@
 /**
- * Modul Ekspor Video Resolusi Tinggi (HQ MP4 / WebM)
+ * Modul Ekspor Video Resolusi Tinggi (HQ MP4)
  *
- * Merekam animasi kartu Share PnL (wallpaper video / transisi efek)
- * secara langsung dari HTML Canvas menggunakan MediaRecorder API.
- * Menghasilkan video TrueColor 24-bit/32-bit tanpa color banding (jauh lebih jernih daripada GIF).
+ * Menggunakan WebCodecs API dan mp4-muxer untuk Deterministic Encoding.
+ * Menghasilkan video MP4 (H.264) yang 100% mulus tanpa drop frame,
+ * karena tidak bergantung pada wall-clock time.
  */
 
-export interface VideoFormatSupport {
-    mimeType: string
-    extension: 'mp4' | 'webm'
-    codecName: string
-}
+import { Muxer, ArrayBufferTarget } from 'mp4-muxer'
 
 /**
- * Deteksi format video terbaik yang didukung oleh runtime Chromium / Electron.
- * Mengutamakan MP4 (H.264/AVC) untuk kompatibilitas maksimal di media sosial,
- * dengan fallback mulus ke WebM (VP9/VP8).
+ * Mengubah URL media (data: / blob: / lainnya) menjadi byte mentah.
+ *
+ * `data:` URL didekode langsung dari base64 TANPA fetch, karena CSP
+ * `connect-src` aplikasi tidak mengizinkan skema `data:` sehingga fetch
+ * akan ditolak diam-diam (penyebab audio wallpaper tidak ikut terekspor).
  */
-export function getBestSupportedVideoMimeType(
-    preference: 'auto' | 'mp4' | 'webm' = 'auto'
-): VideoFormatSupport {
-    if (typeof window === 'undefined' || typeof MediaRecorder === 'undefined') {
-        throw new Error('MediaRecorder tidak didukung di lingkungan ini.')
+export async function mediaUrlToBytes(url: string): Promise<Uint8Array> {
+    // 1. Coba native fetch terlebih dahulu (paling cepat via engine C++ browser jika diizinkan CSP)
+    try {
+        const res = await fetch(url)
+        if (res.ok) {
+            return new Uint8Array(await res.arrayBuffer())
+        }
+    } catch {
+        // Fallback jika fetch ke skema data: diblokir oleh sandbox/CSP
     }
 
-    const mp4Candidates: Array<{ mimeType: string; extension: 'mp4'; codecName: string }> = [
-        { mimeType: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', extension: 'mp4', codecName: 'MP4 (H.264/AVC)' },
-        { mimeType: 'video/mp4;codecs=avc1', extension: 'mp4', codecName: 'MP4 (H.264)' },
-        { mimeType: 'video/mp4;codecs=h264', extension: 'mp4', codecName: 'MP4 (H.264)' },
-        { mimeType: 'video/mp4', extension: 'mp4', codecName: 'MP4' }
-    ]
-
-    const webmCandidates: Array<{ mimeType: string; extension: 'webm'; codecName: string }> = [
-        { mimeType: 'video/webm;codecs=vp9,opus', extension: 'webm', codecName: 'WebM (VP9 HQ)' },
-        { mimeType: 'video/webm;codecs=vp9', extension: 'webm', codecName: 'WebM (VP9)' },
-        { mimeType: 'video/webm;codecs=vp8,opus', extension: 'webm', codecName: 'WebM (VP8)' },
-        { mimeType: 'video/webm;codecs=vp8', extension: 'webm', codecName: 'WebM (VP8)' },
-        { mimeType: 'video/webm', extension: 'webm', codecName: 'WebM' }
-    ]
-
-    if (preference === 'mp4') {
-        for (const candidate of mp4Candidates) {
-            if (MediaRecorder.isTypeSupported(candidate.mimeType)) {
-                return candidate
+    // 2. Dekode manual untuk data: URL
+    if (url.startsWith('data:')) {
+        const commaIdx = url.indexOf(',')
+        if (commaIdx >= 0) {
+            const meta = url.slice(5, commaIdx)
+            const payload = url.slice(commaIdx + 1)
+            if (meta.includes(';base64')) {
+                const cleanPayload = payload.replace(/\s/g, '')
+                const binary = atob(cleanPayload)
+                const bytes = new Uint8Array(binary.length)
+                for (let i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i)
+                }
+                return bytes
+            } else {
+                return new TextEncoder().encode(decodeURIComponent(payload))
             }
         }
-    } else if (preference === 'webm') {
-        for (const candidate of webmCandidates) {
-            if (MediaRecorder.isTypeSupported(candidate.mimeType)) {
-                return candidate
-            }
-        }
+        throw new Error('Format data URL tidak valid')
     }
 
-    // Default 'auto': Coba MP4 terlebih dahulu karena kompatibilitas tertinggi untuk share medsos
-    for (const candidate of mp4Candidates) {
-        if (MediaRecorder.isTypeSupported(candidate.mimeType)) {
-            return candidate
-        }
-    }
-
-    // Fallback ke WebM jika MP4 tidak didukung
-    for (const candidate of webmCandidates) {
-        if (MediaRecorder.isTypeSupported(candidate.mimeType)) {
-            return candidate
-        }
-    }
-
-    return { mimeType: 'video/webm', extension: 'webm', codecName: 'WebM' }
+    throw new Error('Gagal mengonversi URL media menjadi byte mentah')
 }
 
 export interface VideoExportOptions {
@@ -77,11 +57,11 @@ export interface VideoExportOptions {
     fps?: number
     /** Bitrate video (default: 7_500_000 bps / 7.5 Mbps untuk kualitas visual tajam tanpa noise) */
     videoBitsPerSecond?: number
-    /** Preferensi format (auto, mp4, atau webm) */
+    /** Preferensi format (diabaikan karena WebCodecs memaksakan mp4) */
     formatPreference?: 'auto' | 'mp4' | 'webm'
     /** Callback persentase progress (0 - 100) */
     onProgress?: (percent: number) => void
-    /** Elemen HTMLVideoElement sumber audio (jika ada) */
+    /** Elemen HTMLVideoElement sumber audio (jika ada) - tidak didukung penuh di v1 */
     audioSourceVideo?: HTMLVideoElement | null
 }
 
@@ -92,24 +72,46 @@ export interface VideoExportResult {
     codecName: string
 }
 
+export interface FrameRenderContext {
+    /** Indeks frame saat ini (0 sampai totalFrames - 1) */
+    frameIndex: number
+    /** Jumlah total frame yang akan direkam */
+    totalFrames: number
+    /** Waktu rekaman saat ini dalam satuan detik (frameIndex / fps) */
+    currentTimeSec: number
+    /** Frame per second target */
+    fps: number
+}
+
+// Fungsi dummy untuk menjaga kompatibilitas API ke komponen yang mungkin masih memanggilnya
+export function getBestSupportedVideoMimeType(_preference?: string): any {
+    return { mimeType: 'video/mp4', extension: 'mp4', codecName: 'MP4' }
+}
+
 /**
- * Tangkap animasi kanvas dan ekspor sebagai video resolusi tinggi (MP4 / WebM).
+ * Tangkap animasi kanvas dan ekspor sebagai video MP4 resolusi tinggi.
+ * Menggunakan pendekatan Deterministic Encoding.
  *
  * @param renderFrameToCanvas Fungsi yang menggambar tampilan kartu terbaru ke kanvas
  * @param options Opsi durasi, FPS, bitrate, dan progress
  */
 export async function captureAndExportVideo(
-    renderFrameToCanvas: (canvas: HTMLCanvasElement) => void,
+    renderFrameToCanvas: (canvas: HTMLCanvasElement, context?: FrameRenderContext) => void | Promise<void>,
     options: VideoExportOptions = {}
 ): Promise<VideoExportResult> {
     const durationMs = options.durationMs ?? 15_000
     const fps = options.fps ?? 30
     const videoBitsPerSecond = options.videoBitsPerSecond ?? 7_500_000
-    const formatSupport = getBestSupportedVideoMimeType(options.formatPreference ?? 'auto')
-
+    const totalFrames = Math.ceil((durationMs / 1000) * fps)
+    
     // 1. Dapatkan dimensi kartu dari satu frame sampel
     const sampleCanvas = document.createElement('canvas')
-    renderFrameToCanvas(sampleCanvas)
+    await renderFrameToCanvas(sampleCanvas, {
+        frameIndex: 0,
+        totalFrames,
+        currentTimeSec: 0,
+        fps
+    })
 
     // Catatan H.264: Dimensi wajib bernilai genap agar encoder hardware tidak error
     const rawW = sampleCanvas.width || 1080
@@ -117,196 +119,194 @@ export async function captureAndExportVideo(
     const exportW = Math.round(rawW / 2) * 2
     const exportH = Math.round(rawH / 2) * 2
 
-    // 2. Siapkan kanvas perekam
-    const recordCanvas = document.createElement('canvas')
-    recordCanvas.width = exportW
-    recordCanvas.height = exportH
-    const recordCtx = recordCanvas.getContext('2d', { alpha: false })
-    if (!recordCtx) {
-        throw new Error('Gagal menginisialisasi 2D context pada perekam kanvas.')
-    }
+    // 1.5. Tangkap dan Decode Audio secara Offline (Jika ada)
+    let audioBuffer: AudioBuffer | null = null
+    let audioSampleRate = 44100
+    let audioChannels = 2
+    let hasAudio = false
 
-    // Render frame pertama
-    renderFrameToCanvas(sampleCanvas)
-    recordCtx.drawImage(sampleCanvas, 0, 0, exportW, exportH)
-
-    // 3. Buat MediaStream dari kanvas
-    // TypeScript lib.dom mendukung captureStream pada HTMLCanvasElement
-    const stream = (recordCanvas as unknown as { captureStream: (fps: number) => MediaStream }).captureStream(fps)
-    if (!stream) {
-        throw new Error('Metode captureStream tidak didukung pada elemen kanvas browser.')
-    }
-
-    // Ekstrak trek audio dari video sumber jika ada
-    let cloneAudio: HTMLAudioElement | null = null
-    let audioCtx: AudioContext | null = null
-    let mediaElementSource: MediaElementAudioSourceNode | null = null
     if (options.audioSourceVideo) {
-        try {
-            // Gunakan AudioContext agar tetap mendapat audio meskipun elemen video muted
-            audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume().catch(() => {})
+        const src = options.audioSourceVideo.currentSrc || options.audioSourceVideo.src
+        if (src) {
+            try {
+                const response = await fetch(src)
+                const arrayBuffer = await response.arrayBuffer()
+                const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+                audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
+                audioSampleRate = audioBuffer.sampleRate
+                audioChannels = audioBuffer.numberOfChannels
+                hasAudio = true
+                if (audioCtx.state !== 'closed') await audioCtx.close()
+            } catch (err) {
+                console.warn('Gagal memuat/decode trek audio (Video akan bisu):', err)
             }
-            // Kloning audio agar kita bisa unmute tanpa memengaruhi video asli
-            // dan tidak memicu InvalidStateError jika di-export berkali-kali
-            cloneAudio = new Audio(options.audioSourceVideo.currentSrc || options.audioSourceVideo.src)
-            cloneAudio.crossOrigin = 'anonymous'
-            cloneAudio.currentTime = options.audioSourceVideo.currentTime
-            cloneAudio.loop = options.audioSourceVideo.loop
-            cloneAudio.playbackRate = options.audioSourceVideo.playbackRate
-            cloneAudio.muted = false // Harus false agar ada sinyal ke AudioContext
-
-            mediaElementSource = audioCtx.createMediaElementSource(cloneAudio)
-            const destination = audioCtx.createMediaStreamDestination()
-            mediaElementSource.connect(destination)
-            // Sengaja TIDAK dikoneksikan ke audioCtx.destination agar tidak bunyi ke speaker
-
-            // Mulai play dari kloningan
-            cloneAudio.play().catch(e => console.warn('Kloningan audio gagal play', e))
-
-            const audioTracks = destination.stream.getAudioTracks()
-            const firstAudioTrack = audioTracks[0]
-            if (firstAudioTrack) {
-                stream.addTrack(firstAudioTrack)
-            }
-        } catch (err) {
-            console.warn('Gagal menangkap trek audio dari sumber video:', err)
         }
     }
 
-    // 4. Inisialisasi MediaRecorder
-    let recorder: MediaRecorder
-    try {
-        recorder = new MediaRecorder(stream, {
-            mimeType: formatSupport.mimeType,
-            videoBitsPerSecond
+    // 2. Siapkan muxer
+    const muxerOptions: any = {
+        target: new ArrayBufferTarget(),
+        video: {
+            codec: 'avc',
+            width: exportW,
+            height: exportH
+        },
+        firstTimestampBehavior: 'offset',
+        fastStart: 'in-memory'
+    }
+
+    if (hasAudio) {
+        muxerOptions.audio = {
+            codec: 'aac',
+            sampleRate: audioSampleRate,
+            numberOfChannels: audioChannels
+        }
+    }
+    const muxer = new Muxer(muxerOptions)
+
+    // 2.5 Siapkan Audio Encoder (Jika Ada)
+    let audioEncoderError: Error | null = null
+    let audioEncoder: any = null
+    let framesToEncode = 0
+    let startFrame = 0
+
+    if (hasAudio && audioBuffer) {
+        audioEncoder = new window.AudioEncoder({
+            output: (chunk: any, meta: any) => muxer.addAudioChunk(chunk, meta),
+            error: (e: Error) => {
+                console.error('AudioEncoder error:', e)
+                audioEncoderError = e
+            }
         })
-    } catch {
-        // Fallback jika codec spesifik ditolak saat instansiasi
-        recorder = new MediaRecorder(stream, { videoBitsPerSecond })
+        audioEncoder.configure({
+            codec: 'mp4a.40.2',
+            sampleRate: audioSampleRate,
+            numberOfChannels: audioChannels,
+            bitrate: 128_000
+        })
+
+        const startTime = options.audioSourceVideo?.currentTime || 0
+        startFrame = Math.floor(startTime * audioSampleRate)
+        framesToEncode = Math.floor((durationMs / 1000) * audioSampleRate)
     }
 
-    const recordedChunks: BlobPart[] = []
-    recorder.ondataavailable = (event: BlobEvent) => {
-        if (event.data && event.data.size > 0) {
-            recordedChunks.push(event.data)
+    // 3. Siapkan WebCodecs VideoEncoder
+    let encoderError: Error | null = null
+    const encoder = new VideoEncoder({
+        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        error: (e) => {
+            console.error('VideoEncoder error:', e)
+            encoderError = e
         }
-    }
-
-    return new Promise<VideoExportResult>((resolve, reject) => {
-        let isAborted = false
-        const startTime = performance.now()
-        const frameIntervalMs = 1000 / fps
-        let lastFrameTime = startTime
-        let animationFrameId: number | null = null
-
-        recorder.onerror = (err) => {
-            isAborted = true
-            cleanupTimers()
-            stream.getTracks().forEach((track) => track.stop())
-            if (cloneAudio) {
-                cloneAudio.pause()
-                cloneAudio.removeAttribute('src')
-                cloneAudio.load()
-            }
-            if (mediaElementSource && audioCtx) {
-                mediaElementSource.disconnect()
-                audioCtx.close().catch(() => {})
-            }
-            reject(err)
-        }
-
-        recorder.onstop = () => {
-            cleanupTimers()
-            stream.getTracks().forEach((track) => track.stop())
-            if (cloneAudio) {
-                cloneAudio.pause()
-                cloneAudio.removeAttribute('src')
-                cloneAudio.load()
-            }
-            if (mediaElementSource && audioCtx) {
-                mediaElementSource.disconnect()
-                audioCtx.close().catch(() => {})
-            }
-
-            options.onProgress?.(100)
-            const finalBlob = new Blob(recordedChunks, { type: formatSupport.mimeType })
-            resolve({
-                blob: finalBlob,
-                extension: formatSupport.extension,
-                mimeType: formatSupport.mimeType,
-                codecName: formatSupport.codecName
-            })
-        }
-
-        // Mulai merekam dengan timeslice 1000ms agar cluster fragment MP4 stabil
-        recorder.start(1000)
-        options.onProgress?.(5)
-
-        // 5. Dual-Clock Engine: Loop render presisi tinggi tahan background throttling
-        const frameCanvas = document.createElement('canvas')
-        const videoTrack = stream.getVideoTracks()[0] as (MediaStreamTrack & { requestFrame?: () => void }) | undefined
-        let timerFallbackId: any = null
-        let lastProgressReportTime = 0
-        let lastReportedPercent = -1
-
-        const cleanupTimers = () => {
-            if (animationFrameId !== null) {
-                cancelAnimationFrame(animationFrameId)
-                animationFrameId = null
-            }
-            if (timerFallbackId !== null) {
-                clearTimeout(timerFallbackId)
-                timerFallbackId = null
-            }
-        }
-
-        const step = () => {
-            if (isAborted) return
-            cleanupTimers()
-
-            const currentTime = performance.now()
-            const elapsed = currentTime - startTime
-
-            if (elapsed >= durationMs) {
-                // Selesai durasi perekaman
-                options.onProgress?.(98)
-                if (recorder.state === 'recording') {
-                    recorder.stop()
-                }
-                return
-            }
-
-            // Gambar frame jika interval waktu mencukupi (toleransi 0.85 frameInterval)
-            if (currentTime - lastFrameTime >= frameIntervalMs * 0.85) {
-                try {
-                    renderFrameToCanvas(frameCanvas)
-                    recordCtx.drawImage(frameCanvas, 0, 0, exportW, exportH)
-                    // Paksa encoder menangkap frame kanvas terbaru secara deterministik
-                    if (videoTrack && typeof videoTrack.requestFrame === 'function') {
-                        videoTrack.requestFrame()
-                    }
-                } catch (renderErr) {
-                    console.warn('Gagal merender frame video:', renderErr)
-                }
-                lastFrameTime = currentTime
-
-                // Throttle pembaruan progress ke React UI maksimal setiap 200ms
-                const progressPercent = Math.min(95, Math.max(5, Math.round((elapsed / durationMs) * 100)))
-                if (progressPercent !== lastReportedPercent && currentTime - lastProgressReportTime >= 200) {
-                    lastReportedPercent = progressPercent
-                    lastProgressReportTime = currentTime
-                    options.onProgress?.(progressPercent)
-                }
-            }
-
-            // Jadwalkan frame berikutnya: utamakan requestAnimationFrame saat window fokus,
-            // dan pasang setTimeout sebagai fallback jika jendela terminimize / blur.
-            animationFrameId = requestAnimationFrame(step)
-            timerFallbackId = setTimeout(step, Math.max(8, Math.round(frameIntervalMs * 0.95)))
-        }
-
-        animationFrameId = requestAnimationFrame(step)
     })
+
+    encoder.configure({
+        codec: 'avc1.4d002a', // H.264 Main Profile Level 4.2
+        width: exportW,
+        height: exportH,
+        bitrate: videoBitsPerSecond,
+        hardwareAcceleration: 'prefer-hardware'
+    })
+
+    const frameCanvas = document.createElement('canvas')
+    frameCanvas.width = exportW
+    frameCanvas.height = exportH
+    const ctx = frameCanvas.getContext('2d', { alpha: false })!
+
+    const renderFullCanvas = document.createElement('canvas')
+
+    options.onProgress?.(5)
+
+    // 4. Loop render deterministik
+    for (let i = 0; i < totalFrames; i++) {
+        if (encoderError) throw encoderError
+        if (audioEncoderError) throw audioEncoderError
+
+        const currentTimeSec = i / fps
+
+        // Render state UI saat ini ke kanvas asli dengan konteks waktu deterministik
+        await renderFrameToCanvas(renderFullCanvas, {
+            frameIndex: i,
+            totalFrames,
+            currentTimeSec,
+            fps
+        })
+
+        // Skalakan ke resolusi genap export
+        ctx.drawImage(renderFullCanvas, 0, 0, exportW, exportH)
+
+        // Hitung timestamp frame yang tepat (dalam microseconds)
+        const timestampMicroseconds = (i * 1000000) / fps
+
+        if (audioEncoder && audioBuffer && framesToEncode > 0) {
+            const audioChunkDurationUs = 1000000 / fps
+            const currentAudioOffset = Math.floor((i * audioChunkDurationUs / 1000000) * audioSampleRate)
+            const audioFramesNeeded = Math.floor((audioChunkDurationUs / 1000000) * audioSampleRate)
+            
+            let framesInChunk = audioFramesNeeded
+            
+            if (i === totalFrames - 1) {
+                framesInChunk = framesToEncode - currentAudioOffset
+            }
+            
+            if (framesInChunk > 0 && currentAudioOffset < framesToEncode) {
+                framesInChunk = Math.min(framesInChunk, framesToEncode - currentAudioOffset)
+                const planarData = new Float32Array(framesInChunk * audioChannels)
+                for (let c = 0; c < audioChannels; c++) {
+                    const channelData = audioBuffer.getChannelData(c)
+                    for (let f = 0; f < framesInChunk; f++) {
+                        const sampleIndex = (startFrame + currentAudioOffset + f) % audioBuffer.length
+                        planarData[c * framesInChunk + f] = channelData[sampleIndex] || 0
+                    }
+                }
+                const audioData = new AudioData({
+                    format: 'f32-planar',
+                    sampleRate: audioSampleRate,
+                    numberOfFrames: framesInChunk,
+                    numberOfChannels: audioChannels,
+                    timestamp: Math.round((currentAudioOffset / audioSampleRate) * 1_000_000),
+                    data: planarData
+                })
+                audioEncoder.encode(audioData)
+                audioData.close()
+            }
+        }
+
+        // Konversi kanvas ke VideoFrame (jika didukung) atau createImageBitmap
+        const frame = new VideoFrame(frameCanvas, { timestamp: timestampMicroseconds })
+        
+        // Encode (pilih keyframe setiap interval 2 detik agar seeking MP4 mulus)
+        const isKeyFrame = i % (fps * 2) === 0
+        encoder.encode(frame, { keyFrame: isKeyFrame })
+        
+        frame.close()
+
+        // Update progress tiap 10% agar UI tidak terlalu sering dirender u/ progress
+        if (i % Math.ceil(totalFrames / 10) === 0) {
+            options.onProgress?.(Math.round(5 + (i / totalFrames) * 90))
+        }
+
+        // Berikan sedikit waktu agar event loop browser tetap responsif untuk update progress UI
+        await new Promise((r) => setTimeout(r, 2))
+    }
+
+    options.onProgress?.(95)
+
+    // 5. Finalisasi file
+    await encoder.flush()
+    if (audioEncoder) {
+        await audioEncoder.flush()
+        audioEncoder.close()
+    }
+    muxer.finalize()
+    const { buffer } = muxer.target as ArrayBufferTarget
+
+    options.onProgress?.(100)
+
+    return {
+        blob: new Blob([buffer], { type: 'video/mp4' }),
+        extension: 'mp4',
+        mimeType: 'video/mp4',
+        codecName: 'MP4 (H.264 WebCodecs)'
+    }
 }

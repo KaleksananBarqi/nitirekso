@@ -1,6 +1,6 @@
 {
     "name": "nitirekso",
-    "version": "1.7.1",
+    "version": "1.7.2",
     "private": true,
     "description": "nitirekso — Niti Transaksi, Rekso Evaluasi. Trading journal otomatis read-only untuk MEXC, Bitunix, Bybit, Binance, dan BingX Futures",
     "author": {
@@ -45,7 +45,8 @@
     "dependencies": {
         "better-sqlite3": "^13.0.3",
         "ccxt": "^4.5.78",
-        "electron-updater": "^6.8.9"
+        "electron-updater": "^6.8.9",
+        "mp4-muxer": "^5.2.2"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.3.3",

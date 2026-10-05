@@ -188,8 +188,8 @@ const api: PreloadApi = {
         ipcRenderer.invoke(IPC_CHANNELS.btcKlines, payload),
 
     // --- Utilitas Video (Remux fMP4 ke Standard MP4 +faststart) ---
-    remuxVideoMp4: (data: Uint8Array): Promise<MutationResult<Uint8Array>> =>
-        ipcRenderer.invoke(IPC_CHANNELS.videoRemuxMp4, data)
+    remuxVideoMp4: (data: Uint8Array, audioData?: Uint8Array): Promise<MutationResult<Uint8Array>> =>
+        ipcRenderer.invoke(IPC_CHANNELS.videoRemuxMp4, data, audioData)
 }
 
 contextBridge.exposeInMainWorld('api', api)

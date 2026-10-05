@@ -20,7 +20,7 @@ const execFileAsync = promisify(execFile)
  * 2. Kotak indeks moov diletakkan di depan (+faststart) dengan durasi penuh.
  * 3. Proses hanya memakan waktu ~50ms dan 100% lossless (tanpa penurunan kualitas / 0 frame drop).
  */
-export async function remuxMp4WithFaststart(inputData: Uint8Array): Promise<Uint8Array> {
+export async function remuxMp4WithFaststart(inputData: Uint8Array, audioData?: Uint8Array): Promise<Uint8Array> {
     const tempDir = join(app.getPath('temp'), 'nitirekso-video')
     if (!existsSync(tempDir)) {
         mkdirSync(tempDir, { recursive: true })
@@ -29,23 +29,42 @@ export async function remuxMp4WithFaststart(inputData: Uint8Array): Promise<Uint
     const timestamp = Date.now()
     const randomSuffix = Math.random().toString(36).slice(2, 8)
     const inPath = join(tempDir, `raw-${timestamp}-${randomSuffix}.mp4`)
+    const audioPath = audioData ? join(tempDir, `raw-audio-${timestamp}-${randomSuffix}.mp4`) : ''
     const outPath = join(tempDir, `faststart-${timestamp}-${randomSuffix}.mp4`)
 
     try {
         writeFileSync(inPath, inputData)
+        if (audioData) {
+            writeFileSync(audioPath, audioData)
+        }
 
-        // Eksekusi ffmpeg -c copy -movflags +faststart
-        await execFileAsync('ffmpeg', [
+        const ffmpegArgs = audioData ? [
+            '-y',
+            '-i', inPath,
+            '-stream_loop', '-1',
+            '-i', audioPath,
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-map', '0:v:0',
+            // Tanda '?' = opsional: jika wallpaper tidak punya audio, remux tetap jalan
+            '-map', '1:a:0?',
+            '-shortest',
+            '-movflags', '+faststart',
+            outPath
+        ] : [
             '-y',
             '-i', inPath,
             '-c', 'copy',
             '-movflags', '+faststart',
             outPath
-        ], { timeout: 30000 })
+        ]
+
+        // Eksekusi ffmpeg
+        await execFileAsync('ffmpeg', ffmpegArgs, { timeout: 30000 })
 
         if (existsSync(outPath)) {
             const remuxed = readFileSync(outPath)
-            logger.info(`[video-remux] Sukses remuxing MP4 +faststart (${remuxed.length} bytes).`)
+            logger.info(`[video-remux] Sukses remuxing MP4 +faststart (${remuxed.length} bytes, audio: ${audioData ? `${audioData.length} bytes` : 'tidak ada'}).`)
             return new Uint8Array(remuxed)
         } else {
             throw new Error('Berkas output hasil remuxing tidak ditemukan.')
@@ -57,6 +76,9 @@ export async function remuxMp4WithFaststart(inputData: Uint8Array): Promise<Uint
         // Defensive cleanup berkas sementara
         try {
             if (existsSync(inPath)) unlinkSync(inPath)
+        } catch {}
+        try {
+            if (audioPath && existsSync(audioPath)) unlinkSync(audioPath)
         } catch {}
         try {
             if (existsSync(outPath)) unlinkSync(outPath)

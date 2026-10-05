@@ -371,7 +371,7 @@ export interface PreloadApi {
     getBtcKlines(payload: { startTime: number; endTime: number }): Promise<MutationResult<{ time: number; close: number }[]>>
 
     // --- Utilitas Video (Remux fMP4 ke Standard MP4 +faststart) ---
-    remuxVideoMp4?: (data: Uint8Array) => Promise<MutationResult<Uint8Array>>
+    remuxVideoMp4?: (data: Uint8Array, audioData?: Uint8Array) => Promise<MutationResult<Uint8Array>>
 }
 
 export interface BtcKlinePoint {
