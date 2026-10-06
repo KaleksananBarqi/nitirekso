@@ -4,6 +4,7 @@ import { Modal } from './ui'
 import { summarize, buildEquityCurve, computeDrawdown } from '../lib/analytics/metrics'
 import { formatDate, formatPnl, formatRatio } from '../lib/format'
 import { cn } from '../lib/utils'
+import { useHidePnl } from '../hooks/useHidePnl'
 import {
     BUILTIN_TEMPLATES,
     loadShareSettings,
@@ -165,6 +166,7 @@ function ShareAnalyticsModalContent({
     onClose: () => void
 }): React.JSX.Element {
     // --- Kalkulasi Metrik Analitik ---
+    const { hidePnl } = useHidePnl()
     const summary = useMemo(() => summarize(trades), [trades])
     const curve = useMemo(() => buildEquityCurve(trades), [trades])
     const drawdown = useMemo(() => computeDrawdown(curve), [curve])
@@ -594,7 +596,7 @@ function ShareAnalyticsModalContent({
                 label: 'EXPECTANCY (R)',
                 value: summary.expectancyR !== null
                     ? `${summary.expectancyR >= 0 ? '+' : ''}${summary.expectancyR.toFixed(2)} R`
-                    : (hideNominal ? '★★★' : (summary.expectancy !== null ? `${formatPnl(summary.expectancy)} USDT` : '—'))
+                    : (hideNominal || hidePnl ? '••••' : (summary.expectancy !== null ? `${formatPnl(summary.expectancy)} USDT` : '—'))
             },
             {
                 label: 'RECOVERY FACTOR',
@@ -606,11 +608,11 @@ function ShareAnalyticsModalContent({
             },
             {
                 label: 'MAX DRAWDOWN',
-                value: hideNominal ? '★★★' : `${formatPnl(drawdown.maxDrawdown)} USDT`
+                value: hideNominal || hidePnl ? '••••' : `${formatPnl(drawdown.maxDrawdown)} USDT`
             },
             {
                 label: 'AVG WIN / LOSS',
-                value: hideNominal ? '★★★ / ★★★' : `${formatPnl(summary.avgWin || 0)} / ${formatPnl(summary.avgLoss || 0)}`
+                value: hideNominal || hidePnl ? '•••• / ••••' : `${formatPnl(summary.avgWin || 0)} / ${formatPnl(summary.avgLoss || 0)}`
             }
         ]
 
@@ -764,11 +766,12 @@ function ShareAnalyticsModalContent({
 
     const handleTwitterShare = (): void => {
         const refStr = showReferral && activeReferral ? `\nRef Code: ${activeReferral}` : ''
-        const pnlStr = hideNominal ? 'Profitable' : `${isProfit ? '+' : ''}${formatPnl(summary.netPnlTotal)} USDT`
+        const pnlStr = hideNominal || hidePnl ? 'Profitable' : `${isProfit ? '+' : ''}${formatPnl(summary.netPnlTotal)} USDT`
         const winRateStr = summary.winRate !== null ? (summary.winRate * 100).toFixed(1) : '0.0'
         const pfStr = summary.profitFactor !== Number.POSITIVE_INFINITY ? formatRatio(summary.profitFactor) : '∞'
+        const ddStr = hideNominal || hidePnl ? '••••' : `${formatPnl(drawdown.maxDrawdown)} USDT`
         const noteStr = customTraderNote ? `\n\n"${customTraderNote}"` : ''
-        const text = `📊 Performance Report (${periodLabel}):\nNet P&L: ${pnlStr} | ${winRateStr}% Win Rate (${summary.totalTrades} Trades)\nMax Drawdown: ${formatPnl(drawdown.maxDrawdown)} USDT | Profit Factor: ${pfStr}${refStr}${noteStr}\n\n#TradingJournal #Crypto #${brandTitle} ${traderHandle}`
+        const text = `📊 Performance Report (${periodLabel}):\nNet P&L: ${pnlStr} | ${winRateStr}% Win Rate (${summary.totalTrades} Trades)\nMax Drawdown: ${ddStr} | Profit Factor: ${pfStr}${refStr}${noteStr}\n\n#DYOR #notfinancialadvice #CryptoTrading #TradingJournal #Crypto`
 
         const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`
         if (window.api?.openExternalUrl) {
@@ -1224,6 +1227,7 @@ function AnalyticsCardPreview({
     isCustomBgActive, customBgUrl, bgDimming, bgPosX = 50, bgPosY = 50, showProfile, showWatermark,
     showChart, hideNominal, showReferral, periodLabel, customTraderNote, aspectRatio
 }: AnalyticsCardPreviewProps): React.JSX.Element {
+    const { hidePnl } = useHidePnl()
     const isTransparentMode = !isCustomBgActive && bg.isTransparent
 
     // Render SVG Kurva Sederhana untuk Live Preview
@@ -1309,8 +1313,8 @@ function AnalyticsCardPreview({
                     <div>
                         <span className="text-[9px] uppercase font-semibold text-white/50 tracking-wider">Total Net Profit</span>
                         <div className="text-xl font-black tabular-nums mt-0.5" style={{ color: isProfit ? '#4ade80' : '#f87171' }}>
-                            {hideNominal
-                                ? (isProfit ? '+★★★★★' : '-★★★★★')
+                            {hideNominal || hidePnl
+                                ? (isProfit ? '+••••' : '-••••')
                                 : `${isProfit ? '+' : ''}${formatPnl(summary.netPnlTotal)} USDT`}
                         </div>
                     </div>
@@ -1375,7 +1379,7 @@ function AnalyticsCardPreview({
                         <span className="text-[11px] font-bold text-white">
                             {summary.expectancyR !== null
                                 ? `${summary.expectancyR >= 0 ? '+' : ''}${summary.expectancyR.toFixed(2)} R`
-                                : (hideNominal ? '★★★' : (summary.expectancy !== null ? `${formatPnl(summary.expectancy)} USDT` : '—'))}
+                                : (hideNominal || hidePnl ? '••••' : (summary.expectancy !== null ? `${formatPnl(summary.expectancy)} USDT` : '—'))}
                         </span>
                     </div>
                     <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
@@ -1391,12 +1395,12 @@ function AnalyticsCardPreview({
                     <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
                         <span className="text-[8px] text-white/50 uppercase block">Max Drawdown</span>
                         <span className="text-[11px] font-bold text-white">
-                            {hideNominal ? '★★★' : `${formatPnl(drawdown.maxDrawdown)} USDT`}
+                            {hideNominal || hidePnl ? '••••' : `${formatPnl(drawdown.maxDrawdown)} USDT`}
                         </span>
                     </div>
                     <div className="rounded-lg border border-white/5 bg-white/[0.03] p-1.5">
                         <span className="text-[8px] text-white/50 uppercase block">Avg Win / Loss</span>
-                        <span className="text-[11px] font-bold text-white">{hideNominal ? '★★★ / ★★★' : `${formatPnl(summary.avgWin || 0)} / ${formatPnl(summary.avgLoss || 0)}`}</span>
+                        <span className="text-[11px] font-bold text-white">{hideNominal || hidePnl ? '•••• / ••••' : `${formatPnl(summary.avgWin || 0)} / ${formatPnl(summary.avgLoss || 0)}`}</span>
                     </div>
                 </div>
 

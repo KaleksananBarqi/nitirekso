@@ -165,7 +165,8 @@ export function registerSyncHandlers(getWindow: () => BrowserWindow | null): voi
         IPC_CHANNELS.credentialDelete,
         (_event, exchange: SyncableExchange): MutationResult<void> => {
             try {
-                if (exchange !== 'mexc' && exchange !== 'bitunix') {
+                const validExchanges: SyncableExchange[] = ['mexc', 'bitunix', 'bybit', 'binance', 'bingx']
+                if (!validExchanges.includes(exchange)) {
                     throw new Error(`Exchange tidak valid: ${String(exchange)}`)
                 }
                 deleteCredentials(exchange)

@@ -29,8 +29,10 @@ import {
 } from '../lib/shareSettings'
 import { getExchangeDefaultLogo, getExchangeDisplayName } from '../lib/exchangeAssets'
 import { getGradientDimmingStyle } from './SharePnlModal'
+import { useHidePnl } from '../hooks/useHidePnl'
 
 export function ShareBrandingSettings(): React.JSX.Element {
+    const { hidePnl } = useHidePnl()
     const [settings, setSettings] = useState<ShareSettings>(loadShareSettings)
     const [customBgList, setCustomBgList] = useState<CustomBgItem[]>(loadCustomBgList)
     const [colorSchemes, setColorSchemes] = useState<BgTemplate[]>(getAllBgTemplates)
@@ -1448,7 +1450,7 @@ export function ShareBrandingSettings(): React.JSX.Element {
                                         +124.50%
                                     </div>
                                     <div className="text-sm font-bold mt-1" style={{ color: currentTemplate.accentProfit }}>
-                                        +1,245.50 USDT
+                                        {hidePnl ? '••••' : '+1,245.50 USDT'}
                                     </div>
                                 </div>
 

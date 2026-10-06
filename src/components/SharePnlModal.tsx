@@ -37,6 +37,7 @@ import { BackgroundAdjustBar } from './share/BackgroundAdjustBar'
 import { AspectFrameControls } from './share/AspectFrameControls'
 import { CaptionMakerPanel } from './share/CaptionMakerPanel'
 import { buildCaptionContext, renderCaption } from '../lib/caption-generator'
+import { useHidePnl } from '../hooks/useHidePnl'
 
 // ---------------------------------------------------------------------------
 // Tipe Props
@@ -202,6 +203,8 @@ export function SharePnlModal({ trade: propTrade, detail: propDetail, isOpen = t
 // ---------------------------------------------------------------------------
 
 function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose: () => void }): React.JSX.Element {
+    const { hidePnl } = useHidePnl()
+
     // --- Kalkulasi Metrik Finansial ---
     const isWin = trade.trade.realizedPnl >= 0
     const leverage = trade.trade.leverage || 1
@@ -1145,7 +1148,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             ctx.save()
             ctx.font = '600 38px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
             ctx.fillStyle = accent
-            const pnlStr = `${formatPnl(trade.trade.realizedPnl)} USDT`
+            const pnlStr = hidePnl ? '••••' : `${formatPnl(trade.trade.realizedPnl)} USDT`
             ctx.fillText(pnlStr, cx, curY + 32)
 
             if (trade.rMultiple !== null && trade.rMultiple !== undefined) {
@@ -2566,6 +2569,7 @@ function PnlCard({
     setupTag, executionGrade, emotionTag, showSetup, showGrade, showEmotion,
     showReferral, showThesis, customThesis, showReview, customReview, showFullText
 }: PnlCardProps) {
+    const { hidePnl } = useHidePnl()
     const isTransparentMode = !isCustomBgActive && bg.isTransparent
     const hasReferralDisplay = showReferral && !!activeReferral.trim()
 
@@ -2754,7 +2758,7 @@ function PnlCard({
                 {showPnl && (
                     <div className="flex items-center gap-2 mb-4">
                         <span className="text-xl font-bold" style={{ color: accent, fontVariantNumeric: 'tabular-nums' }}>
-                            {formatPnl(trade.trade.realizedPnl)} USDT
+                            {hidePnl ? '••••' : `${formatPnl(trade.trade.realizedPnl)} USDT`}
                         </span>
                         {trade.rMultiple !== null && trade.rMultiple !== undefined && (
                             <span className="text-sm font-semibold" style={{ color: '#38bdf8' }}>

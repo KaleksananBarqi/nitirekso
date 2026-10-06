@@ -152,28 +152,50 @@ export function EquityChart({
         const series = seriesRef.current
         if (!series) return
 
+        // Helper untuk membuang duplikat timestamp & nilai tidak valid (mencegah crash "Value is null" dari lightweight-charts)
+        const sanitizeData = (raw: any[]) => {
+            const unique: any[] = []
+            let lastTime: number | null = null
+            for (const item of raw) {
+                if (item.value === null || item.value === undefined || Number.isNaN(item.value) || Number.isNaN(item.time)) continue
+                if (item.time !== lastTime) {
+                    unique.push(item)
+                    lastTime = item.time
+                } else {
+                    unique[unique.length - 1] = item
+                }
+            }
+            return unique
+        }
+
         if (variant === 'roi') {
             if (roiPoints.length > 0) {
-                const userData = roiPoints.map((p) => ({
-                    time: Math.floor(p.time / 1000) as UTCTimestamp,
-                    value: p.userRoi
-                }))
+                const userData = sanitizeData(
+                    roiPoints.map((p) => ({
+                        time: Math.floor(p.time / 1000) as UTCTimestamp,
+                        value: p.userRoi
+                    }))
+                )
                 series.setData(userData)
 
                 if (btcSeriesRef.current) {
-                    const btcData = roiPoints.map((p) => ({
-                        time: Math.floor(p.time / 1000) as UTCTimestamp,
-                        value: p.btcRoi
-                    }))
+                    const btcData = sanitizeData(
+                        roiPoints.map((p) => ({
+                            time: Math.floor(p.time / 1000) as UTCTimestamp,
+                            value: p.btcRoi
+                        }))
+                    )
                     btcSeriesRef.current.setData(btcData)
                 }
                 chartRef.current?.timeScale().fitContent()
             }
         } else {
-            const data = points.map((point) => ({
-                time: Math.floor(point.time / 1000) as UTCTimestamp,
-                value: variant === 'drawdown' ? point.drawdown : point.equity
-            }))
+            const data = sanitizeData(
+                points.map((point) => ({
+                    time: Math.floor(point.time / 1000) as UTCTimestamp,
+                    value: variant === 'drawdown' ? point.drawdown : point.equity
+                }))
+            )
 
             series.setData(data)
             chartRef.current?.timeScale().fitContent()

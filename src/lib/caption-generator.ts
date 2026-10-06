@@ -192,23 +192,17 @@ export function getRotatingHook(ctx: CaptionContext, hookIndex = 0): string {
     return list[Math.abs(hookIndex) % list.length]!
 }
 
-/** Hasilkan daftar hashtag otomatis yang relevan dan SEO-friendly (maks 6 hashtag) */
+/** Hasilkan daftar hashtag otomatis yang relevan dan SEO-friendly (maks 5 hashtag) */
 export function generateHashtags(ctx: CaptionContext): string[] {
     const tags = new Set<string>()
 
-    // Tag primer SEO
-    tags.add('#jurnaltrading')
-    tags.add('#tradingcrypto')
-    tags.add(`#${ctx.coin}`)
+    // Tag wajib
+    tags.add('#DYOR')
+    tags.add('#notfinancialadvice')
 
-    // Tag kontekstual hasil
-    if (ctx.outcome === 'win') {
-        tags.add('#futurestrading')
-        tags.add('#belajartrading')
-    } else {
-        tags.add('#manajemenrisiko')
-        tags.add('#cutloss')
-    }
+    // Tag primer SEO
+    tags.add(`#${ctx.coin}`)
+    tags.add('#tradingcrypto')
 
     // Tag kustom jurnal user (jika ada)
     for (const t of ctx.tags) {
@@ -217,12 +211,16 @@ export function generateHashtags(ctx: CaptionContext): string[] {
         if (cleanTag) tags.add(`#${cleanTag}`)
     }
 
-    // Brand tag
-    if (tags.size < 6) {
-        tags.add('#nitirekso')
+    // Tambahan tag jika masih ada ruang
+    if (tags.size < 5) {
+        tags.add('#jurnaltrading')
+    }
+    if (tags.size < 5) {
+        if (ctx.outcome === 'win') tags.add('#futurestrading')
+        else tags.add('#manajemenrisiko')
     }
 
-    return Array.from(tags).slice(0, 6)
+    return Array.from(tags).slice(0, 5)
 }
 
 /** Koleksi Preset Caption Bawaan */
@@ -367,15 +365,15 @@ Amankan modal dulu, cari peluang baru! ⚖️
             win: `Profit {roi} di #{coin} 🚀
 {sideUpper} {leverage} di {exchange}. Setup {setup}, hasil {rMultiple}. Disiplin jalani plan!
 
-#jurnaltrading #tradingcrypto`,
+{HASHTAGS}`,
             loss: `Cut loss {roi} di #{coin} 📉
 {sideUpper} {leverage} di {exchange}. Risiko terukur ({rMultiple}), lanjut evaluasi.
 
-#jurnaltrading #manajemenrisiko`,
+{HASHTAGS}`,
             be: `Trade impas di #{coin} ({roi}) ⚖️
 {sideUpper} {leverage} di {exchange}. Amankan modal dulu!
 
-#jurnaltrading #tradingcrypto`
+{HASHTAGS}`
         }
     }
 ]

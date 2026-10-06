@@ -3,6 +3,23 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.7.4] - 2026-10-06
+
+### 🚀 Fitur Baru & Peningkatan
+- **Mode Sembunyikan PnL (Privacy Mode)**:
+  - Menambahkan opsi privasi untuk menyembunyikan nominal Profit/Loss (PnL) pada pratinjau dan ekspor gambar/video.
+  - Nilai PnL akan disamarkan menjadi "••••" saat mode ini aktif.
+  - Implementasi meliputi pengaturan UI, pratinjau kartu PnL, dan penyimpanan konfigurasi lokal.
+
+### 🐛 Perbaikan Bug & Optimasi
+- **Stabilitas Grafik (EquityChart)**:
+  - Mengimplementasikan sanitasi data pada grafik untuk membuang duplikat timestamp dan nilai tidak valid yang menyebabkan kerusakan (`Value is null`) pada library `lightweight-charts`.
+- **Generator Caption & Tag SEO**:
+  - Memperbarui sistem pembuatan hashtag menjadi maksimal 5 tag untuk mengurangi kepadatan teks.
+  - Menyertakan tag wajib `#DYOR` serta `#notfinancialadvice` di setiap templat caption sosial.
+
+---
+
 ## [1.7.3] - 2026-10-05
 
 ### 🐛 Perbaikan Bug & Optimasi Render Video
