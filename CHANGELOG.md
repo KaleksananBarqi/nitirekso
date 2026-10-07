@@ -3,6 +3,18 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.8.2] - 2026-10-07
+
+### 🐛 Perbaikan Bug
+- **Deteksi Versi Aplikasi Dinamis (Single Source of Truth)**:
+  - Memperbaiki pembacaan versi aplikasi backend Rust pada `get_app_version` dan `check_for_updates` yang sebelumnya di-hardcode ke konstanta statis lama (`1.7.4`).
+  - Mengintegrasikan `tauri::AppHandle` (`app.package_info().version`) agar nomor versi runtime selalu diambil secara dinamis dari `tauri.conf.json`.
+  - Mengeliminasi false positive notifikasi pembaruan *"Versi Baru Tersedia: v1.8.1 (Versi Anda saat ini: v1.7.4)"* pada pengguna yang telah menginstal biner terbaru.
+- **Penyelarasan Teks Jaminan Keamanan**:
+  - Memperbarui teks jaminan privasi pada antarmuka *Tentang Aplikasi* agar mencerminkan enkripsi native Rust AES-256-GCM lokal.
+
+---
+
 ## [1.8.1] - 2026-10-07
 
 ### 🚀 Fitur Baru

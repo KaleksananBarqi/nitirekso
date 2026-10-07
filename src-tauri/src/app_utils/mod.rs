@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
 
-pub const CURRENT_APP_VERSION: &str = "1.7.4";
+pub const CURRENT_APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,8 +67,8 @@ fn is_newer_version(latest: &str, current: &str) -> bool {
     false
 }
 
-pub async fn check_for_updates() -> Result<AppUpdateInfo, String> {
-    let current_version = CURRENT_APP_VERSION.to_string();
+pub async fn check_for_updates(current_version: &str) -> Result<AppUpdateInfo, String> {
+    let current_version = current_version.trim_start_matches('v').to_string();
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(8))
         .user_agent(format!("nitirekso-desktop/{}", current_version))

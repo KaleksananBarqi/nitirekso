@@ -5,14 +5,16 @@ import logoUrl from '../assets/logo.svg'
 import type { AppUpdateInfo } from '../../shared/ipc-contract'
 
 export function About(): React.JSX.Element {
-    const [version, setVersion] = useState<string>('1.3.0')
+    const [version, setVersion] = useState<string>('1.8.2')
     const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle')
     const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null)
     const [errorMessage, setErrorMessage] = useState<string>('')
 
     useEffect(() => {
         if (window.api?.getAppVersion) {
-            window.api.getAppVersion().then(setVersion).catch(() => setVersion('1.3.0'))
+            window.api.getAppVersion().then((v) => {
+                if (v) setVersion(v)
+            }).catch(() => setVersion('1.8.2'))
         }
     }, [])
 
@@ -222,9 +224,9 @@ export function About(): React.JSX.Element {
                             </p>
                         </div>
                         <div className="rounded-lg border border-border/50 bg-background/60 p-3 space-y-1">
-                            <span className="font-bold text-foreground block">Enkripsi OS</span>
+                            <span className="font-bold text-foreground block">Enkripsi Aman Lokal</span>
                             <p className="text-[11px] text-muted-foreground">
-                                API Key & Secret exchange dienkripsi dengan standar Windows DPAPI (Electron safeStorage).
+                                API Key & Secret exchange dienkripsi aman dengan standar AES-256-GCM native Rust di penyimpanan kredensial lokal.
                             </p>
                         </div>
                     </div>

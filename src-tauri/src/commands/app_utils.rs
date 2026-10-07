@@ -1,7 +1,6 @@
 use crate::app_utils::{
     check_for_updates as check_updates, get_btc_klines as fetch_btc_klines,
     open_external_url as open_url, AppUpdateInfo, BtcKlinePoint, BtcKlinesPayload,
-    CURRENT_APP_VERSION,
 };
 use crate::models::MutationResult;
 
@@ -14,13 +13,14 @@ pub fn open_external_url(url: String) -> MutationResult<()> {
 }
 
 #[tauri::command]
-pub fn get_app_version() -> String {
-    CURRENT_APP_VERSION.to_string()
+pub fn get_app_version(app: tauri::AppHandle) -> String {
+    app.package_info().version.to_string()
 }
 
 #[tauri::command]
-pub async fn check_for_updates() -> MutationResult<AppUpdateInfo> {
-    match check_updates().await {
+pub async fn check_for_updates(app: tauri::AppHandle) -> MutationResult<AppUpdateInfo> {
+    let current_version = app.package_info().version.to_string();
+    match check_updates(&current_version).await {
         Ok(info) => MutationResult::success(info),
         Err(e) => MutationResult::fail(e),
     }
