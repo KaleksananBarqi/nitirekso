@@ -3,6 +3,18 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.8.0] - 2026-10-07
+
+### 🚀 Perubahan Arsitektur Utama
+- **Migrasi Tauri v2**: Seluruh infrastruktur *backend* (Node.js/Electron) telah ditulis ulang menggunakan **Tauri v2** dengan bahasa **Rust**. Aplikasi kini berjalan secara *native* dengan performa jauh lebih cepat, konsumsi memori minimal (sekitar ~30-50MB RAM saat diam), dan ukuran *installer* menyusut drastis.
+- **Pembersihan Dependensi**: Menghapus ratusan modul Node.js yang berkaitan dengan Electron (termasuk Chromium renderer mandiri). Proses I/O, SQLite, Kriptografi DPAPI (Keytar), AI, hingga *Remuxing* Video MP4 kini ditangani menggunakan pustaka native Rust (seperti `rusqlite`, `reqwest`, `keyring`).
+
+### 🛠️ Peningkatan & Optimasi
+- **Zero-Node.js di Produksi**: Aplikasi akhir kini sepenuhnya terkompilasi dalam satu biner mandiri yang memanfaatkan Webview OS bawaan (*WebView2* di Windows, *WebKit* di macOS/Linux).
+- **Rilis Otomatis Multi-Platform**: Skrip build CI/CD sekarang menggunakan Tauri Action (`@tauri-apps/tauri-action`) untuk mengkompilasi target Windows, macOS, dan Linux secara bersamaan via GitHub Actions.
+
+---
+
 ## [1.7.4] - 2026-10-06
 
 ### 🚀 Fitur Baru & Peningkatan

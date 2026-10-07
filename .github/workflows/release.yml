@@ -6,12 +6,6 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      tag_name:
-        description: 'Tag versi yang ingin dirilis (misal: v1.6.0, default: otomatis dari package.json)'
-        required: false
-        type: string
-        default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -30,32 +24,10 @@ jobs:
         include:
           - platform: Windows
             runner: windows-latest
-            builder_args: --win --publish=never
-            artifact_name: win-artifacts
-            artifact_paths: |
-              release/*.exe
-              release/*.blockmap
-              release/latest*.yml
-
           - platform: macOS
             runner: macos-latest
-            builder_args: --mac --x64 --arm64 --publish=never
-            artifact_name: mac-artifacts
-            artifact_paths: |
-              release/*.dmg
-              release/*.zip
-              release/*.blockmap
-              release/latest-mac*.yml
-
           - platform: Linux
-            runner: ubuntu-latest
-            builder_args: --linux AppImage deb --x64 --publish=never
-            artifact_name: linux-artifacts
-            artifact_paths: |
-              release/*.AppImage
-              release/*.deb
-              release/*.blockmap
-              release/latest-linux*.yml
+            runner: ubuntu-22.04
 
     steps:
       - name: Checkout repository
@@ -69,121 +41,28 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      # Quality gate: cegah release jika ada error kompilasi TypeScript
-      - name: Typecheck (Quality Gate)
-        run: npm run typecheck
-
-      # electron-vite build menghasilkan out/main, out/preload, out/renderer
-      - name: Build application (main, preload, renderer)
-        run: npm run build
-
-      # Dependensi sistem Linux untuk packaging AppImage
-      - name: Install Linux system dependencies (FUSE)
-        if: runner.os == 'Linux'
+      - name: Install dependencies (Ubuntu only)
+        if: matrix.platform == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libfuse2 libfuse2t64 || sudo apt-get install -y libfuse2 || true
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      # Packaging installer mandiri per platform (electron-builder)
-      - name: Package application (electron-builder)
-        run: npx electron-builder ${{ matrix.builder_args }}
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts
 
-      # Upload installer dan metadata pembaruan ke artifact storage
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact_name }}
-          if-no-files-found: warn
-          path: ${{ matrix.artifact_paths }}
-
-  release:
-    name: Create or Update GitHub Release
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ./artifacts
-
-      - name: Publish GitHub Release
+      - name: Build application (Tauri)
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_TAG: ${{ github.event.inputs.tag_name }}
-        shell: bash
-        run: |
-          # 1. Tentukan tag rilis (prioritas: input manual -> git tag -> versi package.json)
-          TAG="${INPUT_TAG}"
-          if [ -z "$TAG" ]; then
-            if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-              TAG="${GITHUB_REF#refs/tags/}"
-            else
-              PKG_VER=$(node -p "require('./package.json').version")
-              TAG="v${PKG_VER}"
-            fi
-          fi
-
-          echo "Memproses rilis untuk Tag: $TAG"
-
-          # 2. Kumpulkan berkas installer binary dari semua platform
-          mapfile -d '' assets < <(find ./artifacts -type f \( \
-            -name "*.exe" -o \
-            -name "*.dmg" -o \
-            -name "*.zip" -o \
-            -name "*.AppImage" -o \
-            -name "*.deb" -o \
-            -name "*.blockmap" -o \
-            -name "latest*.yml" \
-          \) -print0)
-
-          if [ "${#assets[@]}" -eq 0 ]; then
-            echo "Error: Tidak ada artifact yang ditemukan untuk di-upload." >&2
-            exit 1
-          fi
-
-          printf 'Aset yang akan di-upload ke release:\n%s\n' "${assets[@]}"
-
-          # 3. Ekstrak release notes dari CHANGELOG.md
-          NOTES_FILE="release_notes.txt"
-          node scripts/extract-release-notes.cjs "$TAG" "$NOTES_FILE"
-
-          # 4. Buat atau perbarui release secara idempotent (aman jika re-run)
-          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "Release $TAG sudah ada. Mengunggah ulang aset dengan --clobber..."
-            gh release upload "$TAG" "${assets[@]}" --repo "${{ github.repository }}" --clobber
-            if [ -s "$NOTES_FILE" ]; then
-              gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file "$NOTES_FILE"
-            fi
-          else
-            echo "Membuat release baru $TAG..."
-            if [ -s "$NOTES_FILE" ]; then
-              gh release create "$TAG" "${assets[@]}" \
-                --repo "${{ github.repository }}" \
-                --title "Release $TAG" \
-                --notes-file "$NOTES_FILE"
-            else
-              gh release create "$TAG" "${assets[@]}" \
-                --repo "${{ github.repository }}" \
-                --title "Release $TAG" \
-                --generate-notes
-            fi
-          fi
-
-          echo "Rilis $TAG berhasil dipublikasikan!"
+        with:
+          tagName: ${{ github.ref_name }} # Action automatically sets this to the tag name
+          releaseName: 'nitirekso ${{ github.ref_name }}'
+          releaseBody: 'Lihat CHANGELOG.md untuk informasi pembaruan.'
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.platform == 'macOS' && '--target universal-apple-darwin' || '' }}

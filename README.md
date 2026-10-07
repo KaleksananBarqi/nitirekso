@@ -1,7 +1,7 @@
 # nitirekso (ꦤꦶꦠꦶꦫꦼꦏ꧀ꦱ) — Aplikasi Trading Journal Otomatis & Analitik Kripto Futures
 
 [![Website](https://img.shields.io/badge/Website-Landing%20Page-9333ea?style=flat-square)](https://kaleksananbarqi.github.io/nitirekso/)
-[![Platform](https://img.shields.io/badge/Platform-Electron%20%7C%20Windows%20Desktop-7928ca?style=flat-square)](https://github.com/KaleksananBarqi/nitirekso)
+[![Platform](https://img.shields.io/badge/Platform-Tauri%20v2%20%7C%20Rust-e44d26?style=flat-square)](https://github.com/KaleksananBarqi/nitirekso)
 [![React](https://img.shields.io/badge/Frontend-React%2019%20%2B%20Tailwind%20v4-blue?style=flat-square)](https://react.dev/)
 [![Database](https://img.shields.io/badge/Database-SQLite%20(Local%20WAL)-10b981?style=flat-square)](https://sqlite.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-f59e0b.svg?style=flat-square)](LICENSE)
@@ -88,8 +88,8 @@ Nama **nitirekso** berakar dari kearifan bahasa Jawa:
 ### Prasyarat
 - Node.js versi 18+ (LTS disarankan)
 - NPM versi 9+
-
-> **Bebas Kompilasi C++:** Proyek ini **tidak membutuhkan Visual Studio C++ Build Tools**. Modul `better-sqlite3@13` menggunakan prebuilt **N-API** binary yang kompatibel dengan Electron.
+- **Rust** & Cargo (via `rustup`)
+- C++ Build Tools (untuk kompilasi dependensi Rust di Windows)
 
 ### Langkah Instalasi
 ```bash
@@ -101,27 +101,18 @@ cd nitirekso
 npm install
 
 # Buka aplikasi dalam mode development
-npm run dev
+npm run dev:tauri
 ```
 
 ### Membuat Installer Desktop Multi-Platform
 ```bash
-# Menghasilkan installer mandiri Windows (.exe)
-npm run dist
-
-# Menghasilkan paket macOS (.dmg & .zip)
-npm run dist:mac
-
-# Menghasilkan paket Linux (.AppImage & .deb)
-npm run dist:linux
-
-# Menghasilkan seluruh platform sekaligus (Windows, macOS, Linux)
-npm run dist:all
+# Menghasilkan installer mandiri sesuai platform OS host
+npm run build:tauri
 ```
-Hasil build tersimpan di folder `release/`:
-* **Windows**: `nitirekso-Setup-<versi>.exe` (NSIS Wizard Installer)
-* **macOS**: `nitirekso-<versi>-mac-arm64.dmg` (Apple Silicon) & `nitirekso-<versi>-mac-x64.dmg` (Intel), serta berkas portabel `.zip`
-* **Linux**: `nitirekso-<versi>-linux-x64.AppImage` (Portable) & `nitirekso-<versi>-linux-x64.deb` (Debian/Ubuntu)
+Hasil build tersimpan di folder `src-tauri/target/release/bundle/`:
+* **Windows**: `.msi` dan `.exe` (NSIS)
+* **macOS**: `.dmg` dan `.app`
+* **Linux**: `.AppImage` dan `.deb`
 
 ---
 
@@ -143,9 +134,9 @@ npm run verify:acceptance   # 51 checks — Kriteria penerimaan acceptance crite
 
 ## 🔒 Standar Keamanan & Privasi
 
-- **Penyimpanan Kredensial**: Menggunakan modul `safeStorage` bawaan Electron yang memanfaatkan enkripsi tingkat OS (Windows DPAPI). Kredensial API tidak pernah disimpan dalam bentuk plaintext.
-- **Alur Data Satu Arah**: Kredensial hanya mengalir dari Renderer ke Main Process. Tampilan UI tidak pernah dapat membaca kembali kunci API rahasia Anda.
-- **Content Security Policy (CSP)**: `connect-src 'none'` pada renderer memastikan tidak ada skrip jahat yang dapat membocorkan data trading Anda ke internet.
+- **Penyimpanan Kredensial**: Menggunakan *keychain* bawaan OS (Windows Credential Manager / macOS Keychain / Linux Secret Service) yang dikelola secara aman oleh Rust `keyring`. Kredensial API tidak pernah disimpan dalam bentuk plaintext.
+- **Alur Data Satu Arah**: Kredensial hanya mengalir dari Frontend ke Backend (Tauri Rust API). Tampilan UI tidak pernah dapat membaca kembali kunci API rahasia Anda.
+- **Content Security Policy (CSP)**: Diatur langsung dari konfigurasi Tauri untuk memastikan tidak ada skrip jahat yang dapat membocorkan data trading Anda ke internet.
 - **Mode Sembunyikan PnL (Hide P&L)**: Satu klik tombol mata untuk menyembunyikan nominal dolar saat Anda ingin berbagi layar (*screen sharing*) atau merekam video.
 
 ---
@@ -155,16 +146,14 @@ npm run verify:acceptance   # 51 checks — Kriteria penerimaan acceptance crite
 ```text
 nitirekso/
 ├── build/                 # Resource icon aplikasi & installer (.ico, .png)
-├── electron/              # Main Process Electron (Node.js runtime)
-│   ├── ai/                # Integrasi OpenAI API untuk evaluasi trading
-│   ├── backup/            # Mesin backup lokal & Google Drive
-│   ├── credentials/       # Pengelolaan kredensial via OS safeStorage
-│   ├── db/                # Koneksi SQLite, skema, dan migrasi database
-│   ├── exchanges/         # Adapter API exchange (MEXC & Bitunix)
-│   ├── ipc/               # Komunikasi antar-proses IPC bertipe aman
-│   ├── screenshots/       # Pengelolaan file gambar screenshot lokal
-│   └── sync/              # Mesin sinkronisasi data riwayat transaksi
-├── src/                   # Renderer Process (React 19 + Tailwind CSS v4)
+├── src-tauri/             # Backend Tauri v2 (Rust runtime)
+│   ├── src/
+│   │   ├── commands/      # IPC endpoint commands (Tauri API handlers)
+│   │   ├── utils/         # Helper functions dan business logic di Rust
+│   │   └── lib.rs         # Entry point aplikasi Rust
+│   ├── tauri.conf.json    # Konfigurasi Tauri
+│   └── Cargo.toml         # Manifest pustaka Rust
+├── src/                   # Frontend Renderer (React 19 + Tailwind CSS v4)
 │   ├── assets/            # Logo SVG & Favicon resmi nitirekso
 │   ├── components/        # Komponen UI, modal pamer PnL, dan visualisasi chart
 │   ├── hooks/             # Custom hooks (useTheme, useTrades, useHidePnl)
