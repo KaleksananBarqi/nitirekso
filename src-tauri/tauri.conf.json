@@ -1,13 +1,13 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "nitirekso",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "identifier": "com.nitirekso.app",
   "build": {
     "frontendDist": "../out/renderer",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "npm run dev:tauri",
-    "beforeBuildCommand": "npm run build:tauri"
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [
@@ -37,6 +37,12 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "displayLanguageSelector": false
+      }
     }
   }
 }

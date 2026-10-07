@@ -102,6 +102,14 @@ export interface BackupRunResult {
     error?: string
 }
 
+export interface BackupRestoreResult {
+    success: boolean
+    sourcePath: string
+    tradesCount: number
+    screenshotsRestored: number
+    message: string
+}
+
 /** Status kredensial satu exchange. TIDAK memuat kredensialnya sendiri. */
 export interface CredentialStatusPayload {
     exchange: SyncableExchange
@@ -329,6 +337,7 @@ export interface PreloadApi {
     // --- Backup Google Drive (fitur 5) ---
     getBackupStatus(): Promise<BackupStatusPayload>
     runBackup(): Promise<MutationResult<BackupRunResult>>
+    restoreBackup(folderPath?: string): Promise<MutationResult<BackupRestoreResult>>
     disconnectBackup(): Promise<MutationResult<void>>
     startBackupOAuth(clientId?: string): Promise<MutationResult<void>>
     selectBackupFolder(): Promise<MutationResult<string | null>>

@@ -1,7 +1,7 @@
 use crate::backup::{
     disconnect_backup as bk_disconnect, execute_backup, get_backup_status as bk_get_status,
-    prepare_backup_context, select_local_folder, start_backup_oauth as bk_start_oauth,
-    BackupRunResult, BackupStatusPayload,
+    prepare_backup_context, restore_backup_from_path, select_local_folder,
+    start_backup_oauth as bk_start_oauth, BackupRestoreResult, BackupRunResult, BackupStatusPayload,
 };
 use crate::db::repositories::settings::set_setting;
 use crate::db::DbState;
@@ -76,4 +76,28 @@ pub async fn run_backup(
     }
 
     Ok(MutationResult::success(run_result))
+}
+
+#[tauri::command]
+pub fn restore_backup(
+    db: State<'_, DbState>,
+    folder_path: Option<String>,
+) -> MutationResult<BackupRestoreResult> {
+    let chosen_path = match folder_path {
+        Some(s) if !s.trim().is_empty() => std::path::PathBuf::from(s.trim()),
+        _ => {
+            let dialog = rfd::FileDialog::new().set_title("Pilih Folder Cadangan nitirekso");
+            match dialog.pick_folder() {
+                Some(p) => p,
+                None => return MutationResult::fail("Pemilihan folder cadangan dibatalkan oleh pengguna.".to_string()),
+            }
+        }
+    };
+
+    let dest_db_path = db.db_path.clone();
+    let mut conn = db.conn.lock().unwrap();
+    match restore_backup_from_path(&mut conn, &dest_db_path, Some(&chosen_path)) {
+        Ok(res) => MutationResult::success(res),
+        Err(e) => MutationResult::fail(e),
+    }
 }

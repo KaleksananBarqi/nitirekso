@@ -1,6 +1,6 @@
 {
     "name": "nitirekso",
-    "version": "1.8.0",
+    "version": "1.8.1",
     "private": true,
     "description": "nitirekso — Niti Transaksi, Rekso Evaluasi. Trading journal otomatis read-only untuk MEXC, Bitunix, Bybit, Binance, dan BingX Futures",
     "author": {
@@ -18,15 +18,16 @@
     },
     "scripts": {
         "dev": "vite",
-        "dev:tauri": "vite",
+        "dev:tauri": "tauri dev",
         "build": "vite build",
-        "build:tauri": "vite build",
+        "build:tauri": "tauri build",
         "preview": "vite preview",
         "tauri": "tauri",
         "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.json"
     },
     "dependencies": {
         "@tauri-apps/api": "^2.12.1",
+        "@tauri-apps/plugin-store": "^2.5.0",
         "mp4-muxer": "^5.2.2"
     },
     "devDependencies": {

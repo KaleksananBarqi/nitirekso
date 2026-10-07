@@ -35,6 +35,7 @@ export function createTauriApi(): PreloadApi {
         exportJournal: async (format, filter) => await invoke('export_journal', { format, filter }),
         getBackupStatus: async () => await invoke('get_backup_status'),
         runBackup: async () => await invoke('run_backup'),
+        restoreBackup: async (folderPath) => await invoke('restore_backup', { folderPath }),
         disconnectBackup: async () => await invoke('disconnect_backup'),
         startBackupOAuth: async (clientId) => await invoke('start_backup_oauth', { clientId }),
         selectBackupFolder: async () => await invoke('select_backup_folder'),

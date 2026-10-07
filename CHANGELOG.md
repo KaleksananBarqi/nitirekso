@@ -3,6 +3,23 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.8.1] - 2026-10-07
+
+### 🚀 Fitur Baru
+- **Mekanisme Pemulihan Cadangan Data (Restore Backup)**:
+  - Mengimplementasikan engine pemulihan data transaksi dan tangkapan layar (*screenshots*) dari folder cadangan lokal.
+  - Mendukung pemulihan fisik database SQLite menggunakan SQLite Online Backup API (`rusqlite::backup::Backup`), menjamin keutuhan data, transaksi aman, dan kompatibilitas WAL mode.
+  - Menjalankan migrasi skema database secara otomatis pasca-restore agar cadangan dari versi lawas langsung kompatibel dengan versi terbaru.
+  - Fallback otomatis ke snapshot JSON (`trading-journal-*.json`) jika file database fisik tidak ditemukan.
+  - Menyalin seluruh file screenshot dari folder `screenshots/` ke penyimpanan lokal aplikasi.
+- **Peningkatan Antarmuka Backup & Restore**:
+  - Menambahkan tombol "📥 Pulihkan dari Folder Ini" (1-klik dari folder cadangan aktif) dan "📂 Pulihkan Folder Lain…" di pengaturan cadangan.
+  - Dilengkapi dialog konfirmasi keamanan serta umpan balik status hasil pemulihan (jumlah trade dan screenshot yang dipulihkan).
+- **Pembaruan Landing Page Statis Tanpa Versi**:
+  - Menghapus penyebutan nomor versi statis pada landing page (`docs/index.html`) sehingga seluruh tombol unduhan dan teks fitur selalu dinamis dan mengarah ke rilis terbaru tanpa perlu pembaruan manual setiap rilis.
+
+---
+
 ## [1.8.0] - 2026-10-07
 
 ### 🚀 Perubahan Arsitektur Utama

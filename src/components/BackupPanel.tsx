@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { BackupStatusPayload, BackupRunResult } from '@shared/ipc-contract'
+import type { BackupStatusPayload, BackupRunResult, BackupRestoreResult } from '@shared/ipc-contract'
 import { Badge, Button, Card, CardHeader, ErrorNote } from './ui'
 import { formatDateTime } from '../lib/format'
 
@@ -27,6 +27,7 @@ export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Ele
     const [running, setRunning] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [result, setResult] = useState<BackupRunResult | null>(null)
+    const [restoreResult, setRestoreResult] = useState<BackupRestoreResult | null>(null)
 
     useEffect(() => {
         void loadAll()
@@ -119,6 +120,35 @@ export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Ele
         }
     }
 
+    async function handleRestoreBackup(folderPath?: string): Promise<void> {
+        const confirmMsg = folderPath
+            ? `Pulihkan data dari folder cadangan berikut?\n\n${folderPath}\n\n⚠️ PERINGATAN: Database saat ini akan digantikan dengan data dari cadangan tersebut. Riwayat trade yang belum dicadangkan dapat tertimpa.`
+            : 'Pilih folder cadangan nitirekso untuk dipulihkan.\n\n⚠️ PERINGATAN: Database saat ini akan digantikan dengan data dari cadangan tersebut. Lanjutkan?'
+
+        if (!window.confirm(confirmMsg)) {
+            return
+        }
+
+        setRunning(true)
+        setError(null)
+        setResult(null)
+        setRestoreResult(null)
+        try {
+            const res = await window.api.restoreBackup(folderPath)
+            if (!res.ok || !res.data) {
+                setError(res.error ?? 'Gagal memulihkan cadangan data.')
+                return
+            }
+            setRestoreResult(res.data)
+            await loadAll()
+            onSyncComplete()
+        } catch (err) {
+            setError(err instanceof Error ? err.message : String(err))
+        } finally {
+            setRunning(false)
+        }
+    }
+
     async function handleDisconnect(): Promise<void> {
         setRunning(true)
         setError(null)
@@ -174,6 +204,13 @@ export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Ele
                     </div>
                 )}
 
+                {restoreResult && (
+                    <div className="rounded-md border border-profit/40 bg-profit/10 px-3 py-2 text-[11px]">
+                        <p className="font-medium text-profit">✅ Pemulihan Data Cadangan Berhasil!</p>
+                        <p className="mt-0.5 text-muted-foreground">{restoreResult.message}</p>
+                    </div>
+                )}
+
                 {/* Pilihan Metode Sinkronisasi */}
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     {/* Metode 1: Folder Lokal Google Drive */}
@@ -205,9 +242,29 @@ export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Ele
                             )}
                         </div>
 
-                        <div className="mt-3 flex items-center gap-2">
-                            <Button size="sm" variant="outline" onClick={() => void handleSelectFolder()}>
-                                {localFolder ? 'Ganti Folder' : '📂 Pilih Folder Google Drive'}
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <Button size="sm" variant="outline" onClick={() => void handleSelectFolder()} disabled={running}>
+                                {localFolder ? 'Ganti Folder' : '📂 Pilih Folder'}
+                            </Button>
+                            {localFolder && (
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={() => void handleRestoreBackup(localFolder)}
+                                    disabled={running}
+                                    title="Pulihkan seluruh data dari folder aktif ini"
+                                >
+                                    📥 Pulihkan dari Folder Ini
+                                </Button>
+                            )}
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void handleRestoreBackup()}
+                                disabled={running}
+                                title="Pilih folder cadangan lain dari flashdisk atau komputer"
+                            >
+                                📂 Pulihkan Folder Lain…
                             </Button>
                             {syncMode !== 'folder' && localFolder && (
                                 <Button
@@ -297,18 +354,27 @@ export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Ele
                     </div>
                 </div>
 
-                {/* Tombol Eksekusi Backup Utama */}
+                {/* Tombol Eksekusi Backup & Restore Utama */}
                 <div className="mt-1 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
                     <p className="text-[11px] text-muted-foreground">
-                        Semua data tetap berada di bawah kendali Anda. Token OAuth terenkripsi dengan aman via safeStorage OS.
+                        Semua data tetap privat di komputer Anda. Database SQLite fisik dan screenshot dicadangkan dan dipulihkan secara instan.
                     </p>
-                    <Button
-                        variant="primary"
-                        onClick={() => void handleRunBackup()}
-                        disabled={running || !connected}
-                    >
-                        {running ? 'Sedang Menyinkronkan…' : '🚀 Backup Sekarang'}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            onClick={() => void handleRestoreBackup(localFolder || undefined)}
+                            disabled={running}
+                        >
+                            {running ? 'Memproses…' : '📥 Pulihkan Cadangan'}
+                        </Button>
+                        <Button
+                            variant="primary"
+                            onClick={() => void handleRunBackup()}
+                            disabled={running || !connected}
+                        >
+                            {running ? 'Sedang Menyinkronkan…' : '🚀 Backup Sekarang'}
+                        </Button>
+                    </div>
                 </div>
             </div>
         </Card>

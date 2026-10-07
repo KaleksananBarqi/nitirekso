@@ -23,6 +23,7 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::new().build())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -64,6 +65,7 @@ pub fn run() {
             delete_credentials,
             get_backup_status,
             run_backup,
+            restore_backup,
             disconnect_backup,
             start_backup_oauth,
             select_backup_folder,
