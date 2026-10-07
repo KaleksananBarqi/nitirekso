@@ -120,6 +120,12 @@ export function createTauriApi(): PreloadApi {
                 error: res.error,
                 data: data,
             };
+        },
+        saveVideoFile: async (defaultName: string, data: Uint8Array) => {
+            return await invoke<MutationResult<string | null>>('save_video_file', {
+                defaultName,
+                data: Array.from(data),
+            });
         }
     };
 }

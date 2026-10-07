@@ -86,9 +86,9 @@ export function composeAspectFrame(
         // Tentukan gambar sumber latar belakang: wallpaper kustom atau kartu itu sendiri
         let mediaSrc: CanvasImageSource | null = null
 
-        if (bgSource === 'wallpaper-blur' && wallpaperSource) {
+        if (wallpaperSource) {
             if (wallpaperSource instanceof HTMLVideoElement) {
-                if (wallpaperSource.readyState >= 2) {
+                if (wallpaperSource.videoWidth > 0 || wallpaperSource.readyState >= 1) {
                     mediaSrc = wallpaperSource
                 }
             } else if (wallpaperSource instanceof HTMLImageElement && wallpaperSource.complete) {
@@ -175,35 +175,28 @@ export function composeAspectFrame(
     ctx.fillStyle = vignetteGrad
     ctx.fillRect(0, 0, targetW, targetH)
 
-    // 3. Posisikan Kartu di Area Aman (Safe Zone TikTok 9:16)
-    // Safe area TikTok:
-    // - Top margin: ~160px (Search, Live, Following/For You tabs)
-    // - Bottom margin: ~320px (Caption, Creator name, Sound track disk)
-    // - Right margin: ~130px (Like, Comment, Favorite, Share action bar)
-    // - Left margin: ~50px
-    const maxUsableW = targetW - 130 - 50 // 900px
-    const maxUsableH = targetH - 160 - 320 // 1440px
+    // 3. Posisikan Kartu Normal di Tengah Canvas 9:16 (Centered Overlay)
+    // Rasio TikTok 9:16 memperluas kanvas (1080×1920), sementara kartu PnL mempertahankan
+    // proporsi normalnya dan melayang di tengah sebagai overlay elegan.
+    const maxUsableW = targetW - 80 // Margin 40px di sisi kiri & kanan (1000px)
+    const maxUsableH = targetH - 140 // Margin 70px atas & bawah (1780px)
 
-    const scaleW = maxUsableW / srcW
-    const scaleH = maxUsableH / srcH
-    const cardScale = Math.min(1.0, scaleW, scaleH)
-
+    const cardScale = Math.min(0.925, maxUsableW / srcW, maxUsableH / srcH)
     const cardW = Math.round(srcW * cardScale)
     const cardH = Math.round(srcH * cardScale)
 
-    // Pusatkan horizontal dengan offset sedikit ke kiri (karena action bar di kanan)
-    const cardX = Math.round((targetW - 130 + 50 - cardW) / 2)
-    // Pusatkan vertikal di dalam area aman (sedikit di atas tengah absolut)
-    const cardY = Math.round(160 + (maxUsableH - cardH) / 2)
+    // Pusatkan kartu tepat di tengah absolut (horizontal & vertikal)
+    const cardX = Math.round((targetW - cardW) / 2)
+    const cardY = Math.round((targetH - cardH) / 2)
 
-    // Bayangan lembut kartu
+    // Bayangan mengambang (floating card overlay) yang mewah
     ctx.save()
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.65)'
-    ctx.shadowBlur = Math.round(36 * cardScale)
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.75)'
+    ctx.shadowBlur = Math.round(44 * cardScale)
     ctx.shadowOffsetX = 0
-    ctx.shadowOffsetY = Math.round(18 * cardScale)
+    ctx.shadowOffsetY = Math.round(20 * cardScale)
 
-    // Gambar kartu PnL
+    // Gambar kartu PnL normal sebagai overlay di tengah canvas
     ctx.drawImage(sourceCanvas, cardX, cardY, cardW, cardH)
     ctx.restore()
 

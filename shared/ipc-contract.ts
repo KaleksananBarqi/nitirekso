@@ -379,8 +379,9 @@ export interface PreloadApi {
     // --- BTC Market Data (Analytics ROI) ---
     getBtcKlines(payload: { startTime: number; endTime: number }): Promise<MutationResult<{ time: number; close: number }[]>>
 
-    // --- Utilitas Video (Remux fMP4 ke Standard MP4 +faststart) ---
+    // --- Utilitas Video (Remux fMP4 & Simpan Video Native) ---
     remuxVideoMp4?: (data: Uint8Array, audioData?: Uint8Array) => Promise<MutationResult<Uint8Array>>
+    saveVideoFile?: (defaultName: string, data: Uint8Array) => Promise<MutationResult<string | null>>
 }
 
 export interface BtcKlinePoint {

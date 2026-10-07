@@ -6,6 +6,8 @@
  * template background, custom wallpaper, dan opsi teks adaptif.
  */
 
+import { SharePnlErrorCode, logSharePnlError } from './shareErrorCodes'
+
 export const EXCHANGES = ['mexc', 'bitunix', 'bybit', 'binance', 'bingx'] as const
 export type ExchangeName = typeof EXCHANGES[number]
 
@@ -206,6 +208,8 @@ export interface CustomBgItem {
     id: string
     name: string
     dataUrl: string
+    blob?: Blob
+    blobUrl?: string
     createdAt: number
     mediaType?: 'image' | 'video'
     posX?: number // Posisi default X (%)
@@ -590,28 +594,203 @@ export function resolveMediaType(
     return fallback
 }
 
-/** Membaca seluruh gambar/video background kustom dari localStorage dengan auto-migrasi data lama & normalisasi mediaType */
+/**
+ * Mengonversi string Base64 Data URL menjadi objek Blob biner.
+ */
+export function dataUrlToBlob(dataUrl: string): Blob {
+    const commaIdx = dataUrl.indexOf(',')
+    const meta = commaIdx >= 0 ? dataUrl.slice(5, commaIdx) : ''
+    const b64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl
+    const mimeMatch = meta.match(/^(.*?)(;base64)?$/)
+    const mime = (mimeMatch && mimeMatch[1]) ? mimeMatch[1] : 'video/mp4'
+    const binary = atob(b64.replace(/\s/g, ''))
+    const len = binary.length
+    const bytes = new Uint8Array(len)
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i)
+    }
+    return new Blob([bytes], { type: mime })
+}
+
+const playableBlobUrlCache = new Map<string, string>()
+
+/**
+ * Mengembalikan URL media yang dijamin dapat diputar oleh elemen <video> di Chromium/WebView2/Tauri.
+ * Jika URL adalah data:video/..., URL otomatis dikonversi menjadi Blob URL agar browser dapat
+ * melakukan byte-range streaming dan seeking secara mulus tanpa freezing/black screen.
+ */
+export function getPlayableMediaUrl(rawUrl: string | null | undefined, mediaType?: 'image' | 'video'): string | null {
+    if (!rawUrl) return null
+    if (mediaType !== 'video' && !rawUrl.startsWith('data:video/')) {
+        return rawUrl
+    }
+    // Jika sudah berupa blob: atau http: atau https:, gunakan langsung
+    if (rawUrl.startsWith('blob:') || rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+        return rawUrl
+    }
+    // Jika berupa data: URL, konversi menjadi Blob URL
+    if (rawUrl.startsWith('data:')) {
+        const cached = playableBlobUrlCache.get(rawUrl)
+        if (cached) return cached
+        try {
+            const blob = dataUrlToBlob(rawUrl)
+            const objUrl = URL.createObjectURL(blob)
+            playableBlobUrlCache.set(rawUrl, objUrl)
+            return objUrl
+        } catch (e) {
+            console.warn('[shareSettings] Gagal konversi video data URL ke Blob URL:', e)
+            return rawUrl
+        }
+    }
+    return rawUrl
+}
+
+// ---------------------------------------------------------------------------
+// Penyimpanan Media Kustom Berkapasitas Besar (Memory Cache + IndexedDB + LocalStorage)
+// ---------------------------------------------------------------------------
+
+let memoryBgList: CustomBgItem[] | null = null
+const IDB_NAME = 'nitirekso_media_v1'
+const IDB_STORE = 'custom_bg'
+
+function openMediaDb(): Promise<IDBDatabase | null> {
+    if (typeof window === 'undefined' || !window.indexedDB) return Promise.resolve(null)
+    return new Promise((resolve) => {
+        try {
+            const req = window.indexedDB.open(IDB_NAME, 1)
+            req.onupgradeneeded = () => {
+                const db = req.result
+                if (!db.objectStoreNames.contains(IDB_STORE)) {
+                    db.createObjectStore(IDB_STORE, { keyPath: 'id' })
+                }
+            }
+            req.onsuccess = () => resolve(req.result)
+            req.onerror = () => resolve(null)
+        } catch {
+            resolve(null)
+        }
+    })
+}
+
+/** Inisialisasi dan baca wallpaper kustom berukuran besar dari IndexedDB */
+export async function initIndexedDbCustomBg(): Promise<CustomBgItem[]> {
+    const db = await openMediaDb()
+    if (!db) return loadCustomBgList()
+    return new Promise((resolve) => {
+        try {
+            const tx = db.transaction(IDB_STORE, 'readonly')
+            const store = tx.objectStore(IDB_STORE)
+            const req = store.getAll()
+            req.onsuccess = () => {
+                const idbList = req.result as CustomBgItem[]
+                if (Array.isArray(idbList) && idbList.length > 0) {
+                    const localList = loadCustomBgList()
+                    // Gabungkan item dari IndexedDB dan localStorage tanpa duplikasi
+                    const mergedMap = new Map<string, CustomBgItem>()
+                    for (const item of localList) {
+                        mergedMap.set(item.id, item)
+                    }
+                    for (const item of idbList) {
+                        const mType = resolveMediaType(item.mediaType, item.dataUrl, 'image')
+                        let activeUrl = item.dataUrl
+                        if (mType === 'video') {
+                            if (item.blob) {
+                                activeUrl = URL.createObjectURL(item.blob)
+                            } else if (item.dataUrl && item.dataUrl.startsWith('data:')) {
+                                activeUrl = getPlayableMediaUrl(item.dataUrl, 'video') || item.dataUrl
+                            }
+                        }
+                        mergedMap.set(item.id, {
+                            ...item,
+                            mediaType: mType,
+                            dataUrl: activeUrl,
+                            blobUrl: mType === 'video' ? activeUrl : undefined
+                        })
+                    }
+                    memoryBgList = Array.from(mergedMap.values())
+                    resolve(memoryBgList)
+                } else {
+                    resolve(loadCustomBgList())
+                }
+            }
+            req.onerror = () => resolve(loadCustomBgList())
+        } catch {
+            resolve(loadCustomBgList())
+        }
+    })
+}
+
+async function persistToIndexedDb(item: CustomBgItem): Promise<void> {
+    const db = await openMediaDb()
+    if (!db) return
+    try {
+        const tx = db.transaction(IDB_STORE, 'readwrite')
+        tx.objectStore(IDB_STORE).put(item)
+    } catch (e) {
+        logSharePnlError(
+            SharePnlErrorCode.STORAGE_PERSIST_FAILED,
+            `Gagal menyimpan wallpaper "${item.name}" ke IndexedDB`,
+            e,
+            'WARN'
+        )
+    }
+}
+
+async function removeFromIndexedDb(id: string): Promise<void> {
+    const db = await openMediaDb()
+    if (!db) return
+    try {
+        const tx = db.transaction(IDB_STORE, 'readwrite')
+        tx.objectStore(IDB_STORE).delete(id)
+    } catch (e) {
+        logSharePnlError(
+            SharePnlErrorCode.STORAGE_PERSIST_FAILED,
+            `Gagal menghapus wallpaper ID "${id}" dari IndexedDB`,
+            e,
+            'WARN'
+        )
+    }
+}
+
+/** Membaca seluruh gambar/video background kustom dari cache memori & localStorage */
 export function loadCustomBgList(): CustomBgItem[] {
+    if (memoryBgList !== null && memoryBgList.length > 0) {
+        return memoryBgList
+    }
+
     try {
         const raw = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST)
         let list: CustomBgItem[] = raw ? JSON.parse(raw) : []
         if (!Array.isArray(list)) list = []
 
-        // Normalisasi setiap item agar selalu memiliki mediaType akurat (menghindari bug gambar lama dianggap video)
-        list = list.map((item) => ({
-            ...item,
-            mediaType: resolveMediaType(item.mediaType, item.dataUrl, 'image')
-        }))
+        // Normalisasi setiap item agar selalu memiliki mediaType dan URL yang dapat diputar
+        list = list.map((item) => {
+            const mType = resolveMediaType(item.mediaType, item.dataUrl, 'image')
+            const playableUrl = (mType === 'video' && item.dataUrl && item.dataUrl.startsWith('data:'))
+                ? (getPlayableMediaUrl(item.dataUrl, 'video') || item.dataUrl)
+                : item.dataUrl
+            return {
+                ...item,
+                mediaType: mType,
+                dataUrl: playableUrl,
+                blobUrl: mType === 'video' ? playableUrl : undefined
+            }
+        })
 
         // Migrasi data lama jika CUSTOM_BG ada tapi list belum terisi
         const legacyBg = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
         if (legacyBg && list.length === 0) {
+            const legacyType = resolveMediaType(undefined, legacyBg, 'image')
+            const playableLegacy = (legacyType === 'video' && legacyBg.startsWith('data:'))
+                ? (getPlayableMediaUrl(legacyBg, 'video') || legacyBg)
+                : legacyBg
             const legacyItem: CustomBgItem = {
                 id: `bg_${Date.now()}_default`,
                 name: 'Wallpaper Kustom 1',
-                dataUrl: legacyBg,
+                dataUrl: playableLegacy,
                 createdAt: Date.now(),
-                mediaType: resolveMediaType(undefined, legacyBg, 'image')
+                mediaType: legacyType,
+                blobUrl: legacyType === 'video' ? playableLegacy : undefined
             }
             list = [legacyItem]
             try {
@@ -622,42 +801,71 @@ export function loadCustomBgList(): CustomBgItem[] {
             }
         }
 
+        memoryBgList = list
         return list
     } catch {
         return []
     }
 }
 
-/** Menyimpan seluruh daftar background kustom ke localStorage dengan proteksi quota */
+/** Menyimpan seluruh daftar background kustom ke memory, localStorage, dan IndexedDB */
 export function saveCustomBgList(list: CustomBgItem[]): void {
+    memoryBgList = list
     try {
-        localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST, JSON.stringify(list))
+        // Jangan sertakan dataUrl raksasa base64 di localStorage untuk video
+        const cleanForLocal = list.map((item) => {
+            if (item.mediaType === 'video' && item.dataUrl && item.dataUrl.length > 500) {
+                return { ...item, dataUrl: '' }
+            }
+            return item
+        })
+        localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST, JSON.stringify(cleanForLocal))
     } catch (err) {
-        console.warn('Gagal menyimpan daftar wallpaper kustom ke localStorage (mungkin kuota penuh):', err)
+        logSharePnlError(
+            SharePnlErrorCode.STORAGE_PERSIST_FAILED,
+            'Ukuran daftar wallpaper melebihi kuota 5MB localStorage, persistensi diamankan via IndexedDB',
+            err,
+            'WARN'
+        )
     }
 }
 
 /** Menambahkan background kustom baru ke galeri */
-export function addCustomBgItem(item: { name: string; dataUrl: string; mediaType?: 'image' | 'video' }): CustomBgItem {
+export function addCustomBgItem(item: {
+    name: string
+    dataUrl: string
+    mediaType?: 'image' | 'video'
+    blob?: Blob
+    blobUrl?: string
+}): CustomBgItem {
     const list = loadCustomBgList()
     const now = Date.now()
     const resolvedType = resolveMediaType(item.mediaType, item.dataUrl, 'image')
+    const effectiveBlobUrl = item.blobUrl || (item.blob ? URL.createObjectURL(item.blob) : (resolvedType === 'video' ? getPlayableMediaUrl(item.dataUrl, 'video') || item.dataUrl : item.dataUrl))
+
     const newItem: CustomBgItem = {
         id: `bg_${now}_${Math.random().toString(36).slice(2, 7)}`,
         name: item.name.trim() || `${resolvedType === 'video' ? 'Video' : 'Wallpaper'} ${list.length + 1}`,
-        dataUrl: item.dataUrl,
+        dataUrl: effectiveBlobUrl,
+        blob: item.blob,
+        blobUrl: resolvedType === 'video' ? effectiveBlobUrl : undefined,
         createdAt: now,
         mediaType: resolvedType
     }
     const updated = [newItem, ...list]
+    memoryBgList = updated
     saveCustomBgList(updated)
+    void persistToIndexedDb(newItem)
+
     try {
-        // Sinkronkan ke CUSTOM_BG dan CUSTOM_BG_ID untuk fallback
-        localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, newItem.dataUrl)
+        // Jangan simpan string base64 raksasa ke localStorage jika video
+        if (resolvedType !== 'video') {
+            localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, newItem.dataUrl)
+        }
         localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID, newItem.id)
         localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_MEDIA_TYPE, newItem.mediaType || 'image')
-    } catch (err) {
-        console.warn('Gagal menyinkronkan background aktif ke localStorage:', err)
+    } catch {
+        // Abaikan jika quota storage terlampaui oleh file video
     }
     return newItem
 }
@@ -669,6 +877,7 @@ export function updateCustomBgItemName(id: string, name: string): boolean {
     if (!target) return false
     target.name = name.trim() || target.name
     saveCustomBgList(list)
+    void persistToIndexedDb(target)
     return true
 }
 
@@ -677,13 +886,18 @@ export function deleteCustomBgItem(id: string): boolean {
     const list = loadCustomBgList()
     const filtered = list.filter((b) => b.id !== id)
     if (filtered.length === list.length) return false
+    memoryBgList = filtered
     saveCustomBgList(filtered)
+    void removeFromIndexedDb(id)
+
     // Jika background yang dihapus adalah yang aktif, sesuaikan
     const currentActiveBgId = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID)
     if (currentActiveBgId === id) {
         if (filtered.length > 0) {
             localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID, filtered[0]!.id)
-            localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, filtered[0]!.dataUrl)
+            try {
+                localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, filtered[0]!.dataUrl)
+            } catch {}
         } else {
             localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID)
             localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
@@ -814,8 +1028,15 @@ export function saveShareSettings(settings: Partial<ShareSettings>): void {
         else localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID)
     }
     if (settings.customBgUrl !== undefined) {
-        if (settings.customBgUrl) localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, settings.customBgUrl)
-        else localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
+        if (settings.customBgUrl) {
+            try {
+                localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, settings.customBgUrl)
+            } catch {
+                // Abaikan jika video kustom berukuran besar melebihi batas 5MB localStorage
+            }
+        } else {
+            localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
+        }
     }
     if (settings.isCustomBg !== undefined) {
         localStorage.setItem(SHARE_STORAGE_KEYS.IS_CUSTOM_BG, String(settings.isCustomBg))

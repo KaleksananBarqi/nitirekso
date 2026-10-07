@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type ExecutionGrade, type TradeDetail, computePlannedRR } from '@shared/domain'
 import { Modal } from './ui'
 import { formatDate, formatDateTime, formatDuration, formatPercent, formatPnl, formatPrice, formatR } from '../lib/format'
@@ -9,6 +9,7 @@ import {
     loadShareSettings,
     saveShareSettings,
     loadCustomBgList,
+    initIndexedDbCustomBg,
     addCustomBgItem,
     updateCustomBgItem,
     deleteCustomBgItem,
@@ -19,6 +20,7 @@ import {
     setActiveTemplateId,
     getAllBgTemplates,
     resolveMediaType,
+    getPlayableMediaUrl,
     type BgTemplate,
     type ExchangeName,
     type ShareCardTemplate,
@@ -33,6 +35,7 @@ import { nitireksoLogo, getExchangeDefaultLogo } from '../lib/exchangeAssets'
 import { captureAndExportGif } from '../lib/gif-export'
 import { captureAndExportVideo, mediaUrlToBytes } from '../lib/video-export'
 import { composeAspectFrame } from '../lib/share-frame'
+import { SharePnlErrorCode, logSharePnlError, getSharePnlUserMessage } from '../lib/shareErrorCodes'
 import { BackgroundAdjustBar } from './share/BackgroundAdjustBar'
 import { AspectFrameControls } from './share/AspectFrameControls'
 import { CaptionMakerPanel } from './share/CaptionMakerPanel'
@@ -238,8 +241,9 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
 
     // Wallpaper kustom yang sedang aktif
     const activeCustomBgItem = customBgList.find((b) => b.id === selectedCustomBgId) || customBgList[0] || null
-    const activeCustomBgUrl = activeCustomBgItem ? activeCustomBgItem.dataUrl : (savedSettings.customBgUrl || null)
+    const activeCustomBgUrl = activeCustomBgItem ? (activeCustomBgItem.blobUrl || activeCustomBgItem.dataUrl) : (savedSettings.customBgUrl || null)
     const activeCustomBgMediaType = resolveMediaType(activeCustomBgItem?.mediaType, activeCustomBgUrl, 'image')
+    const activeCustomBgPlayableUrl = getPlayableMediaUrl(activeCustomBgUrl, activeCustomBgMediaType)
 
     // State: Dimming & Arah Gradien Reaktif Langsung di Modal
     const [bgDimming, setBgDimming] = useState<number>(() => (savedSettings.bgDimming !== undefined ? savedSettings.bgDimming : 75))
@@ -393,20 +397,62 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|svg|gif|avif)$/i.test(file.name)
         const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov|ogg)$/i.test(file.name)
         if (!isImage && !isVideo) {
-            alert('Harap pilih berkas gambar (PNG, JPG, SVG, WebP) atau video (MP4, WebM).')
+            logSharePnlError(
+                SharePnlErrorCode.UPLOAD_UNSUPPORTED_FORMAT,
+                `Berkas "${file.name}" (${file.type || 'tipe tidak diketahui'}) ditolak`,
+                { name: file.name, type: file.type, size: file.size },
+                'WARN'
+            )
+            alert(getSharePnlUserMessage(SharePnlErrorCode.UPLOAD_UNSUPPORTED_FORMAT, 'Harap pilih berkas gambar (PNG, JPG, SVG, WebP) atau video (MP4, WebM).'))
             return
         }
         if (file.size > 25 * 1024 * 1024) {
-            alert('Ukuran berkas maksimal 25MB.')
+            const sizeMb = (file.size / (1024 * 1024)).toFixed(2)
+            logSharePnlError(
+                SharePnlErrorCode.UPLOAD_FILE_SIZE_EXCEEDED,
+                `Ukuran berkas "${file.name}" sebesar ${sizeMb}MB melebihi batas 25MB`,
+                { name: file.name, size: file.size },
+                'WARN'
+            )
+            alert(getSharePnlUserMessage(SharePnlErrorCode.UPLOAD_FILE_SIZE_EXCEEDED, `Ukuran berkas (${sizeMb}MB) melebihi batas maksimal 25MB.`))
             return
         }
+
+        const detectedType: 'image' | 'video' = isVideo ? 'video' : 'image'
+        const cleanName = file.name.replace(/\.[^/.]+$/, '').slice(0, 18) || `${detectedType === 'video' ? 'Video' : 'Wallpaper'} ${customBgList.length + 1}`
+
+        if (isVideo) {
+            // Untuk video: Buat Blob URL langsung agar instan diputar oleh player Chromium
+            const blobUrl = URL.createObjectURL(file)
+            const created = addCustomBgItem({
+                name: cleanName,
+                dataUrl: blobUrl,
+                mediaType: 'video',
+                blob: file,
+                blobUrl
+            })
+            const updatedList = loadCustomBgList()
+            setCustomBgList(updatedList)
+            setSelectedCustomBgId(created.id)
+            setIsCustomBgActive(true)
+            setBgPosX(50)
+            setBgPosY(50)
+            saveShareSettings({
+                customBgId: created.id,
+                isCustomBg: true,
+                customBgMediaType: 'video',
+                customBgUrl: blobUrl,
+                bgPosX: 50,
+                bgPosY: 50
+            })
+            return
+        }
+
         const reader = new FileReader()
         reader.onload = (e) => {
             const dataUrl = e.target?.result as string
             if (dataUrl) {
-                const detectedType: 'image' | 'video' = isVideo ? 'video' : 'image'
-                const cleanName = file.name.replace(/\.[^/.]+$/, '').slice(0, 18) || `${detectedType === 'video' ? 'Video' : 'Wallpaper'} ${customBgList.length + 1}`
-                const created = addCustomBgItem({ name: cleanName, dataUrl, mediaType: detectedType })
+                const created = addCustomBgItem({ name: cleanName, dataUrl, mediaType: 'image', blob: file })
                 const updatedList = loadCustomBgList()
                 setCustomBgList(updatedList)
                 setSelectedCustomBgId(created.id)
@@ -416,12 +462,20 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 saveShareSettings({
                     customBgId: created.id,
                     isCustomBg: true,
-                    customBgMediaType: detectedType,
+                    customBgMediaType: 'image',
                     customBgUrl: created.dataUrl,
                     bgPosX: 50,
                     bgPosY: 50
                 })
             }
+        }
+        reader.onerror = (err) => {
+            logSharePnlError(
+                SharePnlErrorCode.UPLOAD_READ_FAILED,
+                `Gagal membaca berkas gambar "${file.name}" via FileReader`,
+                err,
+                'ERROR'
+            )
         }
         reader.readAsDataURL(file)
     }
@@ -639,6 +693,24 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const [videoProgress, setVideoProgress] = useState(0)
     const [videoQuality, setVideoQuality] = useState<'standard' | 'jernih' | 'super'>('jernih')
 
+    // State pratinjau dan hasil penyimpanan video ekspor
+    const [exportedVideoResult, setExportedVideoResult] = useState<{
+        url: string
+        blob: Blob
+        filename: string
+        savedPath: string | null
+    } | null>(null)
+    const [isSavingExportedAgain, setIsSavingExportedAgain] = useState(false)
+
+    // Muat galeri wallpaper kustom dari IndexedDB (untuk video/gambar berukuran besar)
+    useEffect(() => {
+        void initIndexedDbCustomBg().then((items) => {
+            if (items && items.length > 0) {
+                setCustomBgList(items)
+            }
+        })
+    }, [])
+
     // Logo & Referral aktif berdasarkan exchange terpilih (otomatis fallback ke logo resmi bawaan)
     const customExchangeLogo = (savedSettings[`${selectedExchange}LogoUrl` as keyof typeof savedSettings] as string | null) || null
     const activeLogoUrl = customExchangeLogo || getExchangeDefaultLogo(selectedExchange)
@@ -650,7 +722,8 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     // Preloader image & video refs untuk canvas export
     const avatarImgRef = useRef<HTMLImageElement | null>(null)
     const customBgImgRef = useRef<HTMLImageElement | null>(null)
-    const customBgVideoRef = useRef<HTMLVideoElement | null>(null)
+    const offscreenBgVideoRef = useRef<HTMLVideoElement | null>(null)
+    const domBgVideoRef = useRef<HTMLVideoElement | null>(null)
     const lastValidBgCanvasRef = useRef<HTMLCanvasElement | null>(null)
     const exchangeLogoImgRef = useRef<HTMLImageElement | null>(null)
     const nitireksoLogoImgRef = useRef<HTMLImageElement | null>(null)
@@ -675,42 +748,92 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         }
     }, [avatarUrl])
 
-    // Preload gambar atau video Custom Background Aktif
+    // Preload gambar atau video Custom Background Aktif untuk mesin canvas / video export
     useEffect(() => {
-        if (activeCustomBgUrl) {
+        const playableUrl = activeCustomBgPlayableUrl
+        if (playableUrl) {
             if (activeCustomBgMediaType === 'video') {
                 const vid = document.createElement('video')
-                vid.crossOrigin = 'anonymous'
-                vid.src = activeCustomBgUrl
+                if (playableUrl.startsWith('http://') || playableUrl.startsWith('https://')) {
+                    vid.crossOrigin = 'anonymous'
+                }
+                vid.src = playableUrl
+                vid.preload = 'auto'
                 vid.muted = true
+                vid.defaultMuted = true
                 vid.loop = true
                 vid.playsInline = true
+
+                // Pasang ke DOM secara tersembunyi agar WebView2/Chromium mengaktifkan hardware decoding surface
+                vid.style.position = 'fixed'
+                vid.style.top = '-9999px'
+                vid.style.left = '-9999px'
+                vid.style.width = '320px'
+                vid.style.height = '180px'
+                vid.style.opacity = '0'
+                vid.style.pointerEvents = 'none'
+                vid.style.zIndex = '-9999'
+                document.body.appendChild(vid)
+                offscreenBgVideoRef.current = vid
+
                 const updateDuration = () => {
                     if (vid.duration && !isNaN(vid.duration) && isFinite(vid.duration) && vid.duration > 0) {
                         setSourceVideoDurationSec(Math.round(vid.duration))
                     }
                 }
+                vid.onerror = () => {
+                    logSharePnlError(
+                        SharePnlErrorCode.PLAYBACK_LOAD_FAILED,
+                        `Gagal memuat berkas video latar belakang (${playableUrl.slice(0, 50)}...)`,
+                        vid.error,
+                        'WARN'
+                    )
+                }
                 vid.onloadedmetadata = updateDuration
                 vid.onloadeddata = () => {
-                    customBgVideoRef.current = vid
+                    offscreenBgVideoRef.current = vid
+                    updateDuration()
+                    void vid.play().catch((playErr) => {
+                        logSharePnlError(
+                            SharePnlErrorCode.PLAYBACK_LOAD_FAILED,
+                            'Autoplay video preview ditahan oleh browser',
+                            playErr,
+                            'INFO'
+                        )
+                    })
+                }
+                vid.oncanplay = () => {
+                    offscreenBgVideoRef.current = vid
                     updateDuration()
                     void vid.play().catch(() => {})
                 }
                 customBgImgRef.current = null
+
+                return () => {
+                    if (vid.parentNode) {
+                        vid.parentNode.removeChild(vid)
+                    }
+                    try {
+                        vid.pause()
+                        vid.src = ''
+                    } catch {}
+                }
             } else {
                 setSourceVideoDurationSec(null)
                 const img = new Image()
-                img.crossOrigin = 'anonymous'
-                img.src = activeCustomBgUrl
+                if (playableUrl.startsWith('http://') || playableUrl.startsWith('https://')) {
+                    img.crossOrigin = 'anonymous'
+                }
+                img.src = playableUrl
                 img.onload = () => { customBgImgRef.current = img }
-                customBgVideoRef.current = null
+                offscreenBgVideoRef.current = null
             }
         } else {
             setSourceVideoDurationSec(null)
             customBgImgRef.current = null
-            customBgVideoRef.current = null
+            offscreenBgVideoRef.current = null
         }
-    }, [activeCustomBgUrl, activeCustomBgMediaType])
+    }, [activeCustomBgPlayableUrl, activeCustomBgMediaType])
 
     // Preload logo exchange aktif
     useEffect(() => {
@@ -848,9 +971,11 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         if (isCustomBgActive) {
             let drewMedia = false
 
-            if (activeCustomBgMediaType === 'video' && customBgVideoRef.current) {
-                const vid = customBgVideoRef.current
-                if (vid.readyState >= 2) {
+            const activeVid = offscreenBgVideoRef.current || domBgVideoRef.current
+            if (activeCustomBgMediaType === 'video' && activeVid) {
+                const vid = activeVid
+                const hasValidFrame = (vid.videoWidth > 0 && vid.videoHeight > 0) || vid.readyState >= 1
+                if (hasValidFrame) {
                     const vidW = vid.videoWidth || 1920
                     const vidH = vid.videoHeight || 1080
                     const vidAspect = vidW / vidH
@@ -868,11 +993,12 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                         dx = (W - dw) * (bgPosX / 100)
                         dy = (H - dh) * (bgPosY / 100)
                     }
-                    ctx.drawImage(vid, dx, dy, dw, dh)
-                    drewMedia = true
 
-                    // Cache frame video yang valid ke canvas offscreen sebagai benteng anti-flicker
                     try {
+                        ctx.drawImage(vid, dx, dy, dw, dh)
+                        drewMedia = true
+
+                        // Cache frame video yang valid ke canvas offscreen sebagai benteng anti-flicker
                         if (!lastValidBgCanvasRef.current) {
                             lastValidBgCanvasRef.current = document.createElement('canvas')
                         }
@@ -884,10 +1010,12 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                         if (cacheCtx) {
                             cacheCtx.drawImage(vid, dx, dy, dw, dh)
                         }
-                    } catch {
-                        // Abaikan jika alokasi cache dicegah
+                    } catch (e) {
+                        console.warn('[SharePnl] Gagal menggambar frame video langsung:', e)
                     }
-                } else if (lastValidBgCanvasRef.current) {
+                }
+                
+                if (!drewMedia && lastValidBgCanvasRef.current) {
                     // Fallback defensif: gunakan frame video terakhir yang valid agar tidak pernah terjadi kedip hitam
                     ctx.drawImage(lastValidBgCanvasRef.current, 0, 0, W, H)
                     drewMedia = true
@@ -1429,18 +1557,58 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         drawToCanvas()
     }, [drawToCanvas])
 
-    // -----------------------------------------------------------------------
-    // Aksi Export (Download PNG, GIF Animasi & Copy Clipboard)
-    // -----------------------------------------------------------------------
+    // Mendapatkan canvas final yang telah dikomposisikan dengan rasio aspek yang dipilih (misal TikTok 9:16)
+    const getFinalRenderCanvas = useCallback((): HTMLCanvasElement => {
+        const rawCardCanvas = drawToCanvas()
+        if (exportAspect === '9:16') {
+            const targetCanvas = document.createElement('canvas')
+            const activeWp = activeCustomBgMediaType === 'video'
+                ? ((offscreenBgVideoRef.current && (offscreenBgVideoRef.current.videoWidth > 0 || offscreenBgVideoRef.current.readyState >= 1))
+                    ? offscreenBgVideoRef.current
+                    : (domBgVideoRef.current && (domBgVideoRef.current.videoWidth > 0 || domBgVideoRef.current.readyState >= 1))
+                        ? domBgVideoRef.current
+                        : (lastValidBgCanvasRef.current || null))
+                : (customBgImgRef.current || null)
+
+            try {
+                composeAspectFrame(rawCardCanvas, targetCanvas, {
+                    aspect: '9:16',
+                    bgSource: frameBgSource,
+                    blurPx: frameBlur,
+                    dimPercent: frameDim,
+                    wallpaperSource: isCustomBgActive ? activeWp : null,
+                })
+            } catch (err) {
+                logSharePnlError(
+                    SharePnlErrorCode.CANVAS_RENDER_FAILED,
+                    'Gagal mengomposisikan framing 9:16 pada kanvas ekspor',
+                    err,
+                    'ERROR'
+                )
+                return rawCardCanvas
+            }
+            return targetCanvas
+        }
+        return rawCardCanvas
+    }, [drawToCanvas, exportAspect, activeCustomBgMediaType, frameBgSource, frameBlur, frameDim, isCustomBgActive])
+
     const handleDownload = () => {
         setDownloading(true)
         try {
-            const canvas = drawToCanvas()
+            const canvas = getFinalRenderCanvas()
             const link = document.createElement('a')
             const dateStr = new Date().toISOString().slice(0, 10)
-            link.download = `${brandTitle}-${trade.trade.symbol}-${dateStr}.png`
+            const aspectSuffix = exportAspect === '9:16' ? '-9x16' : ''
+            link.download = `${brandTitle}-${trade.trade.symbol}-${dateStr}${aspectSuffix}.png`
             link.href = canvas.toDataURL('image/png')
             link.click()
+        } catch (err) {
+            logSharePnlError(
+                SharePnlErrorCode.FILE_SAVE_FAILED,
+                'Gagal menghasilkan atau mengunduh berkas gambar PNG kartu',
+                err,
+                'ERROR'
+            )
         } finally {
             setDownloading(false)
         }
@@ -1454,7 +1622,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
 
         // Mode 'source': gunakan durasi video latar belakang jika tersedia
         if (activeCustomBgMediaType === 'video') {
-            const liveDuration = customBgVideoRef.current?.duration
+            const liveDuration = offscreenBgVideoRef.current?.duration || domBgVideoRef.current?.duration
             if (liveDuration && !isNaN(liveDuration) && isFinite(liveDuration) && liveDuration > 0) {
                 // Batas aman maksimal 300 detik (5 menit) dan minimal 3 detik
                 return Math.min(300, Math.max(3, Math.round(liveDuration)))
@@ -1471,16 +1639,17 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const handleExportVideo = async () => {
         setExportingVideo(true)
         setVideoProgress(0)
+        const activeVideoEl = offscreenBgVideoRef.current || domBgVideoRef.current
         try {
             // Hitung durasi rekaman berdasarkan opsi terpilih
             const effectiveSec = getEffectiveDurationSec()
             const durationMs = effectiveSec * 1000
 
             // Jika wallpaper video aktif, pause dan setel ke awal agar frame dapat dikendalikan per frame
-            if (activeCustomBgMediaType === 'video' && customBgVideoRef.current) {
+            if (activeCustomBgMediaType === 'video' && activeVideoEl) {
                 try {
-                    customBgVideoRef.current.pause()
-                    customBgVideoRef.current.currentTime = 0
+                    activeVideoEl.pause()
+                    activeVideoEl.currentTime = 0
                 } catch {
                     // Abaikan jika kontrol video dicegah oleh browser
                 }
@@ -1500,8 +1669,8 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
 
             const result = await captureAndExportVideo(async (targetCanvas, context) => {
                 // Selaraskan waktu video latar belakang secara deterministik per frame
-                if (isCustomBgActive && activeCustomBgMediaType === 'video' && customBgVideoRef.current) {
-                    const vid = customBgVideoRef.current
+                if (isCustomBgActive && activeCustomBgMediaType === 'video' && activeVideoEl) {
+                    const vid = activeVideoEl
                     if (!vid.paused) {
                         vid.pause()
                     }
@@ -1518,9 +1687,18 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                     resolve()
                                 }
                                 vid.addEventListener('seeked', onDone, { once: true })
-                                // Safety timeout 800ms jika seek event terhambat browser (bukan 35ms prematur)
-                                setTimeout(onDone, 800)
+                                // Safety timeout 250ms jika seek event terhambat browser
+                                setTimeout(onDone, 250)
                             })
+                            // Pastikan frame video ter-commit ke rendering context
+                            if ('requestVideoFrameCallback' in vid && typeof (vid as any).requestVideoFrameCallback === 'function') {
+                                await new Promise<void>((r) => {
+                                    ;(vid as any).requestVideoFrameCallback(() => r())
+                                    setTimeout(r, 40)
+                                })
+                            } else {
+                                await new Promise((r) => setTimeout(r, 8))
+                            }
                         }
                     }
                 }
@@ -1531,9 +1709,9 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                     }
                     drawToCanvas(rawCardCanvas)
                     const activeWp = activeCustomBgMediaType === 'video'
-                        ? ((customBgVideoRef.current && customBgVideoRef.current.readyState >= 2)
-                            ? customBgVideoRef.current
-                            : (lastValidBgCanvasRef.current || customBgVideoRef.current || null))
+                        ? ((activeVideoEl && (activeVideoEl.videoWidth > 0 || activeVideoEl.readyState >= 1))
+                            ? activeVideoEl
+                            : (lastValidBgCanvasRef.current || activeVideoEl || null))
                         : (customBgImgRef.current || null)
 
                     composeAspectFrame(rawCardCanvas, targetCanvas, {
@@ -1541,9 +1719,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                         bgSource: frameBgSource,
                         blurPx: frameBlur,
                         dimPercent: frameDim,
-                        wallpaperSource: (frameBgSource === 'wallpaper-blur' && isCustomBgActive)
-                            ? activeWp
-                            : null,
+                        wallpaperSource: isCustomBgActive ? activeWp : null,
                     })
                 } else {
                     drawToCanvas(targetCanvas)
@@ -1553,7 +1729,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 fps,
                 videoBitsPerSecond,
                 onProgress: (pct) => setVideoProgress(pct),
-                audioSourceVideo: activeCustomBgMediaType === 'video' ? customBgVideoRef.current : undefined
+                audioSourceVideo: activeCustomBgMediaType === 'video' ? (activeVideoEl || undefined) : undefined
             })
 
             let finalBlob = result.blob
@@ -1576,32 +1752,125 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                     const remuxRes = await window.api.remuxVideoMp4(new Uint8Array(arrayBuffer), bgAudioData)
                     if (remuxRes?.ok && remuxRes.data && remuxRes.data.length > 0) {
                         finalBlob = new Blob([remuxRes.data as unknown as BlobPart], { type: 'video/mp4' })
+                    } else if (remuxRes && !remuxRes.ok) {
+                        logSharePnlError(
+                            SharePnlErrorCode.BACKEND_REMUX_FAILED,
+                            `Remuxing backend FFmpeg gagal: ${remuxRes.error || 'Unknown error'}`,
+                            remuxRes,
+                            'WARN'
+                        )
                     }
                 } catch (remuxErr) {
-                    console.warn('Remuxing video gagal, fallback ke rekaman asli:', remuxErr)
+                    logSharePnlError(
+                        SharePnlErrorCode.BACKEND_REMUX_FAILED,
+                        'Remuxing video gagal di backend, beralih menggunakan rekaman asli',
+                        remuxErr,
+                        'WARN'
+                    )
                 }
             }
 
-            const url = URL.createObjectURL(finalBlob)
-            const link = document.createElement('a')
             const dateStr = new Date().toISOString().slice(0, 10)
             const aspectSuffix = exportAspect === '9:16' ? '-9x16' : ''
-            link.download = `${brandTitle}-${trade.trade.symbol}-${dateStr}${aspectSuffix}.${result.extension}`
-            link.href = url
-            link.click()
-            URL.revokeObjectURL(url)
-        } catch (err) {
-            console.error('Gagal mengekspor video:', err)
-        } finally {
-            if (activeCustomBgMediaType === 'video' && customBgVideoRef.current) {
+            const defaultFilename = `${brandTitle}-${trade.trade.symbol}-${dateStr}${aspectSuffix}.${result.extension}`
+            const arrayBuffer = await finalBlob.arrayBuffer()
+            let savedFilePath: string | null = null
+
+            // Prioritaskan dialog native Save File jika berjalan di lingkungan Tauri
+            if (typeof window !== 'undefined' && window.api?.saveVideoFile) {
                 try {
-                    void customBgVideoRef.current.play().catch(() => {})
+                    const saveRes = await window.api.saveVideoFile(defaultFilename, new Uint8Array(arrayBuffer))
+                    if (saveRes?.ok && saveRes.data) {
+                        savedFilePath = saveRes.data
+                        console.log('[SharePnlModal] Berkas video berhasil disimpan ke:', savedFilePath)
+                    } else if (saveRes?.ok && saveRes.data === null) {
+                        console.log('[SharePnlModal] Pemilihan folder penyimpanan dibatalkan pengguna')
+                    } else if (saveRes && !saveRes.ok) {
+                        logSharePnlError(
+                            SharePnlErrorCode.FILE_SAVE_FAILED,
+                            `Gagal menyimpan berkas via native save: ${saveRes.error || 'Unknown'}`,
+                            saveRes,
+                            'WARN'
+                        )
+                    }
+                } catch (saveErr) {
+                    logSharePnlError(
+                        SharePnlErrorCode.FILE_SAVE_FAILED,
+                        'Gagal memanggil native save file dialog, fallback ke unduhan browser',
+                        saveErr,
+                        'WARN'
+                    )
+                    const url = URL.createObjectURL(finalBlob)
+                    const link = document.createElement('a')
+                    link.download = defaultFilename
+                    link.href = url
+                    link.click()
+                    URL.revokeObjectURL(url)
+                }
+            } else {
+                // Fallback untuk browser web reguler
+                const url = URL.createObjectURL(finalBlob)
+                const link = document.createElement('a')
+                link.download = defaultFilename
+                link.href = url
+                link.click()
+                URL.revokeObjectURL(url)
+            }
+
+            // Tampilkan pemutar hasil ekspor di dalam modal
+            const previewUrl = URL.createObjectURL(finalBlob)
+            setExportedVideoResult({
+                url: previewUrl,
+                blob: finalBlob,
+                filename: defaultFilename,
+                savedPath: savedFilePath
+            })
+        } catch (err) {
+            logSharePnlError(
+                SharePnlErrorCode.VIDEO_ENCODE_FRAME_FAILED,
+                'Proses ekspor video kartu Share PnL gagal',
+                err,
+                'ERROR'
+            )
+        } finally {
+            if (activeCustomBgMediaType === 'video' && activeVideoEl) {
+                try {
+                    void activeVideoEl.play().catch(() => {})
                 } catch {
                     // Abaikan jika pemutaran preview dicegah
                 }
             }
             setExportingVideo(false)
             setVideoProgress(0)
+        }
+    }
+
+    // Simpan ulang berkas video yang telah selesai diekspor ke folder pilihan lain
+    const handleSaveExportedAgain = async () => {
+        if (!exportedVideoResult) return
+        setIsSavingExportedAgain(true)
+        try {
+            const arrayBuffer = await exportedVideoResult.blob.arrayBuffer()
+            if (typeof window !== 'undefined' && window.api?.saveVideoFile) {
+                const saveRes = await window.api.saveVideoFile(exportedVideoResult.filename, new Uint8Array(arrayBuffer))
+                if (saveRes?.ok && saveRes.data) {
+                    setExportedVideoResult((prev) => prev ? { ...prev, savedPath: saveRes.data ?? null } : null)
+                }
+            } else {
+                const link = document.createElement('a')
+                link.download = exportedVideoResult.filename
+                link.href = exportedVideoResult.url
+                link.click()
+            }
+        } catch (e) {
+            logSharePnlError(
+                SharePnlErrorCode.FILE_SAVE_FAILED,
+                'Gagal menyimpan ulang berkas video hasil ekspor',
+                e,
+                'ERROR'
+            )
+        } finally {
+            setIsSavingExportedAgain(false)
         }
     }
 
@@ -1625,7 +1894,12 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             link.click()
             URL.revokeObjectURL(url)
         } catch (err) {
-            console.error('Gagal membuat GIF:', err)
+            logSharePnlError(
+                SharePnlErrorCode.VIDEO_ENCODE_FRAME_FAILED,
+                'Gagal mengekspor kartu ke animasi GIF',
+                err,
+                'ERROR'
+            )
         } finally {
             setExportingGif(false)
             setGifProgress(0)
@@ -1634,19 +1908,37 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
 
     const handleCopy = async () => {
         try {
-            const canvas = drawToCanvas()
+            const canvas = getFinalRenderCanvas()
             canvas.toBlob(async (blob) => {
-                if (!blob) return
+                if (!blob) {
+                    logSharePnlError(
+                        SharePnlErrorCode.CLIPBOARD_COPY_FAILED,
+                        'Konversi kanvas kartu ke Blob PNG menghasilkan nilai kosong (null)',
+                        null,
+                        'ERROR'
+                    )
+                    return
+                }
                 try {
                     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
                     setCopySuccess(true)
                     setTimeout(() => setCopySuccess(false), 2500)
                 } catch (err) {
-                    console.error('Gagal menyalin gambar ke clipboard:', err)
+                    logSharePnlError(
+                        SharePnlErrorCode.CLIPBOARD_COPY_FAILED,
+                        'Gagal menyalin gambar ke clipboard sistem',
+                        err,
+                        'ERROR'
+                    )
                 }
             }, 'image/png')
         } catch (err) {
-            console.error('Gagal memproses gambar untuk clipboard:', err)
+            logSharePnlError(
+                SharePnlErrorCode.CLIPBOARD_COPY_FAILED,
+                'Gagal memproses gambar kartu untuk clipboard',
+                err,
+                'ERROR'
+            )
         }
     }
 
@@ -1690,68 +1982,183 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                         </div>
                     )}
 
-                    <div
-                        ref={cardContainerRef}
-                        onPointerDown={handlePointerDown}
-                        onPointerMove={handlePointerMove}
-                        onPointerUp={handlePointerUp}
-                        onPointerCancel={handlePointerUp}
-                        className={cn(
-                            "w-full max-w-[540px] transition-all",
-                            isCustomBgActive && (
-                                isDraggingBg
-                                    ? "cursor-grabbing touch-none ring-2 ring-primary/80 rounded-[26px] shadow-2xl scale-[1.008]"
-                                    : "cursor-grab touch-none hover:ring-1 hover:ring-primary/40 rounded-[26px]"
-                            )
-                        )}
-                    >
-                        <PnlCard
-                            trade={trade}
-                            bg={bg}
-                            accent={accent}
-                            roiPercent={roiPercent}
-                            duration={duration}
-                            leverage={leverage}
-                            selectedExchange={selectedExchange}
-                            traderHandle={traderHandle}
-                            brandTitle={brandTitle}
-                            brandSubtitle={brandSubtitle}
-                            activeLogoUrl={activeLogoUrl}
-                            activeReferral={activeReferral}
-                            avatarUrl={avatarUrl}
-                            isCustomBgActive={isCustomBgActive}
-                            customBgUrl={activeCustomBgUrl}
-                            customBgMediaType={activeCustomBgMediaType}
-                            bgDimming={bgDimming}
-                            bgDimmingDirection={bgDimmingDirection}
-                            bgPosX={bgPosX}
-                            bgPosY={bgPosY}
-                            videoRef={customBgVideoRef}
-                            showSide={showSide}
-                            showPnl={showPnl}
-                            showRoi={showRoi}
-                            showTradeTimes={showTradeTimes}
-                            showProfile={showProfile}
-                            showWatermark={showWatermark}
-                            showDuration={showDuration}
-                            showPlan={showPlan}
-                            plannedStop={plannedStop}
-                            plannedTarget={plannedTarget}
-                            plannedRr={plannedRr}
-                            setupTag={setupTag}
-                            executionGrade={executionGrade}
-                            emotionTag={emotionTag}
-                            showSetup={showSetup}
-                            showGrade={showGrade}
-                            showEmotion={showEmotion}
-                            showReferral={showReferral}
-                            showThesis={showThesis}
-                            customThesis={customThesis}
-                            showReview={showReview}
-                            customReview={customReview}
-                            showFullText={showFullText}
-                        />
-                    </div>
+                    {exportAspect === '9:16' ? (
+                        <div className="relative mx-auto w-full max-w-[340px] aspect-[9/16] rounded-2xl overflow-hidden border border-border shadow-2xl flex items-center justify-center select-none bg-slate-950">
+                            {/* Backdrop Blur 9:16 */}
+                            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                                {frameBgSource === 'wallpaper-blur' && isCustomBgActive && activeCustomBgUrl ? (
+                                    activeCustomBgMediaType === 'video' ? (
+                                        <video
+                                            src={activeCustomBgPlayableUrl || activeCustomBgUrl || ''}
+                                            autoPlay
+                                            muted
+                                            loop
+                                            playsInline
+                                            className="absolute inset-0 w-full h-full object-cover scale-125"
+                                            style={{ filter: `blur(${frameBlur}px)` }}
+                                        />
+                                    ) : (
+                                        <div
+                                            className="absolute inset-0 w-full h-full bg-cover bg-center scale-125"
+                                            style={{
+                                                backgroundImage: `url(${activeCustomBgUrl})`,
+                                                filter: `blur(${frameBlur}px)`
+                                            }}
+                                        />
+                                    )
+                                ) : (
+                                    <div
+                                        className="absolute inset-0 w-full h-full scale-125"
+                                        style={{
+                                            background: bg.bg,
+                                            filter: `blur(${frameBlur}px)`
+                                        }}
+                                    />
+                                )}
+                                <div
+                                    className="absolute inset-0"
+                                    style={{ backgroundColor: `rgba(0,0,0,${frameDim / 100})` }}
+                                />
+                            </div>
+
+                            {/* Badge Indikator TikTok 9:16 */}
+                            <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur text-[10px] text-amber-400 font-semibold border border-amber-400/30">
+                                <span>📱 Rasio TikTok 9:16</span>
+                            </div>
+
+                            {/* Kartu PnlCard Normal di tengah bingkai vertikal 9:16 sebagai Floating Overlay */}
+                            <div
+                                ref={cardContainerRef}
+                                onPointerDown={handlePointerDown}
+                                onPointerMove={handlePointerMove}
+                                onPointerUp={handlePointerUp}
+                                onPointerCancel={handlePointerUp}
+                                className={cn(
+                                    "absolute z-10 w-[500px] left-1/2 top-1/2 transition-all rounded-[26px]",
+                                    isCustomBgActive && (
+                                        isDraggingBg
+                                            ? "cursor-grabbing touch-none ring-2 ring-primary/80 shadow-2xl"
+                                            : "cursor-grab touch-none hover:ring-1 hover:ring-primary/40"
+                                    )
+                                )}
+                                style={{
+                                    transform: 'translate(-50%, -50%) scale(0.60)',
+                                    transformOrigin: 'center center',
+                                    boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.85), 0 0 25px rgba(0, 0, 0, 0.5)',
+                                }}
+                            >
+                                <PnlCard
+                                    trade={trade}
+                                    bg={bg}
+                                    accent={accent}
+                                    roiPercent={roiPercent}
+                                    duration={duration}
+                                    leverage={leverage}
+                                    selectedExchange={selectedExchange}
+                                    traderHandle={traderHandle}
+                                    brandTitle={brandTitle}
+                                    brandSubtitle={brandSubtitle}
+                                    activeLogoUrl={activeLogoUrl}
+                                    activeReferral={activeReferral}
+                                    avatarUrl={avatarUrl}
+                                    isCustomBgActive={isCustomBgActive}
+                                    customBgUrl={activeCustomBgPlayableUrl || activeCustomBgUrl}
+                                    customBgMediaType={activeCustomBgMediaType}
+                                    bgDimming={bgDimming}
+                                    bgDimmingDirection={bgDimmingDirection}
+                                    bgPosX={bgPosX}
+                                    bgPosY={bgPosY}
+                                    videoRef={domBgVideoRef}
+                                    showSide={showSide}
+                                    showPnl={showPnl}
+                                    showRoi={showRoi}
+                                    showTradeTimes={showTradeTimes}
+                                    showProfile={showProfile}
+                                    showWatermark={showWatermark}
+                                    showDuration={showDuration}
+                                    showPlan={showPlan}
+                                    plannedStop={plannedStop}
+                                    plannedTarget={plannedTarget}
+                                    plannedRr={plannedRr}
+                                    setupTag={setupTag}
+                                    executionGrade={executionGrade}
+                                    emotionTag={emotionTag}
+                                    showSetup={showSetup}
+                                    showGrade={showGrade}
+                                    showEmotion={showEmotion}
+                                    showReferral={showReferral}
+                                    showThesis={showThesis}
+                                    customThesis={customThesis}
+                                    showReview={showReview}
+                                    customReview={customReview}
+                                    showFullText={showFullText}
+                                />
+                            </div>
+                        </div>
+                    ) : (
+                        <div
+                            ref={cardContainerRef}
+                            onPointerDown={handlePointerDown}
+                            onPointerMove={handlePointerMove}
+                            onPointerUp={handlePointerUp}
+                            onPointerCancel={handlePointerUp}
+                            className={cn(
+                                "w-full max-w-[540px] transition-all",
+                                isCustomBgActive && (
+                                    isDraggingBg
+                                        ? "cursor-grabbing touch-none ring-2 ring-primary/80 rounded-[26px] shadow-2xl scale-[1.008]"
+                                        : "cursor-grab touch-none hover:ring-1 hover:ring-primary/40 rounded-[26px]"
+                                )
+                            )}
+                        >
+                            <PnlCard
+                                trade={trade}
+                                bg={bg}
+                                accent={accent}
+                                roiPercent={roiPercent}
+                                duration={duration}
+                                leverage={leverage}
+                                selectedExchange={selectedExchange}
+                                traderHandle={traderHandle}
+                                brandTitle={brandTitle}
+                                brandSubtitle={brandSubtitle}
+                                activeLogoUrl={activeLogoUrl}
+                                activeReferral={activeReferral}
+                                avatarUrl={avatarUrl}
+                                isCustomBgActive={isCustomBgActive}
+                                customBgUrl={activeCustomBgPlayableUrl || activeCustomBgUrl}
+                                customBgMediaType={activeCustomBgMediaType}
+                                bgDimming={bgDimming}
+                                bgDimmingDirection={bgDimmingDirection}
+                                bgPosX={bgPosX}
+                                bgPosY={bgPosY}
+                                videoRef={domBgVideoRef}
+                                showSide={showSide}
+                                showPnl={showPnl}
+                                showRoi={showRoi}
+                                showTradeTimes={showTradeTimes}
+                                showProfile={showProfile}
+                                showWatermark={showWatermark}
+                                showDuration={showDuration}
+                                showPlan={showPlan}
+                                plannedStop={plannedStop}
+                                plannedTarget={plannedTarget}
+                                plannedRr={plannedRr}
+                                setupTag={setupTag}
+                                executionGrade={executionGrade}
+                                emotionTag={emotionTag}
+                                showSetup={showSetup}
+                                showGrade={showGrade}
+                                showEmotion={showEmotion}
+                                showReferral={showReferral}
+                                showThesis={showThesis}
+                                customThesis={customThesis}
+                                showReview={showReview}
+                                customReview={customReview}
+                                showFullText={showFullText}
+                            />
+                        </div>
+                    )}
                     {/* Hidden canvas for export */}
                     <canvas ref={canvasRef} className="hidden" />
                 </div>
@@ -2368,8 +2775,9 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                     {VIDEO_DURATION_OPTIONS.map((opt) => {
                                         let label = opt.label
                                         if (opt.value === 'source') {
-                                            label = activeCustomBgMediaType === 'video' && (sourceVideoDurationSec || customBgVideoRef.current?.duration)
-                                                ? `Sesuai Video Sumber (~${Math.round(sourceVideoDurationSec || customBgVideoRef.current?.duration || 0)}s)`
+                                            const activeDur = sourceVideoDurationSec || offscreenBgVideoRef.current?.duration || domBgVideoRef.current?.duration
+                                            label = activeCustomBgMediaType === 'video' && activeDur
+                                                ? `Sesuai Video Sumber (~${Math.round(activeDur)}s)`
                                                 : 'Sesuai Video Sumber (Default 15s)'
                                         }
                                         return (
@@ -2502,6 +2910,72 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                         </button>
                     ))}
                     </div>
+
+                    {/* ── PANEL PRATINJAU VIDEO HASIL EKSPOR ── */}
+                    {exportedVideoResult && (
+                        <div className="mt-2.5 p-3.5 rounded-2xl bg-card/90 border border-primary/40 shadow-2xl flex flex-col gap-2.5 animate-in fade-in slide-in-from-bottom-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                                    <span className="text-xs font-bold text-foreground shrink-0">
+                                        🎬 Pratinjau Video Hasil Ekspor:
+                                    </span>
+                                    <span className="text-[11px] text-muted-foreground font-mono truncate">
+                                        {exportedVideoResult.filename}
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        URL.revokeObjectURL(exportedVideoResult.url)
+                                        setExportedVideoResult(null)
+                                    }}
+                                    className="text-xs text-muted-foreground hover:text-foreground px-2 py-0.5 rounded hover:bg-muted/50 transition-colors shrink-0"
+                                    title="Tutup pemutar pratinjau hasil ekspor"
+                                >
+                                    ✕ Tutup
+                                </button>
+                            </div>
+
+                            {/* Pemutar Video Hasil Render */}
+                            <div className="relative rounded-xl overflow-hidden bg-black max-h-[320px] flex items-center justify-center border border-border/50">
+                                <video
+                                    key={exportedVideoResult.url}
+                                    src={exportedVideoResult.url}
+                                    controls
+                                    autoPlay
+                                    loop
+                                    playsInline
+                                    className="max-h-[320px] w-auto max-w-full rounded-xl"
+                                />
+                            </div>
+
+                            {/* Status Lokasi Penyimpanan & Tombol Pilih Folder */}
+                            <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-border/30 text-xs">
+                                <div className="flex items-center gap-1.5 text-muted-foreground min-w-0">
+                                    {exportedVideoResult.savedPath ? (
+                                        <span className="text-emerald-400 font-medium truncate">
+                                            ✓ Tersimpan di: <span className="font-mono text-foreground break-all">{exportedVideoResult.savedPath}</span>
+                                        </span>
+                                    ) : (
+                                        <span className="text-amber-400 font-medium">
+                                            ℹ️ Berkas belum tersimpan di folder pilihan.
+                                        </span>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => void handleSaveExportedAgain()}
+                                    disabled={isSavingExportedAgain}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground font-bold hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-xs ml-auto"
+                                    title="Buka dialog pemilihan folder untuk menyimpan berkas video ini"
+                                >
+                                    <span>📂</span>
+                                    <span>{exportedVideoResult.savedPath ? 'Simpan ke Folder Lain...' : 'Pilih Folder & Simpan...'}</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </Modal>
@@ -2573,6 +3047,40 @@ function PnlCard({
     const isTransparentMode = !isCustomBgActive && bg.isTransparent
     const hasReferralDisplay = showReferral && !!activeReferral.trim()
 
+    const playableBgUrl = useMemo(() => {
+        return getPlayableMediaUrl(customBgUrl, customBgMediaType) || customBgUrl
+    }, [customBgUrl, customBgMediaType])
+
+    // Jaga pemutaran video DOM agar selalu berputar secara looping dan muted
+    const localVideoRef = useRef<HTMLVideoElement | null>(null)
+    useEffect(() => {
+        const vid = localVideoRef.current
+        if (!vid || customBgMediaType !== 'video') return
+        vid.muted = true
+        vid.defaultMuted = true
+        vid.playsInline = true
+        vid.loop = true
+
+        const tryPlay = () => {
+            if (vid.paused) {
+                void vid.play().catch((err) => {
+                    console.log('[PnlCard] Autoplay dicegah browser, menunggu interaksi pengguna:', err)
+                })
+            }
+        }
+
+        vid.addEventListener('canplay', tryPlay)
+        vid.addEventListener('loadeddata', tryPlay)
+        vid.addEventListener('loadedmetadata', tryPlay)
+        tryPlay()
+
+        return () => {
+            vid.removeEventListener('canplay', tryPlay)
+            vid.removeEventListener('loadeddata', tryPlay)
+            vid.removeEventListener('loadedmetadata', tryPlay)
+        }
+    }, [playableBgUrl, customBgMediaType])
+
     return (
         <div
             className="relative overflow-hidden transition-all duration-200 select-none"
@@ -2593,8 +3101,13 @@ function PnlCard({
                 <>
                     {customBgMediaType === 'video' ? (
                         <video
-                            ref={videoRef}
-                            src={customBgUrl}
+                            ref={(el) => {
+                                localVideoRef.current = el
+                                if (videoRef && 'current' in videoRef) {
+                                    ;(videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el
+                                }
+                            }}
+                            src={playableBgUrl || ''}
                             className="pointer-events-none absolute inset-0 w-full h-full object-cover"
                             muted
                             loop

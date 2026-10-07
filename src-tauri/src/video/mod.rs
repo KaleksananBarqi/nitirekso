@@ -35,67 +35,95 @@ pub fn remux_mp4_with_faststart(
         false
     };
 
-    let mut cmd = Command::new("ffmpeg");
-    cmd.arg("-y").arg("-i").arg(&in_path);
-
-    if has_audio {
-        cmd.arg("-stream_loop")
-            .arg("-1")
-            .arg("-i")
-            .arg(&audio_path)
-            .arg("-c:v")
-            .arg("copy")
-            .arg("-c:a")
-            .arg("aac")
-            .arg("-map")
-            .arg("0:v:0")
-            .arg("-map")
-            .arg("1:a:0?")
-            .arg("-shortest")
-            .arg("-movflags")
-            .arg("+faststart")
-            .arg(&out_path);
-    } else {
-        cmd.arg("-c")
-            .arg("copy")
-            .arg("-movflags")
-            .arg("+faststart")
-            .arg(&out_path);
-    }
-
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
-
-    let status = match cmd.status() {
-        Ok(s) => s,
-        Err(e) => {
-            log::warn!(
-                "[video-remux] Gagal mengeksekusi ffmpeg: {}. Mengembalikan video rekaman asli sebagai fallback.",
-                e
-            );
-            let _ = fs::remove_file(&in_path);
-            let _ = fs::remove_file(&audio_path);
-            return Ok(input_data);
+    let run_ffmpeg = |args: &[&str]| -> bool {
+        let mut cmd = Command::new("ffmpeg");
+        cmd.arg("-y");
+        for a in args {
+            cmd.arg(a);
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        match cmd.status() {
+            Ok(s) => s.success() && out_path.exists(),
+            Err(_) => false,
         }
     };
 
-    let result = if status.success() && out_path.exists() {
+    let in_str = in_path.to_string_lossy().to_string();
+    let audio_str = audio_path.to_string_lossy().to_string();
+    let out_str = out_path.to_string_lossy().to_string();
+
+    let mut success = false;
+
+    // Strategi 1: Jika ada audio, coba remux video stream-copy dengan audio AAC
+    if has_audio {
+        let args_with_audio = [
+            "-i", &in_str,
+            "-stream_loop", "-1",
+            "-i", &audio_str,
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-map", "0:v:0",
+            "-map", "1:a:0?",
+            "-shortest",
+            "-movflags", "+faststart",
+            &out_str
+        ];
+        if run_ffmpeg(&args_with_audio) {
+            success = true;
+            log::info!("[video-remux] Sukses remuxing dengan audio loop");
+        }
+    }
+
+    // Strategi 2: Stream-copy murni lossless (+faststart)
+    if !success {
+        let args_copy = [
+            "-i", &in_str,
+            "-c", "copy",
+            "-movflags", "+faststart",
+            &out_str
+        ];
+        if run_ffmpeg(&args_copy) {
+            success = true;
+            log::info!("[video-remux] Sukses remuxing stream-copy lossless");
+        }
+    }
+
+    // Strategi 3: Transcode aman ke H.264 YUV420p standar universal (untuk kompatibilitas 100% player Windows)
+    if !success {
+        log::warn!("[video-remux] Stream copy ditolak, mencoba transcode libx264 YUV420p standar...");
+        let args_transcode = [
+            "-i", &in_str,
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "18",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            &out_str
+        ];
+        if run_ffmpeg(&args_transcode) {
+            success = true;
+            log::info!("[video-remux] Sukses transcode H.264 universal YUV420p");
+        }
+    }
+
+    let result = if success && out_path.exists() {
         match fs::read(&out_path) {
             Ok(bytes) => {
                 log::info!(
-                    "[video-remux] Remuxing MP4 +faststart sukses: {} bytes (audio: {})",
-                    bytes.len(),
-                    has_audio
+                    "[video-remux] File video final siap: {} bytes",
+                    bytes.len()
                 );
                 bytes
             }
             Err(_) => input_data,
         }
     } else {
-        log::warn!("[video-remux] FFmpeg exit code tidak sukses, mengembalikan video rekaman asli.");
+        log::warn!("[video-remux] FFmpeg tidak tersedia atau gagal, menggunakan rekaman asli.");
         input_data
     };
 

@@ -7,6 +7,7 @@
  */
 
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer'
+import { SharePnlErrorCode, logSharePnlError } from './shareErrorCodes'
 
 /**
  * Mengubah URL media (data: / blob: / lainnya) menjadi byte mentah.
@@ -90,7 +91,8 @@ export function getBestSupportedVideoMimeType(_preference?: string): any {
 
 /**
  * Tangkap animasi kanvas dan ekspor sebagai video MP4 resolusi tinggi.
- * Menggunakan pendekatan Deterministic Encoding.
+ * Menggunakan pendekatan Deterministic Encoding dengan WebCodecs & mp4-muxer,
+ * dengan fallback defensif ke MediaRecorder jika WebCodecs tidak tersedia.
  *
  * @param renderFrameToCanvas Fungsi yang menggambar tampilan kartu terbaru ke kanvas
  * @param options Opsi durasi, FPS, bitrate, dan progress
@@ -119,7 +121,45 @@ export async function captureAndExportVideo(
     const exportW = Math.round(rawW / 2) * 2
     const exportH = Math.round(rawH / 2) * 2
 
-    // 1.5. Tangkap dan Decode Audio secara Offline (Jika ada)
+    // Cek apakah WebCodecs didukung di browser ini
+    const isWebCodecsSupported = typeof window !== 'undefined' && typeof (window as any).VideoEncoder !== 'undefined'
+    if (!isWebCodecsSupported) {
+        logSharePnlError(
+            SharePnlErrorCode.VIDEO_ENCODER_INIT_FAILED,
+            'WebCodecs VideoEncoder tidak didukung pada browser/WebView ini, beralih ke fallback MediaRecorder',
+            null,
+            'WARN'
+        )
+        return exportViaMediaRecorder(renderFrameToCanvas, options, exportW, exportH)
+    }
+
+    try {
+        return await exportViaWebCodecs(renderFrameToCanvas, options, exportW, exportH, totalFrames, fps, durationMs, videoBitsPerSecond)
+    } catch (wcErr) {
+        logSharePnlError(
+            SharePnlErrorCode.VIDEO_ENCODE_FRAME_FAILED,
+            'WebCodecs gagal di tengah proses encode, mencoba fallback ke MediaRecorder',
+            wcErr,
+            'WARN'
+        )
+        return exportViaMediaRecorder(renderFrameToCanvas, options, exportW, exportH)
+    }
+}
+
+/**
+ * Mesin encoder deterministik presisi tinggi via WebCodecs + mp4-muxer
+ */
+async function exportViaWebCodecs(
+    renderFrameToCanvas: (canvas: HTMLCanvasElement, context?: FrameRenderContext) => void | Promise<void>,
+    options: VideoExportOptions,
+    exportW: number,
+    exportH: number,
+    totalFrames: number,
+    fps: number,
+    durationMs: number,
+    videoBitsPerSecond: number
+): Promise<VideoExportResult> {
+    // 1. Tangkap dan Decode Audio secara Offline (Jika ada)
     let audioBuffer: AudioBuffer | null = null
     let audioSampleRate = 44100
     let audioChannels = 2
@@ -129,16 +169,36 @@ export async function captureAndExportVideo(
         const src = options.audioSourceVideo.currentSrc || options.audioSourceVideo.src
         if (src) {
             try {
-                const response = await fetch(src)
-                const arrayBuffer = await response.arrayBuffer()
-                const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
-                audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
-                audioSampleRate = audioBuffer.sampleRate
-                audioChannels = audioBuffer.numberOfChannels
-                hasAudio = true
-                if (audioCtx.state !== 'closed') await audioCtx.close()
+                let arrayBuffer: ArrayBuffer | null = null
+                if (src.startsWith('data:')) {
+                    const u8 = await mediaUrlToBytes(src)
+                    arrayBuffer = u8.buffer as ArrayBuffer
+                } else {
+                    const response = await fetch(src)
+                    if (response.ok) {
+                        arrayBuffer = await response.arrayBuffer()
+                    }
+                }
+
+                if (arrayBuffer) {
+                    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+                    if (AudioContextClass) {
+                        const audioCtx = new AudioContextClass()
+                        audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
+                        audioSampleRate = audioBuffer.sampleRate
+                        audioChannels = audioBuffer.numberOfChannels
+                        hasAudio = true
+                        if (audioCtx.state !== 'closed') await audioCtx.close()
+                    }
+                }
             } catch (err) {
-                console.warn('Gagal memuat/decode trek audio (Video akan bisu):', err)
+                logSharePnlError(
+                    SharePnlErrorCode.AUDIO_PROCESS_FAILED,
+                    'Gagal memuat atau mendecode trek audio internal, video akan diproses tanpa suara',
+                    err,
+                    'WARN'
+                )
+                hasAudio = false
             }
         }
     }
@@ -155,40 +215,63 @@ export async function captureAndExportVideo(
         fastStart: 'in-memory'
     }
 
-    if (hasAudio) {
-        muxerOptions.audio = {
-            codec: 'aac',
-            sampleRate: audioSampleRate,
-            numberOfChannels: audioChannels
-        }
-    }
-    const muxer = new Muxer(muxerOptions)
-
-    // 2.5 Siapkan Audio Encoder (Jika Ada)
-    let audioEncoderError: Error | null = null
+    // 2.5 Coba siapkan Audio Encoder jika audio tersedia
     let audioEncoder: any = null
     let framesToEncode = 0
     let startFrame = 0
 
-    if (hasAudio && audioBuffer) {
-        audioEncoder = new window.AudioEncoder({
-            output: (chunk: any, meta: any) => muxer.addAudioChunk(chunk, meta),
-            error: (e: Error) => {
-                console.error('AudioEncoder error:', e)
-                audioEncoderError = e
-            }
-        })
-        audioEncoder.configure({
-            codec: 'mp4a.40.2',
-            sampleRate: audioSampleRate,
-            numberOfChannels: audioChannels,
-            bitrate: 128_000
-        })
+    if (hasAudio && audioBuffer && typeof (window as any).AudioEncoder !== 'undefined') {
+        try {
+            audioEncoder = new (window as any).AudioEncoder({
+                output: (chunk: any, meta: any) => {
+                    try {
+                        muxer.addAudioChunk(chunk, meta)
+                    } catch (e) {
+                        console.warn('Gagal menambahkan audio chunk ke muxer:', e)
+                    }
+                },
+                error: (e: Error) => {
+                    logSharePnlError(
+                        SharePnlErrorCode.AUDIO_PROCESS_FAILED,
+                        'AudioEncoder runtime error, menonaktifkan encoder audio',
+                        e,
+                        'WARN'
+                    )
+                    audioEncoder = null
+                }
+            })
+            audioEncoder.configure({
+                codec: 'mp4a.40.2',
+                sampleRate: audioSampleRate,
+                numberOfChannels: audioChannels,
+                bitrate: 128_000
+            })
 
-        const startTime = options.audioSourceVideo?.currentTime || 0
-        startFrame = Math.floor(startTime * audioSampleRate)
-        framesToEncode = Math.floor((durationMs / 1000) * audioSampleRate)
+            const startTime = options.audioSourceVideo?.currentTime || 0
+            startFrame = Math.floor(startTime * audioSampleRate)
+            framesToEncode = Math.floor((durationMs / 1000) * audioSampleRate)
+            
+            // Masukkan konfigurasi audio ke muxer hanya jika AudioEncoder berhasil dikonfigurasi
+            muxerOptions.audio = {
+                codec: 'aac',
+                sampleRate: audioSampleRate,
+                numberOfChannels: audioChannels
+            }
+        } catch (aeErr) {
+            logSharePnlError(
+                SharePnlErrorCode.AUDIO_PROCESS_FAILED,
+                'AudioEncoder AAC tidak didukung oleh browser ini, audio akan dilewati',
+                aeErr,
+                'WARN'
+            )
+            hasAudio = false
+            audioEncoder = null
+        }
+    } else {
+        hasAudio = false
     }
+
+    const muxer = new Muxer(muxerOptions)
 
     // 3. Siapkan WebCodecs VideoEncoder
     let encoderError: Error | null = null
@@ -200,13 +283,59 @@ export async function captureAndExportVideo(
         }
     })
 
-    encoder.configure({
-        codec: 'avc1.4d002a', // H.264 Main Profile Level 4.2
-        width: exportW,
-        height: exportH,
-        bitrate: videoBitsPerSecond,
-        hardwareAcceleration: 'prefer-hardware'
-    })
+    const candidateProfiles: Array<{ codec: string; hardwareAcceleration: 'prefer-hardware' | 'no-preference' }> = [
+        { codec: 'avc1.640033', hardwareAcceleration: 'prefer-hardware' }, // High Profile Level 5.1 (Cocok untuk 1080p, 1080x1920 & 4K)
+        { codec: 'avc1.4d0032', hardwareAcceleration: 'prefer-hardware' }, // Main Profile Level 5.0
+        { codec: 'avc1.4d002a', hardwareAcceleration: 'prefer-hardware' }, // Main Profile Level 4.2
+        { codec: 'avc1.640033', hardwareAcceleration: 'no-preference' },
+        { codec: 'avc1.4d0032', hardwareAcceleration: 'no-preference' },
+        { codec: 'avc1.420032', hardwareAcceleration: 'no-preference' },   // Baseline Profile Level 5.0
+        { codec: 'avc1.42e01e', hardwareAcceleration: 'no-preference' },   // Baseline Profile Level 3.0
+    ]
+
+    let isConfigured = false
+    for (const profile of candidateProfiles) {
+        const testConfig: VideoEncoderConfig = {
+            codec: profile.codec,
+            width: exportW,
+            height: exportH,
+            bitrate: videoBitsPerSecond,
+            hardwareAcceleration: profile.hardwareAcceleration,
+        }
+        try {
+            if (typeof VideoEncoder.isConfigSupported === 'function') {
+                const support = await VideoEncoder.isConfigSupported(testConfig)
+                if (support && support.supported) {
+                    encoder.configure(testConfig)
+                    isConfigured = true
+                    console.log(`[video-export] Menggunakan WebCodecs konfigurasi: ${profile.codec} (${profile.hardwareAcceleration})`)
+                    break
+                }
+            } else {
+                encoder.configure(testConfig)
+                isConfigured = true
+                break
+            }
+        } catch {
+            // Lanjut ke kandidat profil berikutnya
+        }
+    }
+
+    if (!isConfigured) {
+        logSharePnlError(
+            SharePnlErrorCode.VIDEO_ENCODER_INIT_FAILED,
+            `Profil hardware H.264 tidak tersedia untuk ${exportW}x${exportH}, menggunakan baseline avc1.420032`,
+            null,
+            'WARN'
+        )
+        encoder.configure({
+            codec: 'avc1.420032',
+            width: exportW,
+            height: exportH,
+            bitrate: videoBitsPerSecond,
+            hardwareAcceleration: 'no-preference'
+        })
+    }
 
     const frameCanvas = document.createElement('canvas')
     frameCanvas.width = exportW
@@ -220,7 +349,6 @@ export async function captureAndExportVideo(
     // 4. Loop render deterministik
     for (let i = 0; i < totalFrames; i++) {
         if (encoderError) throw encoderError
-        if (audioEncoderError) throw audioEncoderError
 
         const currentTimeSec = i / fps
 
@@ -235,68 +363,76 @@ export async function captureAndExportVideo(
         // Skalakan ke resolusi genap export
         ctx.drawImage(renderFullCanvas, 0, 0, exportW, exportH)
 
-        // Hitung timestamp frame yang tepat (dalam microseconds)
-        const timestampMicroseconds = (i * 1000000) / fps
+        // Hitung timestamp frame integer yang tepat (dalam microseconds bulat)
+        const timestampMicroseconds = Math.round((i * 1_000_000) / fps)
 
         if (audioEncoder && audioBuffer && framesToEncode > 0) {
-            const audioChunkDurationUs = 1000000 / fps
-            const currentAudioOffset = Math.floor((i * audioChunkDurationUs / 1000000) * audioSampleRate)
-            const audioFramesNeeded = Math.floor((audioChunkDurationUs / 1000000) * audioSampleRate)
-            
-            let framesInChunk = audioFramesNeeded
-            
-            if (i === totalFrames - 1) {
-                framesInChunk = framesToEncode - currentAudioOffset
-            }
-            
-            if (framesInChunk > 0 && currentAudioOffset < framesToEncode) {
-                framesInChunk = Math.min(framesInChunk, framesToEncode - currentAudioOffset)
-                const planarData = new Float32Array(framesInChunk * audioChannels)
-                for (let c = 0; c < audioChannels; c++) {
-                    const channelData = audioBuffer.getChannelData(c)
-                    for (let f = 0; f < framesInChunk; f++) {
-                        const sampleIndex = (startFrame + currentAudioOffset + f) % audioBuffer.length
-                        planarData[c * framesInChunk + f] = channelData[sampleIndex] || 0
+            try {
+                const audioChunkDurationUs = 1_000_000 / fps
+                const currentAudioOffset = Math.floor((i * audioChunkDurationUs / 1_000_000) * audioSampleRate)
+                const audioFramesNeeded = Math.floor((audioChunkDurationUs / 1_000_000) * audioSampleRate)
+                
+                let framesInChunk = audioFramesNeeded
+                if (i === totalFrames - 1) {
+                    framesInChunk = framesToEncode - currentAudioOffset
+                }
+                
+                if (framesInChunk > 0 && currentAudioOffset < framesToEncode) {
+                    framesInChunk = Math.min(framesInChunk, framesToEncode - currentAudioOffset)
+                    const planarData = new Float32Array(framesInChunk * audioChannels)
+                    for (let c = 0; c < audioChannels; c++) {
+                        const channelData = audioBuffer.getChannelData(c)
+                        for (let f = 0; f < framesInChunk; f++) {
+                            const sampleIndex = (startFrame + currentAudioOffset + f) % audioBuffer.length
+                            planarData[c * framesInChunk + f] = channelData[sampleIndex] || 0
+                        }
+                    }
+                    const AudioDataClass = (window as any).AudioData
+                    if (AudioDataClass) {
+                        const audioData = new AudioDataClass({
+                            format: 'f32-planar',
+                            sampleRate: audioSampleRate,
+                            numberOfFrames: framesInChunk,
+                            numberOfChannels: audioChannels,
+                            timestamp: Math.round((currentAudioOffset / audioSampleRate) * 1_000_000),
+                            data: planarData
+                        })
+                        audioEncoder.encode(audioData)
+                        audioData.close()
                     }
                 }
-                const audioData = new AudioData({
-                    format: 'f32-planar',
-                    sampleRate: audioSampleRate,
-                    numberOfFrames: framesInChunk,
-                    numberOfChannels: audioChannels,
-                    timestamp: Math.round((currentAudioOffset / audioSampleRate) * 1_000_000),
-                    data: planarData
-                })
-                audioEncoder.encode(audioData)
-                audioData.close()
+            } catch (aErr) {
+                console.warn('Encoding audio chunk dilewati karena error non-fatal:', aErr)
             }
         }
 
-        // Konversi kanvas ke VideoFrame (jika didukung) atau createImageBitmap
+        // Konversi kanvas ke VideoFrame dengan timestamp integer presisi
         const frame = new VideoFrame(frameCanvas, { timestamp: timestampMicroseconds })
         
-        // Encode (pilih keyframe setiap interval 2 detik agar seeking MP4 mulus)
+        // Encode (keyframe setiap interval 2 detik agar seeking MP4 mulus)
         const isKeyFrame = i % (fps * 2) === 0
         encoder.encode(frame, { keyFrame: isKeyFrame })
         
         frame.close()
 
-        // Update progress tiap 10% agar UI tidak terlalu sering dirender u/ progress
-        if (i % Math.ceil(totalFrames / 10) === 0) {
+        // Update progress tiap 10%
+        if (i % Math.max(1, Math.ceil(totalFrames / 15)) === 0) {
             options.onProgress?.(Math.round(5 + (i / totalFrames) * 90))
         }
 
-        // Berikan sedikit waktu agar event loop browser tetap responsif untuk update progress UI
-        await new Promise((r) => setTimeout(r, 2))
+        // Berikan napas ke event loop agar UI tetap reaktif
+        await new Promise((r) => setTimeout(r, 1))
     }
 
     options.onProgress?.(95)
 
-    // 5. Finalisasi file
+    // 5. Finalisasi file MP4
     await encoder.flush()
     if (audioEncoder) {
-        await audioEncoder.flush()
-        audioEncoder.close()
+        try {
+            await audioEncoder.flush()
+            audioEncoder.close()
+        } catch {}
     }
     muxer.finalize()
     const { buffer } = muxer.target as ArrayBufferTarget
@@ -309,4 +445,126 @@ export async function captureAndExportVideo(
         mimeType: 'video/mp4',
         codecName: 'MP4 (H.264 WebCodecs)'
     }
+}
+
+/**
+ * Fallback perekaman video berbasis MediaRecorder jika WebCodecs tidak tersedia atau terhalang GPU
+ */
+async function exportViaMediaRecorder(
+    renderFrameToCanvas: (canvas: HTMLCanvasElement, context?: FrameRenderContext) => void | Promise<void>,
+    options: VideoExportOptions,
+    exportW: number,
+    exportH: number
+): Promise<VideoExportResult> {
+    const durationMs = options.durationMs ?? 15_000
+    const fps = options.fps ?? 30
+    const videoBitsPerSecond = options.videoBitsPerSecond ?? 7_500_000
+    const totalFrames = Math.ceil((durationMs / 1000) * fps)
+    const frameIntervalMs = 1000 / fps
+
+    const recordCanvas = document.createElement('canvas')
+    recordCanvas.width = exportW
+    recordCanvas.height = exportH
+    const recordCtx = recordCanvas.getContext('2d', { alpha: false })!
+
+    const stream = (recordCanvas as any).captureStream ? (recordCanvas as any).captureStream(fps) : null
+    if (!stream) {
+        logSharePnlError(
+            SharePnlErrorCode.RECORDER_FALLBACK_FAILED,
+            'captureStream tidak didukung di lingkungan kanvas ini',
+            null,
+            'ERROR'
+        )
+        throw new Error('captureStream tidak didukung di lingkungan ini.')
+    }
+
+    const mimeCandidates = [
+        'video/mp4;codecs=avc1',
+        'video/mp4',
+        'video/webm;codecs=vp9',
+        'video/webm'
+    ]
+    let chosenMime = 'video/webm'
+    let chosenExt: 'mp4' | 'webm' = 'webm'
+    for (const cand of mimeCandidates) {
+        if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(cand)) {
+            chosenMime = cand
+            chosenExt = cand.includes('mp4') ? 'mp4' : 'webm'
+            break
+        }
+    }
+
+    const recorder = new MediaRecorder(stream, {
+        mimeType: chosenMime,
+        videoBitsPerSecond
+    })
+
+    const chunks: BlobPart[] = []
+    recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data)
+    }
+
+    return new Promise((resolve, reject) => {
+        let isAborted = false
+        let currentFrame = 0
+        const fullCanvas = document.createElement('canvas')
+
+        recorder.onerror = (e) => {
+            isAborted = true
+            logSharePnlError(
+                SharePnlErrorCode.RECORDER_FALLBACK_FAILED,
+                'MediaRecorder mengalami runtime error saat merekam',
+                e,
+                'ERROR'
+            )
+            reject(e)
+        }
+
+        recorder.onstop = () => {
+            stream.getTracks().forEach((t: MediaStreamTrack) => t.stop())
+            options.onProgress?.(100)
+            const finalBlob = new Blob(chunks, { type: chosenMime })
+            resolve({
+                blob: finalBlob,
+                extension: chosenExt,
+                mimeType: chosenMime,
+                codecName: chosenExt === 'mp4' ? 'MP4 (MediaRecorder)' : 'WebM (MediaRecorder)'
+            })
+        }
+
+        recorder.start(100)
+        options.onProgress?.(5)
+
+        const intervalId = setInterval(async () => {
+            if (isAborted) {
+                clearInterval(intervalId)
+                return
+            }
+            if (currentFrame >= totalFrames) {
+                clearInterval(intervalId)
+                if (recorder.state === 'recording') {
+                    recorder.stop()
+                }
+                return
+            }
+
+            const currentTimeSec = currentFrame / fps
+            try {
+                await renderFrameToCanvas(fullCanvas, {
+                    frameIndex: currentFrame,
+                    totalFrames,
+                    currentTimeSec,
+                    fps
+                })
+                recordCtx.drawImage(fullCanvas, 0, 0, exportW, exportH)
+            } catch (err) {
+                console.warn('Frame render error non-fatal:', err)
+            }
+
+            currentFrame++
+            if (currentFrame % Math.max(1, Math.ceil(totalFrames / 15)) === 0) {
+                options.onProgress?.(Math.round(5 + (currentFrame / totalFrames) * 90))
+            }
+        }, frameIntervalMs)
+    })
 }

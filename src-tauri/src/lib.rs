@@ -84,7 +84,8 @@ pub fn run() {
             get_app_version,
             check_for_updates,
             get_btc_klines,
-            remux_video_mp4
+            remux_video_mp4,
+            save_video_file
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
