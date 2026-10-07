@@ -9,7 +9,7 @@
 
 > **"Niti Transaksi, Rekso Evaluasi"**
 > 
-> *Aplikasi Trading Journal Otomatis, Offline-First, dan 100% Privat untuk Evaluasi Disiplin Trading Kripto Futures (MEXC & Bitunix).*
+> *Aplikasi Trading Journal Otomatis, Offline-First, dan 100% Privat untuk Evaluasi Disiplin Trading Kripto Futures (Bybit, Binance, BingX, MEXC, & Bitunix).*
 
 ---
 
@@ -25,58 +25,84 @@ Nama **nitirekso** berakar dari kearifan bahasa Jawa:
 
 ## 🖼️ Tangkapan Layar (Preview Aplikasi)
 
-| 📋 Trade Log & Riwayat Sinkronisasi | 📝 Jurnal Transaksi & Evaluasi SOP |
+| 📊 Dasbor Portofolio & Saldo Live | 📋 Trade Log & Riwayat Sinkronisasi |
 |:---:|:---:|
-| [![Trade Log nitirekso](docs/assets/screenshots/dasbor.png)](docs/assets/screenshots/dasbor.png) | [![Journal Entry nitirekso](docs/assets/screenshots/jurnal.png)](docs/assets/screenshots/jurnal.png) |
-| *Daftar posisi tertutup otomatis dari exchange lengkap dengan durasi, tag setup, grade eksekusi, R-multiple, dan PnL.* | *Catat tesis analisa pre-trade, review psikologi post-trade, dan evaluasi kepatuhan SOP per transaksi.* |
+| [![Dasbor nitirekso](docs/assets/screenshots/dasbor.png)](docs/assets/screenshots/dasbor.png) | [![Trade Log nitirekso](docs/assets/screenshots/trade%20log.png)](docs/assets/screenshots/trade%20log.png) |
+| *Visualisasi ringkasan modal, saldo real-time 5 exchange, equity curve harian, dan metrik risiko kuantitatif.* | *Daftar posisi tertutup otomatis dari exchange lengkap dengan durasi, tag setup, grade eksekusi, R-multiple, dan PnL.* |
+
+| 📝 Jurnal Transaksi & Evaluasi SOP | 📈 Analitik Kuantitatif & Benchmark ROI BTC |
+|:---:|:---:|
+| [![Jurnal Transaksi nitirekso](docs/assets/screenshots/journal%20trade.png)](docs/assets/screenshots/journal%20trade.png) | [![Analitik Trading nitirekso](docs/assets/screenshots/analytics.png)](docs/assets/screenshots/analytics.png) |
+| *Catat tesis analisa pre-trade, review psikologi post-trade, evaluasi kepatuhan SOP, dan pelacak tag emosi per transaksi.* | *Evaluasi performa portofolio vs Buy & Hold Bitcoin (Alpha), kurva drawdown, heatmap kalender, dan distribusi R.* |
 
 | 🏆 Kartu Pamer PnL Flex (Viral Ready) | 🎨 Studio Kustomisasi Desain & Tema |
 |:---:|:---:|
-| [![PnL Flex Share nitirekso](docs/assets/screenshots/pnl-flex-share.png)](docs/assets/screenshots/pnl-flex-share.png) | [![PnL Flex Customizer nitirekso](docs/assets/screenshots/pnl-flex-custom.png)](docs/assets/screenshots/pnl-flex-custom.png) |
-| *Kartu pamer performa rasio 1:1 tajam resolusi Retina 2x dengan avatar personal, watermark, dan catatan tesis.* | *Atur wallpaper kustom, tema warna visual, mode privasi (sembunyikan nominal USD), dan toggle teks.* |
+| [![PnL Flex Share nitirekso](docs/assets/screenshots/pnl%20share.png)](docs/assets/screenshots/pnl%20share.png) | [![PnL Flex Customizer nitirekso](docs/assets/screenshots/pnl%20custom.png)](docs/assets/screenshots/pnl%20custom.png) |
+| *Kartu pamer performa rasio 1:1 tajam resolusi Retina 2x dengan avatar personal, watermark, dan catatan tesis.* | *Atur wallpaper video/gambar kustom, gradien pencahayaan terarah, tema warna visual, dan mode privasi (sensor PnL).* |
 
 ---
 
 ## 🚀 Mengapa Memilih nitirekso? (Keunggulan Utama)
 
-1. **100% Privat & Offline-First (Local Database)**  
-   Data jurnal finansial dan trading Anda tersimpan di mesin lokal dalam database SQLite terenkripsi. Tidak ada database server pihak ketiga, tidak ada cloud telemetry, dan tidak ada pelacak analytics yang membaca portofolio Anda.
-2. **Koneksi API Read-Only Tanpa Risiko**  
-   Hanya memerlukan izin baca (*read-only*). Aplikasi tidak memiliki kapabilitas mengeksekusi order, membatalkan order, ataupun melakukan penarikan dana (*withdrawal*). Kredensial diamankan menggunakan `safeStorage` bawaan sistem operasi (Windows DPAPI).
-3. **Eksekusi vs Hasil (Execution Grade A/B/C/D)**  
+1. **Performa Native Super Ringan (Tauri v2 + Rust)**  
+   Dibangun di atas engine native **Rust** dan **Tauri v2**, nitirekso hanya mengonsumsi memori ~30–50 MB RAM saat diam (turun lebih dari 80% dibanding aplikasi berbasis Electron), start instan, serta ukuran file biner yang ringkas.
+2. **100% Privat & Offline-First (Local Database)**  
+   Data jurnal finansial dan trading Anda tersimpan di mesin lokal dalam database SQLite terenkripsi. Tidak ada database server perantara, tidak ada cloud telemetry, dan tidak ada pelacak analytics yang membaca portofolio Anda.
+3. **Koneksi Read-Only 5 Exchange Terpercaya**  
+   Mendukung integrasi resmi **Bybit**, **Binance**, **BingX**, **MEXC**, dan **Bitunix**. Hanya memerlukan izin baca (*read-only*), tanpa kapabilitas order maupun penarikan dana (*withdrawal*). Kredensial diamankan menggunakan enkripsi native Rust AES-256-GCM.
+4. **Eksekusi vs Hasil (Execution Grade A/B/C/D)**  
    nitirekso memisahkan *grade eksekusi* dari *profit/loss*. Eksekusi sesuai rencana trading bisa saja berakhir rugi (*good loss*); sebaliknya, melanggar aturan bisa saja menghasilkan cuan beruntung (*bad win*). nitirekso melatih Anda mengevaluasi proses, bukan sekadar hasil.
-4. **Generator Kartu Pamer PnL Estetik (Canvas Native)**  
-   Buat kartu pamer performa berkualitas tinggi (Retina 2x) dalam 5 pilihan tema visual (*Cyberpunk Neon, Obsidian Gold, Emerald Mint, Sunset Synth, Minimal Dark*) dan 3 aspek rasio (`1:1`, `9:16`, `16:9`) untuk media sosial.
-5. **Wawasan Pola Trading Berbasis AI**  
-   Integrasi opsional dengan model AI (kompatibel OpenAI Chat Completions) untuk mendeteksi kelemahan psikologis, kebocoran modal, dan saran perbaikan dari catatan jurnal Anda.
+5. **Studio Pembuat Konten PnL & Video Media Sosial (TikTok/Reels/Shorts Ready)**  
+   Buat kartu pamer performa berkualitas tinggi Retina 2x, ekspor video MP4 *lossless faststart* (anti-potong 3 detik di TikTok), frame vertikal `9:16`, audio background video, ekspor GIF animasi offline murni, dan generator caption otomatis ramah SEO.
+6. **Wawasan Pola Trading Berbasis AI & Benchmark Alpha**  
+   Bandingkan hasil trading langsung terhadap strategi *Buy & Hold* Bitcoin (**Analytics VS ROI BTC**) dan manfaatkan integrasi opsional model AI (OpenAI Chat Completions) untuk audit psikologi dan kebocoran modal.
 
 ---
 
 ## 📊 Rangkuman Fitur Lengkap
 
-### 1. Sinkronisasi Otomatis & Saldo Akun (MEXC & Bitunix)
-- **MEXC Futures**: Penarikan posisi tertutup, histori fills, funding fee, dan saldo ekuitas akun real-time via CCXT certified engine.
-- **Bitunix Futures**: Integrasi REST resmi untuk posisi tertutup, order historis, dan saldo margin futures.
-- **Idempotent Engine**: Sinkronisasi berulang aman 100%, tidak menciptakan entri duplikat.
-- **Widget Saldo Live**: Menampilkan Total Equity, Free Margin, Floating PnL, dan rincian saldo per exchange langsung di Dashboard.
+### 1. Sinkronisasi Otomatis 5 Exchange & Saldo Akun (Unified Sync)
+- **5 Exchange Futures**: Dukungan resmi untuk **Bybit** (Linear V5), **Binance** (USDT-M Futures), **BingX** (Perpetual Swap), **MEXC Futures**, dan **Bitunix Futures**.
+- **Unified Sync 1-Klik**: Sinkronisasi riwayat posisi tertutup, trade fills, komisi fee, funding fee, dan saldo margin futures secara serentak dalam satu alur terpadu.
+- **Idempotent Engine**: Sinkronisasi berulang aman 100%, mencegah duplikasi data transaksi.
+- **Widget Saldo Live Multi-Exchange**: Menampilkan Total Equity, Free Margin, Floating PnL, dan rincian saldo per exchange langsung di Dashboard.
+- **Logo Exchange Otomatis & Referral**: Logo resmi exchange dan badge kode referral langsung tersemat di kartu pamer performa.
 
 ### 2. Jurnal Transaksi & Evaluasi Psikologi
 - Catatan tesis pre-trade dan review post-trade.
 - Sistem tagging fleksibel multi-nilai (misal: `#Breakout`, `#FOMO`, `#NewsTrade`).
-- Pelacak emosi trader sebelum dan sesudah eksekusi.
-- Checklist disiplin SOP trading.
+- Pelacak emosi trader sebelum dan sesudah eksekusi dengan filter toggle dinamis.
+- Checklist kepatuhan SOP trading untuk menguji kedisiplinan eksekusi.
 - Lampiran screenshot chart (disimpan secara lokal dan aman dari path traversal).
-- Perhitungan otomatis Risk-to-Reward Rencana (`plannedRr`) dari Entry, Stop Loss, dan Take Profit.
+- Perhitungan otomatis Risk-to-Reward Rencana (`plannedRr`) dengan dukungan input desimal natural.
 
-### 3. Analitik Trading & Visualisasi Data
-- **Equity & Drawdown Curve**: Memakai `lightweight-charts` v5 yang responsif dan interaktif.
-- **Heatmap Kalender PnL**: Mengetahui hari paling menguntungkan dan hari rawan rugi.
+### 3. Analitik Trading, Benchmark Alpha & Metrik Risiko Kuantitatif
+- **Equity & Drawdown Curve**: Grafik interaktif responsif berbasis `lightweight-charts` v5.
+- **Analytics VS ROI BTC (Alpha Benchmark)**: Evaluasi objektif perbandingan performa portofolio vs Buy & Hold Bitcoin pada periode trading yang sama, didukung 4-tier failover kline API.
+- **Metrik Risiko Kuantitatif**: Menghitung **Total R** (akumulasi kelipatan risiko), **Expectancy R** (nilai harapan matematis per trade dalam R), **Recovery Factor**, dan **Max Consecutive Streak** (rekor menang/kalah beruntun).
+- **Heatmap Kalender PnL**: Memetakan hari paling menguntungkan dan hari rawan kerugian.
 - **Metrik Utama Finansial**: Net PnL, Win Rate %, Profit Factor, Expectancy, Average Win/Loss Ratio.
-- **Histogram Distribusi R-Multiple**: Memetakan rasio risiko-imbalan aktual dari setiap trade yang ditutup.
-- **Filter Global Lintas Halaman**: Filter berdasarkan exchange, simbol koin, setup tag, tanggal, dan rentang PnL.
+- **Histogram Distribusi R-Multiple**: Visualisasi sebaran rasio risiko-imbalan aktual dari setiap trade.
+- **Filter Global Lintas Halaman**: Filter berdasarkan exchange, pasangan simbol, setup tag, tanggal, dan rentang PnL.
 
-### 4. Ekspor & Backup Mandiri
-- **Ekspor Jurnal**: Format **CSV** (UTF-8 BOM siap Excel), **JSON**, dan cetak dokumen **PDF** beresolusi tinggi via offscreen Chromium renderer.
+### 4. Studio Pamer PnL Flex, Ekspor Video & GIF Animasi
+- **Bento Grid 8-Slot**: Tata letak modern padat informasi (Win Rate, Total PnL, Profit Factor, Total Trades, Total R, Recovery Factor, Max Streak, Expectancy R).
+- **Pilihan Aspek Rasio Lengkap**: Rasio `1:1` Square, `16:9` Landscape, `4:5` Feed, dan `9:16` Portrait vertikal.
+- **Lossless MP4 +faststart Remuxing**: Menyatukan atom `moov` di awal file MP4 secara instan (~50ms) sehingga video berdurasi penuh tidak dipotong menjadi 3 detik oleh algoritma TikTok.
+- **Audio Latar Belakang (Audio Muxing Pipeline)**: Menyertakan musik/audio dari video wallpaper kustom ke berkas MP4 hasil ekspor.
+- **Generator Caption Otomatis (Caption Maker)**: Panel pembuat teks caption otomatis ramah SEO (#DYOR, #tradingjournal) berbasis analisa transaksi riil dengan tombol salin 1-klik.
+- **Ekspor GIF Animasi Offline**: Engine murni TypeScript (GIF89a) tanpa dependensi library eksternal C++.
+- **Video Wallpaper & Directional Dimming**: Dukungan wallpaper video loop (MP4/WebM) dan kontrol arah gradien pencahayaan (Top-Right ala bursa tier-1, Left-Right, Radial).
+- **Mode Sensor Privasi PnL (Hide P&L)**: Tombol 1-klik untuk menyamarkan nominal PnL menjadi "••••" demi keamanan saat berbagi ke media sosial atau live streaming.
+- **Kustomisasi Tema Visual Bebas**: Color picker interaktif untuk skema warna aplikasi dan kartu PnL.
+
+### 5. Ekspor & Pemulihan Cadangan Mandiri (Backup & Restore)
+- **Restore Backup Folder Lokal (v1.8.1)**:
+  - Pemulihan fisik database SQLite 1-klik dari folder cadangan lokal menggunakan *SQLite Online Backup API* (`rusqlite::backup::Backup`).
+  - Menjalankan migrasi skema otomatis pasca-restore agar cadangan lawas langsung kompatibel dengan versi terbaru.
+  - Pemulihan seluruh koleksi screenshot lokal secara utuh.
+  - Fallback otomatis ke snapshot JSON jika file database fisik tidak ditemukan.
+- **Ekspor Jurnal Fleksibel**: Format **CSV** (UTF-8 BOM siap Excel), **JSON**, dan cetak dokumen **PDF** beresolusi tinggi.
 - **Backup Google Drive Dual-Mode**:
   - *Mode 1 (Folder Lokal)*: 1-Klik sinkron ke folder Google Drive desktop tanpa ribet setup API.
   - *Mode 2 (OAuth PKCE Direct)*: Sinkronisasi cadangan langsung ke cloud via OAuth aman.
@@ -134,9 +160,9 @@ npm run verify:acceptance   # 51 checks — Kriteria penerimaan acceptance crite
 
 ## 🔒 Standar Keamanan & Privasi
 
-- **Penyimpanan Kredensial**: Menggunakan *keychain* bawaan OS (Windows Credential Manager / macOS Keychain / Linux Secret Service) yang dikelola secara aman oleh Rust `keyring`. Kredensial API tidak pernah disimpan dalam bentuk plaintext.
+- **Penyimpanan Kredensial**: Menggunakan *keychain* bawaan OS yang dikelola secara aman oleh Rust `keyring` dan enkripsi lokal AES-256-GCM. Kredensial API tidak pernah disimpan dalam bentuk plaintext.
 - **Alur Data Satu Arah**: Kredensial hanya mengalir dari Frontend ke Backend (Tauri Rust API). Tampilan UI tidak pernah dapat membaca kembali kunci API rahasia Anda.
-- **Content Security Policy (CSP)**: Diatur langsung dari konfigurasi Tauri untuk memastikan tidak ada skrip jahat yang dapat membocorkan data trading Anda ke internet.
+- **Content Security Policy (CSP)**: Diatur ketat langsung dari konfigurasi Tauri untuk memastikan tidak ada kebocoran data ke luar.
 - **Mode Sembunyikan PnL (Hide P&L)**: Satu klik tombol mata untuk menyembunyikan nominal dolar saat Anda ingin berbagi layar (*screen sharing*) atau merekam video.
 
 ---
@@ -149,9 +175,11 @@ nitirekso/
 ├── src-tauri/             # Backend Tauri v2 (Rust runtime)
 │   ├── src/
 │   │   ├── commands/      # IPC endpoint commands (Tauri API handlers)
-│   │   ├── utils/         # Helper functions dan business logic di Rust
+│   │   ├── db/            # Engine SQLite lokal rusqlite & migrasi skema
+│   │   ├── sync/          # Engine sinkronisasi multi-exchange (Bybit, Binance, BingX, MEXC, Bitunix)
+│   │   ├── utils/         # Helper functions, video remuxer, & business logic di Rust
 │   │   └── lib.rs         # Entry point aplikasi Rust
-│   ├── tauri.conf.json    # Konfigurasi Tauri
+│   ├── tauri.conf.json    # Konfigurasi Tauri v2
 │   └── Cargo.toml         # Manifest pustaka Rust
 ├── src/                   # Frontend Renderer (React 19 + Tailwind CSS v4)
 │   ├── assets/            # Logo SVG & Favicon resmi nitirekso
@@ -160,7 +188,7 @@ nitirekso/
 │   ├── routes/            # Halaman Dashboard, TradeLog, Journal, Analytics, Settings
 │   └── styles/            # Token CSS HSL (Royal Amethyst & Deep Obsidian)
 ├── shared/                # Kontrak tipe domain & antarmuka data
-├── docs/                  # Panduan tagging Git & dokumentasi
+├── docs/                  # Website landing page, aset logo, & tangkapan layar
 └── plans/                 # Rencana arsitektur, data model, dan log fase proyek
 ```
 
@@ -168,20 +196,23 @@ nitirekso/
 
 ## ❓ Tanya Jawab Umum (FAQ)
 
-### 1. Apakah menghubungkan API MEXC dan Bitunix ke nitirekso aman?
-**Sangat aman.** nitirekso hanya meminta izin *Read-Only* (hanya baca) untuk menyinkronkan data riwayat posisi tertutup, funding fee, dan saldo ekuitas. Aplikasi tidak memiliki kapabilitas untuk membuat order, mengubah posisi, ataupun mengeksekusi penarikan dana (*withdrawal*). Kunci API Anda dienkripsi secara lokal di sistem operasi menggunakan Windows DPAPI (`safeStorage`).
+### 1. Apakah menghubungkan API Bybit, Binance, BingX, MEXC, dan Bitunix ke nitirekso aman?
+**Sangat aman.** nitirekso hanya meminta izin *Read-Only* (hanya baca) untuk menyinkronkan data riwayat posisi tertutup, funding fee, dan saldo ekuitas. Aplikasi tidak memiliki kapabilitas untuk membuat order, mengubah posisi, ataupun mengeksekusi penarikan dana (*withdrawal*). Kunci API Anda dienkripsi secara lokal di mesin komputer Anda menggunakan enkripsi native Rust AES-256-GCM dan OS Keychain.
 
-### 2. Mengapa memilih software jurnal otomatis offline dibanding Google Sheets atau Excel?
-Spreadsheet manual menuntut trader mengetik ulang harga entry, exit, komisi, dan funding fee satu per satu setelah sesi trading yang melelahkan. Hal ini rawan salah ketik (*human error*) dan sering ditinggalkan setelah beberapa hari. nitirekso menarik data resmi exchange secara instan dalam 1 klik, menghitung Risk to Reward (RR) secara otomatis, dan memvisualisasikan kalender heatmap tanpa perlu rumus Excel rumit.
+### 2. Bagaimana cara kerja fitur Restore Backup lokal di nitirekso?
+Pada menu Settings, Anda dapat memulihkan seluruh riwayat transaksi, catatan jurnal, dan file screenshot dalam 1-klik dari folder cadangan lokal. Engine pemulihan menggunakan *SQLite Online Backup API* yang menjamin integritas database bahkan dalam mode WAL, kemudian secara otomatis menjalankan migrasi skema jika cadangan berasal dari versi aplikasi yang lebih lama.
 
-### 3. Apakah nitirekso menyimpan data histori trading saya di cloud?
+### 3. Mengapa memilih software jurnal otomatis offline dibanding Google Sheets atau Excel?
+Spreadsheet manual menuntut trader mengetik ulang harga entry, exit, komisi, dan funding fee satu per satu setelah sesi trading yang melelahkan. Hal ini rawan salah ketik (*human error*) dan sering ditinggalkan setelah beberapa hari. nitirekso menarik data resmi exchange secara instan dalam 1 klik, menghitung Risk to Reward (RR) secara otomatis, membandingkan performa vs ROI Bitcoin, dan memvisualisasikan kalender heatmap tanpa perlu rumus Excel rumit.
+
+### 4. Apakah nitirekso menyimpan data histori trading saya di cloud?
 **Tidak.** nitirekso mengusung arsitektur *100% Offline-First*. Seluruh database SQLite tersimpan secara lokal di komputer Anda (`%APPDATA%/nitirekso`). Tidak ada server cloud perantara, tidak ada pelacak analytics, dan tidak ada pihak ketiga yang dapat mengintip portofolio Anda.
 
-### 4. Apa arti pemisahan Execution Grade (A/B/C/D) dengan hasil PnL?
+### 5. Apa arti pemisahan Execution Grade (A/B/C/D) dengan hasil PnL?
 Dalam trading kripto futures, profit bisa saja terjadi akibat melanggar rencana trading (*bad win* / faktor hoki), sementara kerugian wajar bisa terjadi meskipun SOP telah dipatuhi (*good loss*). nitirekso melatih Anda menilai kepatuhan terhadap proses eksekusi, bukan sekadar nominal dolar, demi menjaga psikologi trading yang tahan banting.
 
-### 5. Di mana saya bisa mengunduh installer nitirekso?
-Anda dapat mengunduh paket resmi versi terbaru untuk **Windows** (`.exe`), **macOS** (`.dmg`, `.zip`), maupun **Linux** (`.AppImage`, `.deb`) langsung dari halaman [GitHub Releases](https://github.com/KaleksananBarqi/nitirekso/releases) atau mengunjungi [Landing Page Resmi](https://kaleksananbarqi.github.io/nitirekso/).
+### 6. Di mana saya bisa mengunduh installer nitirekso?
+Anda dapat mengunduh paket resmi versi terbaru untuk **Windows** (`.exe`), **macOS** (`.dmg`, `.app`), maupun **Linux** (`.AppImage`, `.deb`) langsung dari halaman [GitHub Releases](https://github.com/KaleksananBarqi/nitirekso/releases) atau mengunjungi [Landing Page Resmi](https://kaleksananbarqi.github.io/nitirekso/).
 
 ---
 
