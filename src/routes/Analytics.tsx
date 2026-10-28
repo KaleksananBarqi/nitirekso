@@ -781,6 +781,7 @@ export function Analytics({ trades, hidePnl }: AnalyticsProps): React.JSX.Elemen
                 onClose={() => setShareAnalyticsOpen(false)}
                 trades={filtered}
                 initialPeriodLabel={activePeriodLabel}
+                report={report}
             />
         </div>
     )

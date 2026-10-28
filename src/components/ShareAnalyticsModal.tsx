@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { TradeDetail } from '@shared/domain'
 import { Modal } from './ui'
-import { summarize, buildEquityCurve, computeDrawdown } from '../lib/analytics/metrics'
+import { compilePerformanceReport, type PerformanceReport } from '../lib/analytics'
 import { formatPnl, formatRatio } from '../lib/format'
 import { cn } from '../lib/utils'
 import { useHidePnl } from '../hooks/useHidePnl'
@@ -38,6 +38,8 @@ export interface ShareAnalyticsModalProps {
     onClose: () => void
     trades: TradeDetail[]
     initialPeriodLabel?: string
+    /** Laporan performa terpadu opsional untuk menghemat komputasi ulang. */
+    report?: PerformanceReport
 }
 
 // ---------------------------------------------------------------------------
@@ -48,13 +50,15 @@ export function ShareAnalyticsModal({
     isOpen,
     onClose,
     trades,
-    initialPeriodLabel = 'All-Time Performance'
+    initialPeriodLabel = 'All-Time Performance',
+    report
 }: ShareAnalyticsModalProps): React.JSX.Element | null {
     if (!isOpen) return null
     return (
         <ShareAnalyticsModalContent
             trades={trades}
             initialPeriodLabel={initialPeriodLabel}
+            report={report}
             onClose={onClose}
         />
     )
@@ -63,17 +67,21 @@ export function ShareAnalyticsModal({
 function ShareAnalyticsModalContent({
     trades,
     initialPeriodLabel,
+    report: initialReport,
     onClose
 }: {
     trades: TradeDetail[]
     initialPeriodLabel: string
+    report?: PerformanceReport
     onClose: () => void
 }): React.JSX.Element {
-    // --- Kalkulasi Metrik Analitik ---
+    // --- Kalkulasi Metrik Analitik Terpadu ---
     const { hidePnl } = useHidePnl()
-    const summary = useMemo(() => summarize(trades), [trades])
-    const curve = useMemo(() => buildEquityCurve(trades), [trades])
-    const drawdown = useMemo(() => computeDrawdown(curve), [curve])
+    const report = useMemo(
+        () => initialReport ?? compilePerformanceReport(trades),
+        [initialReport, trades]
+    )
+    const { summary, equityCurve: curve, drawdownStats: drawdown } = report
     const isProfit = summary.netPnlTotal >= 0
 
     // --- Muat Konfigurasi Branding, Template & Galeri Wallpaper ---
@@ -257,6 +265,7 @@ function ShareAnalyticsModalContent({
     // --- Pemetaan Spesifikasi Murni Kartu Analitik ---
     const buildCurrentSpec = useCallback(() => {
         return buildPortfolioSummaryCardSpec({
+            report,
             summary,
             curve,
             drawdown,
@@ -282,6 +291,7 @@ function ShareAnalyticsModalContent({
             aspect: aspectRatio,
         })
     }, [
+        report,
         summary,
         curve,
         drawdown,

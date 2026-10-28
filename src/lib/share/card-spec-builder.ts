@@ -7,6 +7,7 @@
 
 import { type ExecutionGrade, type TradeDetail, computePlannedRR } from '@shared/domain'
 import { formatDuration } from '../format'
+import type { PerformanceReport } from '../analytics'
 import type { BgDimmingDirection, BgTemplate } from '../shareSettings'
 import type {
     CardAspect,
@@ -196,7 +197,9 @@ export function buildPnlCardSpec(params: BuildPnlCardSpecParams): CardRenderSpec
 }
 
 export interface BuildPortfolioSummaryCardSpecParams {
-    summary: {
+    /** Laporan performa terpadu dari engine analitik (opsional, alternatif lebih disukai dari summary terpisah). */
+    report?: PerformanceReport
+    summary?: {
         netPnlTotal: number
         winRate: number | null
         totalTrades: number
@@ -212,10 +215,10 @@ export interface BuildPortfolioSummaryCardSpecParams {
         avgWin?: number | null
         avgLoss?: number | null
     }
-    curve?: { equity: number }[]
+    curve?: { equity: number }[] | ReadonlyArray<{ equity: number }>
     drawdown?: {
         maxDrawdown: number
-        maxDrawdownPercent?: number
+        maxDrawdownPercent?: number | null
     }
     bg: BgTemplate
     accent?: string
@@ -243,20 +246,30 @@ export interface BuildPortfolioSummaryCardSpecParams {
 
 /**
  * Memetakan ringkasan metrik analitik portofolio menjadi CardRenderSpec murni.
+ * Mendukung objek laporan terpadu `PerformanceReport` secara langsung atau
+ * field terpisah (summary, curve, drawdown) untuk kompatibilitas.
  */
 export function buildPortfolioSummaryCardSpec(
     params: BuildPortfolioSummaryCardSpecParams
 ): CardRenderSpec {
-    const { summary, curve, drawdown } = params
+    const summary = params.report ? params.report.summary : params.summary
+    if (!summary) {
+        throw new Error('buildPortfolioSummaryCardSpec: summary atau report wajib disediakan.')
+    }
+    const curve = params.report ? params.report.equityCurve : params.curve
+    const drawdown = params.report ? params.report.drawdownStats : params.drawdown
 
     // Normalisasi winRate: jika berupa rasio desimal 0..1, kalikan 100
     const rawWinRate = summary.winRate !== null && summary.winRate !== undefined ? summary.winRate : 0
     const winRate = rawWinRate <= 1 && rawWinRate > 0 ? rawWinRate * 100 : rawWinRate
 
+    const isProfit = summary.netPnlTotal >= 0
+    const defaultAccent = isProfit ? params.bg.accentProfit : params.bg.accentLoss
+
     const theme: CardThemeConfig = {
         id: params.bg.id,
         label: params.bg.label,
-        accentProfit: params.accent || params.bg.accentProfit,
+        accentProfit: params.accent || defaultAccent,
         accentLoss: params.bg.accentLoss,
         textSub: params.bg.textSub,
         border: params.bg.border,
@@ -292,7 +305,9 @@ export function buildPortfolioSummaryCardSpec(
         lossCount: summary.losses,
         profitFactor: summary.profitFactor,
         maxDrawdown: drawdown?.maxDrawdown,
-        maxDrawdownPercent: drawdown?.maxDrawdownPercent,
+        maxDrawdownPercent: (drawdown?.maxDrawdownPercent !== null && drawdown?.maxDrawdownPercent !== undefined)
+            ? drawdown.maxDrawdownPercent
+            : undefined,
         totalR: summary.totalR,
         expectancy: summary.expectancy,
         expectancyR: summary.expectancyR,
@@ -301,7 +316,7 @@ export function buildPortfolioSummaryCardSpec(
         maxConsecutiveLosses: summary.maxConsecutiveLosses,
         avgWin: summary.avgWin,
         avgLoss: summary.avgLoss,
-        equityCurve: curve,
+        equityCurve: curve ? [...curve] : undefined,
         showChart: params.showChart ?? true,
         traderNote: params.customTraderNote,
         showTradesCount: true,
