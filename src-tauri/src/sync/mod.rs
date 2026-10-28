@@ -2,7 +2,7 @@ use crate::credentials::{load_credentials, SUPPORTED_EXCHANGES};
 use crate::db::repositories::balances::{upsert_balances, upsert_balances_tx};
 use crate::db::repositories::sync::{
     apply_funding_to_trades_window, get_sync_state, link_fills_to_trades_window, update_sync_state,
-    update_sync_state_full, upsert_fills_tx, upsert_funding_fees_tx, upsert_positions_tx,
+    update_sync_state_cursor, upsert_fills_tx, upsert_funding_fees_tx, upsert_positions_tx,
 };
 use crate::db::DbState;
 use crate::exchanges::bitunix::BitunixClient;
@@ -40,6 +40,16 @@ pub struct SyncRunResult {
     pub duration_ms: i64,
 }
 
+/// Helper pembanding nilai terkecil dari dua Option
+fn min_option<T: Ord>(a: Option<T>, b: Option<T>) -> Option<T> {
+    match (a, b) {
+        (Some(x), Some(y)) => Some(x.min(y)),
+        (Some(x), None) => Some(x),
+        (None, Some(y)) => Some(y),
+        (None, None) => None,
+    }
+}
+
 fn emit_progress(app: Option<&AppHandle>, exchange: &str, stage: &str, message: &str) {
     if let Some(app_handle) = app {
         let _ = app_handle.emit(
@@ -67,8 +77,9 @@ pub async fn sync_exchange<A: ExchangeAdapter>(
             .unwrap_or_else(|_| crate::db::repositories::sync::SyncState::empty(exchange))
     };
 
-    let cursor = started_state.cursor();
-    let was_full_backfill = cursor.last_exit_time.is_none();
+    let start_cursor = started_state.cursor();
+    let was_full_backfill = start_cursor.last_exit_time.is_none();
+    let mut cursor = start_cursor.clone();
 
     // =========================================================================
     // Fase 1: Network Ingestion (Zero Lock)
@@ -88,7 +99,7 @@ pub async fn sync_exchange<A: ExchangeAdapter>(
         },
     );
 
-    let raw_positions = match adapter.fetch_closed_positions(&cursor).await {
+    let raw_positions = match adapter.fetch_closed_positions(&start_cursor).await {
         Ok(pos) => pos,
         Err(e) => {
             log::error!("[sync:{}] Gagal fetch posisi: {}", exchange, e);
@@ -105,31 +116,17 @@ pub async fn sync_exchange<A: ExchangeAdapter>(
         }
     };
 
-    let mut new_exit_time = cursor.last_exit_time;
-    let mut new_external_id = cursor.last_external_id.clone();
-    for pos in &raw_positions {
-        if new_exit_time.is_none() || Some(pos.exit_time) > new_exit_time {
-            new_exit_time = Some(pos.exit_time);
-            new_external_id = Some(pos.external_id.clone());
-        }
-    }
+    cursor.advance_positions(&raw_positions);
 
     let mut partial_errors = Vec::new();
 
     // Tahap 1.2: Eksekusi Pesanan / Fills (Bukti Audit Granular)
     emit_progress(app, exchange, "fills", "Menarik riwayat eksekusi…");
     let mut fetched_fills = None;
-    let mut new_fill_time = cursor.last_fill_time;
-    let mut new_fill_id = cursor.last_fill_id.clone();
 
-    match adapter.fetch_fills(&cursor).await {
+    match adapter.fetch_fills(&start_cursor).await {
         Ok(fills) => {
-            for fill in &fills {
-                if new_fill_time.is_none() || Some(fill.filled_at) > new_fill_time {
-                    new_fill_time = Some(fill.filled_at);
-                    new_fill_id = Some(fill.external_id.clone());
-                }
-            }
+            cursor.advance_fills(&fills);
             fetched_fills = Some(fills);
         }
         Err(e) => {
@@ -141,15 +138,10 @@ pub async fn sync_exchange<A: ExchangeAdapter>(
     // Tahap 1.3: Biaya Pendanaan / Funding Fees
     emit_progress(app, exchange, "funding", "Menarik catatan funding…");
     let mut fetched_fees = None;
-    let mut new_funding_time = cursor.last_funding_time;
 
-    match adapter.fetch_funding_fees(&cursor).await {
+    match adapter.fetch_funding_fees(&start_cursor).await {
         Ok(fees) => {
-            for fee in &fees {
-                if new_funding_time.is_none() || Some(fee.charged_at) > new_funding_time {
-                    new_funding_time = Some(fee.charged_at);
-                }
-            }
+            cursor.advance_funding(&fees);
             fetched_fees = Some(fees);
         }
         Err(e) => {
@@ -199,23 +191,13 @@ pub async fn sync_exchange<A: ExchangeAdapter>(
     let min_touched_time = if was_full_backfill {
         None
     } else {
-        match (min_pos_entry, min_fee_time) {
-            (Some(p), Some(f)) => Some(p.min(f)),
-            (Some(p), None) => Some(p),
-            (None, Some(f)) => Some(f),
-            (None, None) => None,
-        }
+        min_option(min_pos_entry, min_fee_time)
     };
 
     let min_filled_at = if was_full_backfill {
         None
     } else {
-        match (min_pos_entry, min_fill_time) {
-            (Some(p), Some(f)) => Some(p.min(f)),
-            (Some(p), None) => Some(p),
-            (None, Some(f)) => Some(f),
-            (None, None) => None,
-        }
+        min_option(min_pos_entry, min_fill_time)
     };
 
     let status = if partial_errors.is_empty() {
@@ -248,8 +230,17 @@ pub async fn sync_exchange<A: ExchangeAdapter>(
         }
 
         // 4. Rekonsiliasi inkremental terikat jendela waktu
-        apply_funding_to_trades_window(&tx, exchange, min_touched_time)?;
-        link_fills_to_trades_window(&tx, exchange, min_filled_at)?;
+        let skip_funding = !was_full_backfill
+            && raw_positions.is_empty()
+            && fetched_fees.as_ref().map_or(true, |f| f.is_empty());
+        if !skip_funding {
+            apply_funding_to_trades_window(&tx, exchange, min_touched_time)?;
+        }
+
+        let skip_fills = fetched_fills.as_ref().map_or(true, |f| f.is_empty());
+        if !skip_fills {
+            link_fills_to_trades_window(&tx, exchange, min_filled_at)?;
+        }
 
         // 5. Batch upsert saldo akun (jika berhasil ditarik)
         if let Some(balances) = &fetched_balances {
@@ -257,14 +248,10 @@ pub async fn sync_exchange<A: ExchangeAdapter>(
         }
 
         // 6. Pembaruan state sinkronisasi dan kursor stream asimetris
-        update_sync_state_full(
+        update_sync_state_cursor(
             &tx,
             exchange,
-            new_exit_time,
-            new_external_id.as_deref(),
-            new_fill_time,
-            new_fill_id.as_deref(),
-            new_funding_time,
+            &cursor,
             Some(status),
             error_msg.as_deref(),
         )?;
@@ -639,6 +626,27 @@ mod tests {
             assert_eq!(state2.positions_synced, 3);
             assert_eq!(state2.fills_synced, 3);
             assert_eq!(state2.funding_synced, 3);
+        }
+
+        // Tahap 3: Siklus inkremental kosong (optimasi lewati rekonsiliasi scan jika tidak ada data baru)
+        let adapter3 = MockExchangeAdapter::new(exchange);
+        let result3 = sync_exchange(&db_state, &adapter3, None).await;
+
+        assert_eq!(result3.status, "ok");
+        assert_eq!(result3.inserted, 0);
+        assert_eq!(result3.updated, 0);
+        assert!(!result3.was_full_backfill);
+        assert!(result3.error.is_none());
+
+        {
+            let conn = db_state.conn.lock().unwrap();
+            let state3 = get_sync_state(&conn, exchange).unwrap();
+            assert_eq!(state3.last_exit_time, Some(6_000_000));
+            assert_eq!(state3.last_fill_time, Some(5_500_000));
+            assert_eq!(state3.last_funding_time, Some(5_500_000));
+            assert_eq!(state3.positions_synced, 3);
+            assert_eq!(state3.fills_synced, 3);
+            assert_eq!(state3.funding_synced, 3);
         }
     }
 

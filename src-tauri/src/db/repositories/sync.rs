@@ -1,6 +1,7 @@
 use crate::exchanges::types::{RawClosedPosition, RawFill, RawFundingFee, SyncCursor};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicI8, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Status dan kursor sinkronisasi untuk masing-masing bursa
@@ -63,29 +64,39 @@ pub struct UpsertResult {
     pub unchanged: usize,
 }
 
-/// Memeriksa keberadaan kolom pada tabel SQLite untuk menjamin kompatibilitas mundur
-fn has_column(conn: &Connection, table: &str, column: &str) -> bool {
-    let mut stmt = match conn.prepare(&format!("PRAGMA table_info({})", table)) {
-        Ok(s) => s,
-        Err(_) => return false,
-    };
-    let mut rows = match stmt.query([]) {
-        Ok(r) => r,
-        Err(_) => return false,
-    };
-    while let Ok(Some(row)) = rows.next() {
-        if let Ok(name) = row.get::<_, String>(1) {
-            if name.eq_ignore_ascii_case(column) {
-                return true;
-            }
+static SYNC_STATE_HAS_STREAM_CURSORS: AtomicI8 = AtomicI8::new(-1);
+
+/// Memeriksa keberadaan kolom kursor stream pada tabel sync_state dengan optimasi cache
+fn has_sync_state_stream_cursors(conn: &Connection) -> bool {
+    #[cfg(not(test))]
+    {
+        let cached = SYNC_STATE_HAS_STREAM_CURSORS.load(Ordering::Relaxed);
+        if cached == 1 {
+            return true;
+        } else if cached == 0 {
+            return false;
         }
     }
-    false
+
+    let exists = conn
+        .query_row(
+            "SELECT 1 FROM pragma_table_info('sync_state') WHERE name = 'last_fill_time'",
+            [],
+            |_| Ok(()),
+        )
+        .is_ok();
+
+    #[cfg(not(test))]
+    SYNC_STATE_HAS_STREAM_CURSORS.store(if exists { 1 } else { 0 }, Ordering::Relaxed);
+
+    exists
 }
 
-pub fn get_sync_state(conn: &Connection, exchange: &str) -> rusqlite::Result<SyncState> {
-    let has_stream_cursors = has_column(conn, "sync_state", "last_fill_time");
-
+pub fn get_sync_state_with_flag(
+    conn: &Connection,
+    exchange: &str,
+    has_stream_cursors: bool,
+) -> rusqlite::Result<SyncState> {
     let row_opt = if has_stream_cursors {
         let mut stmt = conn.prepare(
             "SELECT exchange, last_exit_time, last_external_id, last_sync_at, last_status, last_error,
@@ -184,11 +195,17 @@ pub fn get_sync_state(conn: &Connection, exchange: &str) -> rusqlite::Result<Syn
     }
 }
 
+pub fn get_sync_state(conn: &Connection, exchange: &str) -> rusqlite::Result<SyncState> {
+    let has_stream_cursors = has_sync_state_stream_cursors(conn);
+    get_sync_state_with_flag(conn, exchange, has_stream_cursors)
+}
+
 pub fn get_all_sync_states(conn: &Connection) -> rusqlite::Result<Vec<SyncState>> {
+    let has_stream_cursors = has_sync_state_stream_cursors(conn);
     let exchanges = ["mexc", "bitunix", "bybit", "binance", "bingx"];
     let mut states = Vec::new();
     for ex in exchanges {
-        states.push(get_sync_state(conn, ex)?);
+        states.push(get_sync_state_with_flag(conn, ex, has_stream_cursors)?);
     }
     Ok(states)
 }
@@ -210,7 +227,7 @@ pub fn update_sync_state_full(
         .unwrap_or_default()
         .as_millis() as i64;
 
-    let has_stream_cursors = has_column(conn, "sync_state", "last_fill_time");
+    let has_stream_cursors = has_sync_state_stream_cursors(conn);
 
     if has_stream_cursors {
         conn.execute(
@@ -535,32 +552,18 @@ pub fn apply_funding_to_trades_window(
     exchange: &str,
     min_touched_time: Option<i64>,
 ) -> rusqlite::Result<usize> {
-    let changes = match min_touched_time {
-        Some(min_time) => conn.execute(
-            "UPDATE trades SET
-               funding_fee = COALESCE((
-                 SELECT SUM(f.amount) FROM funding_fees f
-                 WHERE f.exchange = trades.exchange
-                   AND f.symbol = trades.symbol
-                   AND f.charged_at >= trades.entry_time
-                   AND f.charged_at <= trades.exit_time
-               ), 0)
-             WHERE exchange = ?1 AND exit_time >= ?2",
-            params![exchange, min_time],
-        )?,
-        None => conn.execute(
-            "UPDATE trades SET
-               funding_fee = COALESCE((
-                 SELECT SUM(f.amount) FROM funding_fees f
-                 WHERE f.exchange = trades.exchange
-                   AND f.symbol = trades.symbol
-                   AND f.charged_at >= trades.entry_time
-                   AND f.charged_at <= trades.exit_time
-               ), 0)
-             WHERE exchange = ?1",
-            params![exchange],
-        )?,
-    };
+    let changes = conn.execute(
+        "UPDATE trades SET
+           funding_fee = COALESCE((
+             SELECT SUM(f.amount) FROM funding_fees f
+             WHERE f.exchange = trades.exchange
+               AND f.symbol = trades.symbol
+               AND f.charged_at >= trades.entry_time
+               AND f.charged_at <= trades.exit_time
+           ), 0)
+         WHERE exchange = ?1 AND (?2 IS NULL OR exit_time >= ?2)",
+        params![exchange, min_touched_time],
+    )?;
     Ok(changes)
 }
 
@@ -577,51 +580,28 @@ pub fn link_fills_to_trades_window(
     exchange: &str,
     min_filled_at: Option<i64>,
 ) -> rusqlite::Result<usize> {
-    let changes = match min_filled_at {
-        Some(min_time) => conn.execute(
-            "UPDATE trade_fills SET trade_id = (
-               SELECT t.id FROM trades t
-               WHERE t.exchange = trade_fills.exchange
-                 AND t.symbol = trade_fills.symbol
-                 AND trade_fills.filled_at >= t.entry_time
-                 AND trade_fills.filled_at <= t.exit_time
-               ORDER BY t.entry_time DESC
-               LIMIT 1
-             )
-             WHERE exchange = ?1
-               AND trade_id IS NULL
-               AND filled_at >= ?2
-               AND EXISTS (
-                 SELECT 1 FROM trades t
-                 WHERE t.exchange = trade_fills.exchange
-                   AND t.symbol = trade_fills.symbol
-                   AND trade_fills.filled_at >= t.entry_time
-                   AND trade_fills.filled_at <= t.exit_time
-               )",
-            params![exchange, min_time],
-        )?,
-        None => conn.execute(
-            "UPDATE trade_fills SET trade_id = (
-               SELECT t.id FROM trades t
-               WHERE t.exchange = trade_fills.exchange
-                 AND t.symbol = trade_fills.symbol
-                 AND trade_fills.filled_at >= t.entry_time
-                 AND trade_fills.filled_at <= t.exit_time
-               ORDER BY t.entry_time DESC
-               LIMIT 1
-             )
-             WHERE exchange = ?1
-               AND trade_id IS NULL
-               AND EXISTS (
-                 SELECT 1 FROM trades t
-                 WHERE t.exchange = trade_fills.exchange
-                   AND t.symbol = trade_fills.symbol
-                   AND trade_fills.filled_at >= t.entry_time
-                   AND trade_fills.filled_at <= t.exit_time
-               )",
-            params![exchange],
-        )?,
-    };
+    let changes = conn.execute(
+        "UPDATE trade_fills SET trade_id = (
+           SELECT t.id FROM trades t
+           WHERE t.exchange = trade_fills.exchange
+             AND t.symbol = trade_fills.symbol
+             AND trade_fills.filled_at >= t.entry_time
+             AND trade_fills.filled_at <= t.exit_time
+           ORDER BY t.entry_time DESC
+           LIMIT 1
+         )
+         WHERE exchange = ?1
+           AND trade_id IS NULL
+           AND (?2 IS NULL OR filled_at >= ?2)
+           AND EXISTS (
+             SELECT 1 FROM trades t
+             WHERE t.exchange = trade_fills.exchange
+               AND t.symbol = trade_fills.symbol
+               AND trade_fills.filled_at >= t.entry_time
+               AND trade_fills.filled_at <= t.exit_time
+           )",
+        params![exchange, min_filled_at],
+    )?;
     Ok(changes)
 }
 

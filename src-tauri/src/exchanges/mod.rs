@@ -114,7 +114,7 @@ impl ExchangeAdapter for BitunixClient {
 pub enum AnyExchangeAdapter {
     Mexc(MexcClient),
     Bitunix(BitunixClient),
-    Mock(MockExchangeAdapter),
+    Mock(Box<MockExchangeAdapter>),
 }
 
 impl AnyExchangeAdapter {
@@ -508,7 +508,7 @@ mod tests {
                 raw: None,
             }]);
 
-        let adapter = AnyExchangeAdapter::Mock(mock);
+        let adapter = AnyExchangeAdapter::Mock(Box::new(mock));
         assert_eq!(adapter.id(), "bitunix");
         assert_eq!(adapter.display_name(), "Bitunix Mock Adapter");
 
