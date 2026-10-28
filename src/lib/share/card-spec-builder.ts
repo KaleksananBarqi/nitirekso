@@ -263,13 +263,10 @@ export function buildPortfolioSummaryCardSpec(
     const rawWinRate = summary.winRate !== null && summary.winRate !== undefined ? summary.winRate : 0
     const winRate = rawWinRate <= 1 && rawWinRate > 0 ? rawWinRate * 100 : rawWinRate
 
-    const isProfit = summary.netPnlTotal >= 0
-    const defaultAccent = isProfit ? params.bg.accentProfit : params.bg.accentLoss
-
     const theme: CardThemeConfig = {
         id: params.bg.id,
         label: params.bg.label,
-        accentProfit: params.accent || defaultAccent,
+        accentProfit: params.accent || params.bg.accentProfit,
         accentLoss: params.bg.accentLoss,
         textSub: params.bg.textSub,
         border: params.bg.border,

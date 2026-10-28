@@ -273,38 +273,31 @@ export function compilePerformanceReport(
         }
         const currentDrawdown = cumulativeEquity - peakEquity // Selalu <= 0
 
-        // Invariance Hardening: Sanitasi titik koordinat kurva ekuitas
-        // Deduplikasi timestamp pada detik yang sama untuk kepatuhan rendering grafik
-        const currentSecond = Math.floor(trade.exitTime / 1000)
+        // Invariance Hardening: Sanitasi titik koordinat kurva ekuitas.
+        // Bila transaksi terjadi pada timestamp yang sama atau dalam detik yang sama,
+        // berikan penyesuaian offset sub-detik (+1 ms) sehingga urutan tetap naik tegas (strictly increasing),
+        // seluruh titik ekuitas, peak, serta trough drawdown terekam secara utuh tanpa tertimpa,
+        // maxDrawdown selalu sinkron dengan titik drawdown terendah di equityCurve,
+        // dan maxDrawdownDurationMs dapat dihitung secara akurat.
+        let pointTime = trade.exitTime
         const lastPoint = sanitizedCurve[sanitizedCurve.length - 1]
-        const lastSecond = lastPoint ? Math.floor(lastPoint.time / 1000) : null
+        if (lastPoint && pointTime <= lastPoint.time) {
+            pointTime = lastPoint.time + 1
+        }
 
-        if (lastPoint && lastSecond === currentSecond) {
-            lastPoint.time = trade.exitTime
-            lastPoint.equity = cumulativeEquity
-            lastPoint.peak = peakEquity
-            lastPoint.drawdown = currentDrawdown
-            lastPoint.tradeId = trade.id
+        sanitizedCurve.push({
+            time: pointTime,
+            equity: cumulativeEquity,
+            peak: peakEquity,
+            drawdown: currentDrawdown,
+            tradeId: trade.id
+        })
 
-            if (currentDrawdown < maxDrawdown) {
-                maxDrawdown = currentDrawdown
-                maxDrawdownTime = trade.exitTime
-                maxDrawdownIndex = sanitizedCurve.length - 1
-            }
-        } else {
-            sanitizedCurve.push({
-                time: trade.exitTime,
-                equity: cumulativeEquity,
-                peak: peakEquity,
-                drawdown: currentDrawdown,
-                tradeId: trade.id
-            })
-            const newIndex = sanitizedCurve.length - 1
-            if (currentDrawdown < maxDrawdown) {
-                maxDrawdown = currentDrawdown
-                maxDrawdownTime = trade.exitTime
-                maxDrawdownIndex = newIndex
-            }
+        const currentIndex = sanitizedCurve.length - 1
+        if (currentDrawdown < maxDrawdown) {
+            maxDrawdown = currentDrawdown
+            maxDrawdownTime = pointTime
+            maxDrawdownIndex = currentIndex
         }
     }
 

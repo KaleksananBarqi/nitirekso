@@ -266,9 +266,6 @@ function ShareAnalyticsModalContent({
     const buildCurrentSpec = useCallback(() => {
         return buildPortfolioSummaryCardSpec({
             report,
-            summary,
-            curve,
-            drawdown,
             bg,
             accent,
             isCustomBgActive,
@@ -292,9 +289,6 @@ function ShareAnalyticsModalContent({
         })
     }, [
         report,
-        summary,
-        curve,
-        drawdown,
         bg,
         accent,
         isCustomBgActive,

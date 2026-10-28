@@ -608,7 +608,7 @@ export function Analytics({ trades, hidePnl }: AnalyticsProps): React.JSX.Elemen
                                 </p>
                             </div>
                             <div className="p-4">
-                                <CalendarHeatmap trades={filtered} />
+                                <CalendarHeatmap trades={report.trades} />
                             </div>
                         </section>
 
@@ -636,7 +636,7 @@ export function Analytics({ trades, hidePnl }: AnalyticsProps): React.JSX.Elemen
                                 </p>
                             </div>
                             <div className="p-4">
-                                <GradeScatter trades={filtered} />
+                                <GradeScatter trades={report.trades} />
                             </div>
                         </section>
 

@@ -6,10 +6,11 @@ import type { PerformanceSummary, RBucket } from './metrics'
  * Titik ekuitas yang telah disanitasi dan terjamin validitas invariannya:
  * - Bebas dari nilai NaN, null, atau undefined.
  * - Terurut secara kronologis deterministik berdasarkan waktu exit.
- * - Tidak memiliki timestamp duplikat pada detik yang sama (ramah lightweight-charts).
+ * - Timestamp strictly increasing (dengan offset sub-detik jika transaksi bersamaan)
+ *   sehingga ramah lightweight-charts dan sinkron sempurna dengan maxDrawdown.
  */
 export interface SanitizedPoint {
-    /** Epoch ms UTC — waktu exit trade (atau titik konsolidasi detik). */
+    /** Epoch ms UTC — waktu exit trade (atau titik koordinat kurva ekuitas). */
     time: number
     /** Ekuitas kumulatif setelah trade ini. */
     equity: number
@@ -48,30 +49,36 @@ export interface RDistributionStats {
 }
 
 /**
- * Dimensi analitik yang didukung untuk segmentasi data trade.
+ * Dimensi analitik kanonikal yang didukung untuk segmentasi data trade.
+ */
+export type CanonicalAnalyticsDimension =
+    | 'exchange'
+    | 'symbol'
+    | 'setupTag'
+    | 'grade'
+    | 'emotion'
+    | 'direction'
+    | 'session'
+    | 'weekday'
+
+/**
+ * Dimensi analitik yang didukung untuk segmentasi data trade (termasuk alias casing & legacy).
  */
 export type AnalyticsDimension =
-    | 'exchange'
+    | CanonicalAnalyticsDimension
     | 'Exchange'
     | 'pair'
     | 'Pair'
-    | 'symbol'
     | 'Symbol'
     | 'setup'
     | 'Setup'
-    | 'setupTag'
-    | 'grade'
     | 'Grade'
-    | 'emotion'
     | 'Emotion'
     | 'emotionTag'
     | 'side'
     | 'Side'
-    | 'direction'
     | 'Direction'
-    | 'session'
     | 'Session'
-    | 'weekday'
     | 'Weekday'
 
 /**

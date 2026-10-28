@@ -38,7 +38,7 @@ interface DayCell {
 }
 
 interface CalendarHeatmapProps {
-    trades: TradeDetail[]
+    trades: ReadonlyArray<TradeDetail> | TradeDetail[]
     /** Jumlah minggu ke belakang yang ditampilkan. */
     weeks?: number
 }

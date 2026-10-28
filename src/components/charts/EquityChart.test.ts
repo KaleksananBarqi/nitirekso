@@ -4,60 +4,8 @@ import { renderToString } from 'react-dom/server'
 import type { SanitizedPoint } from '../../lib/analytics'
 import type { RoiComparisonPoint } from '../../lib/btc-api'
 import { compilePerformanceReport } from '../../lib/analytics/performance-report'
-import type { Trade, TradeDetail, TradeJournal } from '../../../shared/domain'
+import { createTrade } from '../../test/fixtures'
 import { EquityChart } from './EquityChart'
-
-function createTrade(
-    overrides: Partial<Trade> = {},
-    journalOverrides: Partial<TradeJournal> = {},
-    rMultiple: number | null = null
-): TradeDetail {
-    const id = overrides.id ?? 1
-    const entryTime = overrides.entryTime ?? 1700000000000
-    const exitTime = overrides.exitTime ?? entryTime + 3600000
-
-    return {
-        trade: {
-            id,
-            exchange: 'binance',
-            externalId: `pos-${id}`,
-            symbol: 'BTCUSDT',
-            direction: 'long',
-            entryPrice: 50000,
-            exitPrice: 51000,
-            entryTime,
-            exitTime,
-            size: 1,
-            leverage: 10,
-            marginMode: 'isolated',
-            realizedPnl: 100,
-            pnlSource: 'exchange_reported',
-            feeOpen: 2,
-            feeClose: 2,
-            feeOpenMaker: null,
-            feeCloseMaker: null,
-            fundingFee: 0,
-            createdAt: entryTime,
-            updatedAt: exitTime,
-            ...overrides
-        },
-        journal: {
-            tradeId: id,
-            setupTag: 'breakout',
-            preTradeThesis: 'Rencana breakout',
-            postTradeReview: 'Target tercapai',
-            emotionTag: 'calm',
-            executionGrade: 'A',
-            screenshotPath: null,
-            updatedAt: exitTime,
-            ...journalOverrides
-        },
-        plannedRisk: null,
-        checklist: [],
-        tags: [],
-        rMultiple
-    }
-}
 
 describe('EquityChart Component & SanitizedPoint Integration (#29)', () => {
     beforeEach(() => {

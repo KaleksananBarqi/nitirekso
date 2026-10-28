@@ -2,6 +2,7 @@
 // skrip verifikasi yang di-build lewat entry main process, di mana alias
 // renderer tidak dikonfigurasi.
 import type { TradeDetail } from '../../../shared/domain'
+import { compilePerformanceReport } from './performance-report'
 
 /**
  * Perhitungan metrik performa.
@@ -81,135 +82,14 @@ export function computeRecoveryFactor(netPnlTotal: number, maxDrawdown: number):
     return netPnlTotal / Math.abs(maxDrawdown)
 }
 
+/**
+ * Menghitung ringkasan performa finansial.
+ *
+ * Meneruskan delegasi ke mesin analitik terpadu `compilePerformanceReport` (#28)
+ * untuk menjamin konsistensi formula metrik dan mengeliminasi komputasi berulang.
+ */
 export function summarize(trades: TradeDetail[]): PerformanceSummary {
-    let wins = 0
-    let losses = 0
-    let breakEven = 0
-    let grossProfit = 0
-    let grossLoss = 0
-    let grossPnlTotal = 0
-    let feeTotal = 0
-    let fundingFeeTotal = 0
-    let tradesWithR = 0
-    let sumR = 0
-    let winsWithR = 0
-    let lossesWithR = 0
-    let winRTotal = 0
-    let lossRTotal = 0
-
-    for (const detail of trades) {
-        const pnl = netPnl(detail)
-        grossPnlTotal += detail.trade.realizedPnl
-        feeTotal += detail.trade.feeOpen + detail.trade.feeClose
-        fundingFeeTotal += detail.trade.fundingFee
-
-        if (detail.rMultiple !== null) {
-            tradesWithR += 1
-            sumR += detail.rMultiple
-            if (detail.rMultiple > 0) {
-                winsWithR += 1
-                winRTotal += detail.rMultiple
-            } else if (detail.rMultiple < 0) {
-                lossesWithR += 1
-                lossRTotal += Math.abs(detail.rMultiple)
-            }
-        }
-
-        if (pnl > 0) {
-            wins += 1
-            grossProfit += pnl
-        } else if (pnl < 0) {
-            losses += 1
-            grossLoss += Math.abs(pnl)
-        } else {
-            breakEven += 1
-        }
-    }
-
-    const directional = wins + losses
-    const winRate = directional > 0 ? wins / directional : null
-    // Tanpa loss: profit factor tak terhingga. Dibiarkan Infinity (bukan angka
-    // besar buatan) supaya UI bisa menampilkannya sebagai "∞" secara eksplisit.
-    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : Number.POSITIVE_INFINITY
-
-    const avgWin = wins > 0 ? grossProfit / wins : null
-    const avgLoss = losses > 0 ? grossLoss / losses : null
-
-    let expectancy: number | null = null
-    if (winRate !== null && avgWin !== null && avgLoss !== null) {
-        const lossRate = 1 - winRate
-        expectancy = winRate * avgWin - lossRate * avgLoss
-    }
-
-    // Metrik turunan berbasis R-Multiple
-    const totalR = tradesWithR > 0 ? sumR : null
-    const avgR = tradesWithR > 0 ? sumR / tradesWithR : null
-
-    let expectancyR: number | null = null
-    const directionalR = winsWithR + lossesWithR
-    const winRateR = directionalR > 0 ? winsWithR / directionalR : null
-    const avgWinR = winsWithR > 0 ? winRTotal / winsWithR : null
-    const avgLossR = lossesWithR > 0 ? lossRTotal / lossesWithR : null
-
-    if (winRateR !== null && avgWinR !== null && avgLossR !== null) {
-        const lossRateR = 1 - winRateR
-        expectancyR = winRateR * avgWinR - lossRateR * avgLossR
-    }
-
-    // Hitung streak kemenangan & kekalahan berturut-turut kronologis berdasarkan exitTime
-    const ordered = [...trades].sort((a, b) => {
-        if (a.trade.exitTime !== b.trade.exitTime) return a.trade.exitTime - b.trade.exitTime
-        return a.trade.id - b.trade.id
-    })
-
-    let maxConsecutiveWins = 0
-    let maxConsecutiveLosses = 0
-    let curWins = 0
-    let curLosses = 0
-
-    for (const detail of ordered) {
-        const pnl = netPnl(detail)
-        if (pnl > 0) {
-            curWins += 1
-            curLosses = 0
-            if (curWins > maxConsecutiveWins) maxConsecutiveWins = curWins
-        } else if (pnl < 0) {
-            curLosses += 1
-            curWins = 0
-            if (curLosses > maxConsecutiveLosses) maxConsecutiveLosses = curLosses
-        } else {
-            curWins = 0
-            curLosses = 0
-        }
-    }
-
-    const netPnlTotal = grossProfit - grossLoss
-    const curve = buildEquityCurve(trades)
-    const drawdown = computeDrawdown(curve)
-    const recoveryFactor = computeRecoveryFactor(netPnlTotal, drawdown.maxDrawdown)
-
-    return {
-        totalTrades: trades.length,
-        wins,
-        losses,
-        breakEven,
-        winRate,
-        profitFactor,
-        expectancy,
-        avgWin,
-        avgLoss,
-        netPnlTotal,
-        grossPnlTotal,
-        feeTotal,
-        fundingFeeTotal,
-        tradesWithR,
-        totalR,
-        avgR,
-        expectancyR,
-        maxConsecutiveWins,
-        maxConsecutiveLosses,
-        recoveryFactor
-    }
+    return compilePerformanceReport(trades).summary
 }
 
 export interface EquityPoint {

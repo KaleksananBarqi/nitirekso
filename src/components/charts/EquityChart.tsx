@@ -159,26 +159,50 @@ export function EquityChart({
 
         if (variant === 'roi') {
             if (roiPoints.length > 0) {
-                const userData = roiPoints.map((p) => ({
-                    time: Math.floor(p.time / 1000) as UTCTimestamp,
-                    value: p.userRoi
-                }))
+                let prevRoiTime = -Infinity
+                const userData = roiPoints.map((p) => {
+                    let chartTime = p.time / 1000
+                    if (chartTime <= prevRoiTime) {
+                        chartTime = prevRoiTime + 0.001
+                    }
+                    prevRoiTime = chartTime
+                    return {
+                        time: chartTime as UTCTimestamp,
+                        value: p.userRoi
+                    }
+                })
                 series.setData(userData)
 
                 if (btcSeriesRef.current) {
-                    const btcData = roiPoints.map((p) => ({
-                        time: Math.floor(p.time / 1000) as UTCTimestamp,
-                        value: p.btcRoi
-                    }))
+                    let prevBtcTime = -Infinity
+                    const btcData = roiPoints.map((p) => {
+                        let chartTime = p.time / 1000
+                        if (chartTime <= prevBtcTime) {
+                            chartTime = prevBtcTime + 0.001
+                        }
+                        prevBtcTime = chartTime
+                        return {
+                            time: chartTime as UTCTimestamp,
+                            value: p.btcRoi
+                        }
+                    })
                     btcSeriesRef.current.setData(btcData)
                 }
                 chartRef.current?.timeScale().fitContent()
             }
         } else {
-            const data = points.map((point) => ({
-                time: Math.floor(point.time / 1000) as UTCTimestamp,
-                value: variant === 'drawdown' ? point.drawdown : point.equity
-            }))
+            let prevPointTime = -Infinity
+            const data = points.map((point) => {
+                let chartTime = point.time / 1000
+                if (chartTime <= prevPointTime) {
+                    chartTime = prevPointTime + 0.001
+                }
+                prevPointTime = chartTime
+                return {
+                    time: chartTime as UTCTimestamp,
+                    value: variant === 'drawdown' ? point.drawdown : point.equity
+                }
+            })
 
             series.setData(data)
             chartRef.current?.timeScale().fitContent()

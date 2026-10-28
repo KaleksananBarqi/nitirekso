@@ -1,61 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { Trade, TradeDetail, TradeJournal } from '../../../shared/domain'
+import { createTrade } from '../../test/fixtures'
+import { buildBreakdown } from './dimensions'
+import { summarize } from './metrics'
 import { compilePerformanceReport } from './performance-report'
 import type { PricePoint } from './types'
-
-let mockIdCounter = 100
-
-function createTrade(
-    overrides: Partial<Trade> = {},
-    journalOverrides: Partial<TradeJournal> = {},
-    rMultiple: number | null = null
-): TradeDetail {
-    const id = overrides.id ?? ++mockIdCounter
-    const entryTime = overrides.entryTime ?? 1700000000000
-    const exitTime = overrides.exitTime ?? entryTime + 3600000
-
-    return {
-        trade: {
-            id,
-            exchange: 'binance',
-            externalId: `pos-${id}`,
-            symbol: 'BTCUSDT',
-            direction: 'long',
-            entryPrice: 50000,
-            exitPrice: 51000,
-            entryTime,
-            exitTime,
-            size: 1,
-            leverage: 10,
-            marginMode: 'isolated',
-            realizedPnl: 100,
-            pnlSource: 'exchange_reported',
-            feeOpen: 2,
-            feeClose: 2,
-            feeOpenMaker: null,
-            feeCloseMaker: null,
-            fundingFee: 1,
-            createdAt: entryTime,
-            updatedAt: exitTime,
-            ...overrides
-        },
-        journal: {
-            tradeId: id,
-            setupTag: 'breakout',
-            preTradeThesis: 'Rencana breakout',
-            postTradeReview: 'Target tercapai',
-            emotionTag: 'calm',
-            executionGrade: 'A',
-            screenshotPath: null,
-            updatedAt: exitTime,
-            ...journalOverrides
-        },
-        plannedRisk: null,
-        checklist: [],
-        tags: [],
-        rMultiple
-    }
-}
 
 describe('Trading Analytics Engine - compilePerformanceReport (#28)', () => {
     describe('Ringkasan Statistik (Summary Stats)', () => {
@@ -270,33 +218,34 @@ describe('Trading Analytics Engine - compilePerformanceReport (#28)', () => {
             }
         })
 
-        it('mendeduplikasi timestamp pada detik yang sama untuk kepatuhan lightweight-charts', () => {
-            // Tiga trade yang exit pada detik yang sama (detik 1700000)
-            const t1 = createTrade({ id: 1, exitTime: 1700000100, realizedPnl: 20, feeOpen: 0, feeClose: 0, fundingFee: 0 })
-            const t2 = createTrade({ id: 2, exitTime: 1700000500, realizedPnl: 30, feeOpen: 0, feeClose: 0, fundingFee: 0 })
-            const t3 = createTrade({ id: 3, exitTime: 1700000900, realizedPnl: -10, feeOpen: 0, feeClose: 0, fundingFee: 0 })
+        it('mempertahankan titik ekstrem peak dan trough drawdown intra-detik serta menyinkronkan maxDrawdown', () => {
+            // Skenario intra-detik:
+            // t1: exit 1700000000000, profit +100 -> eq: 100, peak: 100, dd: 0
+            // t2: exit 1700000000000 (identik ms), rugi -150 -> eq: -50, peak: 100, dd: -150 (Trough Max DD!)
+            // t3: exit 1700000000500 (detik sama), profit +200 -> eq: 150, peak: 150, dd: 0 (Pulih dalam detik yang sama!)
+            const t1 = createTrade({ id: 1, exitTime: 1700000000000, realizedPnl: 100, feeOpen: 0, feeClose: 0, fundingFee: 0 })
+            const t2 = createTrade({ id: 2, exitTime: 1700000000000, realizedPnl: -150, feeOpen: 0, feeClose: 0, fundingFee: 0 })
+            const t3 = createTrade({ id: 3, exitTime: 1700000000500, realizedPnl: 200, feeOpen: 0, feeClose: 0, fundingFee: 0 })
 
-            // Trade pada detik berikutnya
-            const t4 = createTrade({ id: 4, exitTime: 1700001200, realizedPnl: 50, feeOpen: 0, feeClose: 0, fundingFee: 0 })
+            const report = compilePerformanceReport([t1, t2, t3])
 
-            const report = compilePerformanceReport([t1, t2, t3, t4])
+            // Semua 3 titik tercatat dengan timestamp strictly increasing (+1 ms offset jika identik)
+            expect(report.equityCurve).toHaveLength(3)
+            expect(report.equityCurve[1]!.time).toBeGreaterThan(report.equityCurve[0]!.time)
+            expect(report.equityCurve[2]!.time).toBeGreaterThan(report.equityCurve[1]!.time)
 
-            // Harus hanya ada 2 titik: 1 untuk detik 1700000 dan 1 untuk detik 1700001
-            expect(report.equityCurve).toHaveLength(2)
+            // Titik terendah drawdown di equityCurve adalah -150 pada index 1
+            const minDrawdownInCurve = Math.min(...report.equityCurve.map((p) => p.drawdown))
+            expect(minDrawdownInCurve).toBe(-150)
 
-            // Titik pertama mewakili akumulasi trade 1, 2, dan 3: 20 + 30 - 10 = 40
-            expect(report.equityCurve[0]?.equity).toBe(40)
-            expect(report.equityCurve[0]?.tradeId).toBe(3)
+            // maxDrawdown harus sinkron sempurna dengan titik terendah di equityCurve
+            expect(report.drawdownStats.maxDrawdown).toBe(-150)
+            expect(report.drawdownStats.maxDrawdownTime).toBe(report.equityCurve[1]!.time)
 
-            // Titik kedua mewakili trade 4: 40 + 50 = 90
-            expect(report.equityCurve[1]?.equity).toBe(90)
-            expect(report.equityCurve[1]?.tradeId).toBe(4)
-
-            // Pastikan timestamp detik strictly increasing
-            const seconds = report.equityCurve.map((p) => Math.floor(p.time / 1000))
-            for (let i = 1; i < seconds.length; i++) {
-                expect(seconds[i]).toBeGreaterThan(seconds[i - 1]!)
-            }
+            // Durasi pemulihan dihitung dari peak t1 ke pulih di t3
+            expect(report.drawdownStats.maxDrawdownDurationMs).toBe(
+                report.equityCurve[2]!.time - report.equityCurve[0]!.time
+            )
         })
     })
 
@@ -517,6 +466,34 @@ describe('Trading Analytics Engine - compilePerformanceReport (#28)', () => {
             const setupReport = compilePerformanceReport(allTrades, { setupTag: 'reversal' })
             expect(setupReport.summary.totalTrades).toBe(1)
             expect(setupReport.trades[0]?.trade.id).toBe(3)
+        })
+    })
+
+    describe('Delegasi Fungsi Legacy (summarize & buildBreakdown)', () => {
+        it('memastikan summarize menghasilkan ringkasan yang identik dengan compilePerformanceReport.summary', () => {
+            const t1 = createTrade({ id: 1, realizedPnl: 100, feeOpen: 0, feeClose: 0, fundingFee: 0 })
+            const t2 = createTrade({ id: 2, realizedPnl: -40, feeOpen: 0, feeClose: 0, fundingFee: 0 })
+            const legacySummary = summarize([t1, t2])
+            const report = compilePerformanceReport([t1, t2])
+            expect(legacySummary).toEqual(report.summary)
+        })
+
+        it('memastikan buildBreakdown menghasilkan bucket yang identik dengan compilePerformanceReport.getBreakdown', () => {
+            const t1 = createTrade({ id: 1, realizedPnl: 100, feeOpen: 0, feeClose: 0, fundingFee: 0 }, { setupTag: 'pullback' })
+            const t2 = createTrade({ id: 2, realizedPnl: -40, feeOpen: 0, feeClose: 0, fundingFee: 0 }, { setupTag: 'breakout' })
+            const legacyBreakdown = buildBreakdown([t1, t2], 'setupTag')
+            const report = compilePerformanceReport([t1, t2])
+            expect(legacyBreakdown).toEqual(report.getBreakdown('setupTag'))
+        })
+
+        it('mendukung dimensi emosi (emotion) pada breakdown dan UI options', () => {
+            const t1 = createTrade({ id: 1, realizedPnl: 100, feeOpen: 0, feeClose: 0, fundingFee: 0 }, { emotionTag: 'calm' })
+            const t2 = createTrade({ id: 2, realizedPnl: -50, feeOpen: 0, feeClose: 0, fundingFee: 0 }, { emotionTag: 'fomo' })
+            const report = compilePerformanceReport([t1, t2])
+            const emotionBreakdown = report.getBreakdown('emotion')
+            expect(emotionBreakdown).toHaveLength(2)
+            expect(emotionBreakdown.some((b) => b.label === 'calm')).toBe(true)
+            expect(emotionBreakdown.some((b) => b.label === 'fomo')).toBe(true)
         })
     })
 })
