@@ -7,7 +7,6 @@ use crate::db::repositories::sync::{
 use crate::db::DbState;
 use crate::exchanges::bitunix::BitunixClient;
 use crate::exchanges::mexc::MexcClient;
-use crate::exchanges::types::SyncCursor;
 use crate::exchanges::AnyExchangeAdapter;
 use crate::models::AccountBalance;
 use serde::{Deserialize, Serialize};
@@ -62,23 +61,10 @@ pub async fn sync_exchange(
     let exchange = adapter.id();
     let started_state = {
         let conn = db_state.conn.lock().unwrap();
-        get_sync_state(&conn, exchange).unwrap_or_else(|_| crate::db::repositories::sync::SyncState {
-            exchange: exchange.to_string(),
-            last_exit_time: None,
-            last_external_id: None,
-            last_sync_at: None,
-            last_status: None,
-            last_error: None,
-            positions_synced: 0,
-            fills_synced: 0,
-            funding_synced: 0,
-        })
+        get_sync_state(&conn, exchange).unwrap_or_else(|_| crate::db::repositories::sync::SyncState::empty(exchange))
     };
 
-    let cursor = SyncCursor {
-        last_exit_time: started_state.last_exit_time,
-        last_external_id: started_state.last_external_id.clone(),
-    };
+    let cursor = started_state.cursor();
     let was_full_backfill = cursor.last_exit_time.is_none();
 
     let positions_result;

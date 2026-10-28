@@ -53,12 +53,47 @@ pub struct RawFundingFee {
     pub charged_at: i64,
 }
 
-/// Cursor inkremental sinkronisasi per exchange
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// Cursor inkremental sinkronisasi per exchange dengan pelacakan independen per-stream
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncCursor {
+    /// Waktu penutupan posisi terakhir (epoch ms UTC) untuk stream posisi
     pub last_exit_time: Option<i64>,
+    /// ID posisi terakhir dari exchange untuk stream posisi
     pub last_external_id: Option<String>,
+    /// Waktu eksekusi order terakhir (epoch ms UTC) untuk stream fills
+    pub last_fill_time: Option<i64>,
+    /// ID fill eksternal terakhir dari exchange untuk stream fills
+    pub last_fill_id: Option<String>,
+    /// Waktu pemotongan funding fee terakhir (epoch ms UTC) untuk stream funding
+    pub last_funding_time: Option<i64>,
+}
+
+impl SyncCursor {
+    /// Membuat kursor inkremental kosong baru
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Menetapkan kursor untuk stream posisi tertutup
+    pub fn with_positions(mut self, last_exit_time: Option<i64>, last_external_id: Option<String>) -> Self {
+        self.last_exit_time = last_exit_time;
+        self.last_external_id = last_external_id;
+        self
+    }
+
+    /// Menetapkan kursor untuk stream riwayat eksekusi (fills)
+    pub fn with_fills(mut self, last_fill_time: Option<i64>, last_fill_id: Option<String>) -> Self {
+        self.last_fill_time = last_fill_time;
+        self.last_fill_id = last_fill_id;
+        self
+    }
+
+    /// Menetapkan kursor untuk stream biaya funding (funding fees)
+    pub fn with_funding(mut self, last_funding_time: Option<i64>) -> Self {
+        self.last_funding_time = last_funding_time;
+        self
+    }
 }
 
 /// Saldo akun futures dari exchange

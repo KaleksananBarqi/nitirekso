@@ -1,20 +1,58 @@
-use crate::exchanges::types::{RawClosedPosition, RawFill, RawFundingFee};
+use crate::exchanges::types::{RawClosedPosition, RawFill, RawFundingFee, SyncCursor};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Status dan kursor sinkronisasi untuk masing-masing bursa
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncState {
     pub exchange: String,
     pub last_exit_time: Option<i64>,
     pub last_external_id: Option<String>,
+    #[serde(default)]
+    pub last_fill_time: Option<i64>,
+    #[serde(default)]
+    pub last_fill_id: Option<String>,
+    #[serde(default)]
+    pub last_funding_time: Option<i64>,
     pub last_sync_at: Option<i64>,
     pub last_status: Option<String>,
     pub last_error: Option<String>,
     pub positions_synced: i64,
     pub fills_synced: i64,
     pub funding_synced: i64,
+}
+
+impl SyncState {
+    /// Membuat objek SyncState kosong untuk bursa tertentu
+    pub fn empty(exchange: &str) -> Self {
+        Self {
+            exchange: exchange.to_string(),
+            last_exit_time: None,
+            last_external_id: None,
+            last_fill_time: None,
+            last_fill_id: None,
+            last_funding_time: None,
+            last_sync_at: None,
+            last_status: None,
+            last_error: None,
+            positions_synced: 0,
+            fills_synced: 0,
+            funding_synced: 0,
+        }
+    }
+
+    /// Mengekstrak objek SyncCursor independen per-stream dari state saat ini
+    pub fn cursor(&self) -> SyncCursor {
+        SyncCursor {
+            last_exit_time: self.last_exit_time,
+            last_external_id: self.last_external_id.clone(),
+            last_fill_time: self.last_fill_time,
+            last_fill_id: self.last_fill_id.clone(),
+            last_funding_time: self.last_funding_time,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -25,14 +63,36 @@ pub struct UpsertResult {
     pub unchanged: usize,
 }
 
-pub fn get_sync_state(conn: &Connection, exchange: &str) -> rusqlite::Result<SyncState> {
-    let mut stmt = conn.prepare(
-        "SELECT exchange, last_exit_time, last_external_id, last_sync_at, last_status, last_error
-         FROM sync_state WHERE exchange = ?1",
-    )?;
+/// Memeriksa keberadaan kolom pada tabel SQLite untuk menjamin kompatibilitas mundur
+fn has_column(conn: &Connection, table: &str, column: &str) -> bool {
+    let mut stmt = match conn.prepare(&format!("PRAGMA table_info({})", table)) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let mut rows = match stmt.query([]) {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+    while let Ok(Some(row)) = rows.next() {
+        if let Ok(name) = row.get::<_, String>(1) {
+            if name.eq_ignore_ascii_case(column) {
+                return true;
+            }
+        }
+    }
+    false
+}
 
-    let row_opt = stmt
-        .query_row(params![exchange], |row| {
+pub fn get_sync_state(conn: &Connection, exchange: &str) -> rusqlite::Result<SyncState> {
+    let has_stream_cursors = has_column(conn, "sync_state", "last_fill_time");
+
+    let row_opt = if has_stream_cursors {
+        let mut stmt = conn.prepare(
+            "SELECT exchange, last_exit_time, last_external_id, last_sync_at, last_status, last_error,
+                    last_fill_time, last_fill_id, last_funding_time
+             FROM sync_state WHERE exchange = ?1",
+        )?;
+        stmt.query_row(params![exchange], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, Option<i64>>(1)?,
@@ -40,9 +100,32 @@ pub fn get_sync_state(conn: &Connection, exchange: &str) -> rusqlite::Result<Syn
                 row.get::<_, Option<i64>>(3)?,
                 row.get::<_, Option<String>>(4)?,
                 row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<i64>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<i64>>(8)?,
             ))
         })
-        .optional()?;
+        .optional()?
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT exchange, last_exit_time, last_external_id, last_sync_at, last_status, last_error
+             FROM sync_state WHERE exchange = ?1",
+        )?;
+        stmt.query_row(params![exchange], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<i64>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<i64>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                None,
+                None,
+                None,
+            ))
+        })
+        .optional()?
+    };
 
     let positions_count: i64 = conn
         .query_row(
@@ -68,11 +151,14 @@ pub fn get_sync_state(conn: &Connection, exchange: &str) -> rusqlite::Result<Syn
         )
         .unwrap_or(0);
 
-    if let Some((ex, exit_time, ext_id, sync_at, status, err)) = row_opt {
+    if let Some((ex, exit_time, ext_id, sync_at, status, err, fill_time, fill_id, funding_time)) = row_opt {
         Ok(SyncState {
             exchange: ex,
             last_exit_time: exit_time,
             last_external_id: ext_id,
+            last_fill_time: fill_time,
+            last_fill_id: fill_id,
+            last_funding_time: funding_time,
             last_sync_at: sync_at,
             last_status: status,
             last_error: err,
@@ -85,6 +171,9 @@ pub fn get_sync_state(conn: &Connection, exchange: &str) -> rusqlite::Result<Syn
             exchange: exchange.to_string(),
             last_exit_time: None,
             last_external_id: None,
+            last_fill_time: None,
+            last_fill_id: None,
+            last_funding_time: None,
             last_sync_at: None,
             last_status: None,
             last_error: None,
@@ -104,11 +193,15 @@ pub fn get_all_sync_states(conn: &Connection) -> rusqlite::Result<Vec<SyncState>
     Ok(states)
 }
 
-pub fn update_sync_state(
+/// Memperbarui state sinkronisasi lengkap beserta kursor independen per-stream
+pub fn update_sync_state_full(
     conn: &Connection,
     exchange: &str,
     last_exit_time: Option<i64>,
     last_external_id: Option<&str>,
+    last_fill_time: Option<i64>,
+    last_fill_id: Option<&str>,
+    last_funding_time: Option<i64>,
     last_status: Option<&str>,
     last_error: Option<&str>,
 ) -> rusqlite::Result<()> {
@@ -117,19 +210,101 @@ pub fn update_sync_state(
         .unwrap_or_default()
         .as_millis() as i64;
 
-    conn.execute(
-        "INSERT INTO sync_state (exchange, last_exit_time, last_external_id, last_sync_at, last_status, last_error)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT(exchange) DO UPDATE SET
-           last_exit_time   = COALESCE(excluded.last_exit_time, sync_state.last_exit_time),
-           last_external_id = COALESCE(excluded.last_external_id, sync_state.last_external_id),
-           last_sync_at     = excluded.last_sync_at,
-           last_status      = excluded.last_status,
-           last_error       = excluded.last_error",
-        params![exchange, last_exit_time, last_external_id, now, last_status, last_error],
-    )?;
+    let has_stream_cursors = has_column(conn, "sync_state", "last_fill_time");
+
+    if has_stream_cursors {
+        conn.execute(
+            "INSERT INTO sync_state (
+                exchange,
+                last_exit_time,
+                last_external_id,
+                last_fill_time,
+                last_fill_id,
+                last_funding_time,
+                last_sync_at,
+                last_status,
+                last_error
+             )
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(exchange) DO UPDATE SET
+               last_exit_time    = COALESCE(excluded.last_exit_time, sync_state.last_exit_time),
+               last_external_id  = COALESCE(excluded.last_external_id, sync_state.last_external_id),
+               last_fill_time    = COALESCE(excluded.last_fill_time, sync_state.last_fill_time),
+               last_fill_id      = COALESCE(excluded.last_fill_id, sync_state.last_fill_id),
+               last_funding_time = COALESCE(excluded.last_funding_time, sync_state.last_funding_time),
+               last_sync_at      = excluded.last_sync_at,
+               last_status       = excluded.last_status,
+               last_error        = excluded.last_error",
+            params![
+                exchange,
+                last_exit_time,
+                last_external_id,
+                last_fill_time,
+                last_fill_id,
+                last_funding_time,
+                now,
+                last_status,
+                last_error
+            ],
+        )?;
+    } else {
+        conn.execute(
+            "INSERT INTO sync_state (exchange, last_exit_time, last_external_id, last_sync_at, last_status, last_error)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(exchange) DO UPDATE SET
+               last_exit_time   = COALESCE(excluded.last_exit_time, sync_state.last_exit_time),
+               last_external_id = COALESCE(excluded.last_external_id, sync_state.last_external_id),
+               last_sync_at     = excluded.last_sync_at,
+               last_status      = excluded.last_status,
+               last_error       = excluded.last_error",
+            params![exchange, last_exit_time, last_external_id, now, last_status, last_error],
+        )?;
+    }
 
     Ok(())
+}
+
+/// Memperbarui state sinkronisasi menggunakan referensi objek SyncCursor
+pub fn update_sync_state_cursor(
+    conn: &Connection,
+    exchange: &str,
+    cursor: &SyncCursor,
+    last_status: Option<&str>,
+    last_error: Option<&str>,
+) -> rusqlite::Result<()> {
+    update_sync_state_full(
+        conn,
+        exchange,
+        cursor.last_exit_time,
+        cursor.last_external_id.as_deref(),
+        cursor.last_fill_time,
+        cursor.last_fill_id.as_deref(),
+        cursor.last_funding_time,
+        last_status,
+        last_error,
+    )
+}
+
+/// Memperbarui state sinkronisasi (kompatibilitas mundur dengan tanda tangan fungsi lama)
+pub fn update_sync_state(
+    conn: &Connection,
+    exchange: &str,
+    last_exit_time: Option<i64>,
+    last_external_id: Option<&str>,
+    last_status: Option<&str>,
+    last_error: Option<&str>,
+) -> rusqlite::Result<()> {
+    update_sync_state_full(
+        conn,
+        exchange,
+        last_exit_time,
+        last_external_id,
+        None,
+        None,
+        None,
+        last_status,
+        last_error,
+    )
 }
 
 /// Upsert posisi tertutup dari exchange.

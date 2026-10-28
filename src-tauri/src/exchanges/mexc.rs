@@ -190,7 +190,8 @@ impl MexcClient {
         &self,
         cursor: &SyncCursor,
     ) -> Result<Vec<RawFill>, String> {
-        let max_pages = if cursor.last_exit_time.is_none() {
+        let since_ts = cursor.last_fill_time.or(cursor.last_exit_time);
+        let max_pages = if since_ts.is_none() {
             MAX_PAGES
         } else {
             3
@@ -213,7 +214,7 @@ impl MexcClient {
 
             for item in &list {
                 if let Some(fill) = map_fill(item) {
-                    if let Some(since) = cursor.last_exit_time {
+                    if let Some(since) = since_ts {
                         if fill.filled_at <= since {
                             continue;
                         }
@@ -234,7 +235,8 @@ impl MexcClient {
         &self,
         cursor: &SyncCursor,
     ) -> Result<Vec<RawFundingFee>, String> {
-        let max_pages = if cursor.last_exit_time.is_none() {
+        let since_ts = cursor.last_funding_time.or(cursor.last_exit_time);
+        let max_pages = if since_ts.is_none() {
             MAX_PAGES
         } else {
             3
@@ -257,7 +259,7 @@ impl MexcClient {
 
             for item in &list {
                 if let Some(fee) = map_funding_fee(item) {
-                    if let Some(since) = cursor.last_exit_time {
+                    if let Some(since) = since_ts {
                         if fee.charged_at <= since {
                             continue;
                         }

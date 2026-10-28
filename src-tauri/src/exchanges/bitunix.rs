@@ -216,7 +216,8 @@ impl BitunixClient {
         &self,
         cursor: &SyncCursor,
     ) -> Result<Vec<RawFill>, String> {
-        let max_pages = if cursor.last_exit_time.is_none() {
+        let since_ts = cursor.last_fill_time.or(cursor.last_exit_time);
+        let max_pages = if since_ts.is_none() {
             MAX_PAGES
         } else {
             3
@@ -227,7 +228,7 @@ impl BitunixClient {
             let mut params = BTreeMap::new();
             params.insert("page".to_string(), page.to_string());
             params.insert("pageSize".to_string(), DEFAULT_PAGE_SIZE.to_string());
-            if let Some(since) = cursor.last_exit_time {
+            if let Some(since) = since_ts {
                 params.insert("startTime".to_string(), since.to_string());
             }
 
@@ -242,7 +243,7 @@ impl BitunixClient {
 
             for item in &list {
                 if let Some(fill) = map_fill(item) {
-                    if let Some(since) = cursor.last_exit_time {
+                    if let Some(since) = since_ts {
                         if fill.filled_at <= since {
                             continue;
                         }

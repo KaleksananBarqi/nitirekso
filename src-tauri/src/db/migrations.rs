@@ -38,6 +38,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "006_restore_sync_columns",
         sql: include_str!("../../migrations/006_restore_sync_columns.sql"),
     },
+    Migration {
+        version: 7,
+        name: "007_sync_stream_cursors",
+        sql: include_str!("../../migrations/007_sync_stream_cursors.sql"),
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<Vec<i64>> {
