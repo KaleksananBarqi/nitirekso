@@ -13,6 +13,7 @@ import type {
     CardBrandingConfig,
     CardRenderSpec,
     CardThemeConfig,
+    PortfolioSummaryData,
     SingleTradeData
 } from './types'
 
@@ -187,6 +188,134 @@ export function buildPnlCardSpec(params: BuildPnlCardSpecParams): CardRenderSpec
         data,
         theme,
         aspect: params.aspect || 'original',
+        privacy: {
+            hideNominal: Boolean(params.hideNominal),
+        },
+        branding,
+    }
+}
+
+export interface BuildPortfolioSummaryCardSpecParams {
+    summary: {
+        netPnlTotal: number
+        winRate: number | null
+        totalTrades: number
+        wins?: number
+        losses?: number
+        profitFactor?: number
+        totalR?: number | null
+        expectancy?: number | null
+        expectancyR?: number | null
+        recoveryFactor?: number | null
+        maxConsecutiveWins?: number
+        maxConsecutiveLosses?: number
+        avgWin?: number | null
+        avgLoss?: number | null
+    }
+    curve?: { equity: number }[]
+    drawdown?: {
+        maxDrawdown: number
+        maxDrawdownPercent?: number
+    }
+    bg: BgTemplate
+    accent?: string
+    isCustomBgActive?: boolean
+    customMedia?: CanvasImageSource | null
+    bgDimming?: number
+    bgDimmingDirection?: BgDimmingDirection
+    bgPosX?: number
+    bgPosY?: number
+    brandTitle?: string
+    brandSubtitle?: string
+    traderHandle?: string
+    activeReferral?: string | null
+    avatarImage?: CanvasImageSource | null
+    watermarkLogo?: CanvasImageSource | null
+    showProfile?: boolean
+    showWatermark?: boolean
+    showReferral?: boolean
+    showChart?: boolean
+    hideNominal?: boolean
+    periodLabel?: string
+    customTraderNote?: string
+    aspect?: CardAspect
+}
+
+/**
+ * Memetakan ringkasan metrik analitik portofolio menjadi CardRenderSpec murni.
+ */
+export function buildPortfolioSummaryCardSpec(
+    params: BuildPortfolioSummaryCardSpecParams
+): CardRenderSpec {
+    const { summary, curve, drawdown } = params
+
+    // Normalisasi winRate: jika berupa rasio desimal 0..1, kalikan 100
+    const rawWinRate = summary.winRate !== null && summary.winRate !== undefined ? summary.winRate : 0
+    const winRate = rawWinRate <= 1 && rawWinRate > 0 ? rawWinRate * 100 : rawWinRate
+
+    const theme: CardThemeConfig = {
+        id: params.bg.id,
+        label: params.bg.label,
+        accentProfit: params.accent || params.bg.accentProfit,
+        accentLoss: params.bg.accentLoss,
+        textSub: params.bg.textSub,
+        border: params.bg.border,
+        isTransparent: !params.isCustomBgActive && Boolean(params.bg.isTransparent),
+        isCustom: Boolean(params.bg.isCustom),
+        bgStart: params.bg.bgStart,
+        bgEnd: params.bg.bgEnd,
+        dimming: params.isCustomBgActive ? (params.bgDimming ?? 0) : undefined,
+        dimmingDirection: params.bgDimmingDirection,
+        customMedia: params.isCustomBgActive ? (params.customMedia ?? null) : null,
+        mediaPosX: params.bgPosX ?? 50,
+        mediaPosY: params.bgPosY ?? 50,
+    }
+
+    const branding: CardBrandingConfig = {
+        brandTitle: params.brandTitle?.trim() || 'NITIREKSO',
+        brandSubtitle: params.brandSubtitle?.trim() || 'ANALYTICS',
+        traderHandle: params.traderHandle?.trim() || '@trader',
+        referralCode: params.activeReferral?.trim() || null,
+        avatarImage: params.avatarImage ?? null,
+        watermarkLogo: params.watermarkLogo ?? null,
+        showProfile: params.showProfile ?? true,
+        showWatermark: params.showWatermark ?? true,
+        showReferral: params.showReferral ?? true,
+    }
+
+    const data: PortfolioSummaryData = {
+        periodLabel: params.periodLabel?.trim() || 'All-Time Performance',
+        netPnlTotal: summary.netPnlTotal,
+        winRate,
+        totalTrades: summary.totalTrades,
+        winCount: summary.wins,
+        lossCount: summary.losses,
+        profitFactor: summary.profitFactor,
+        maxDrawdown: drawdown?.maxDrawdown,
+        maxDrawdownPercent: drawdown?.maxDrawdownPercent,
+        totalR: summary.totalR,
+        expectancy: summary.expectancy,
+        expectancyR: summary.expectancyR,
+        recoveryFactor: summary.recoveryFactor,
+        maxConsecutiveWins: summary.maxConsecutiveWins,
+        maxConsecutiveLosses: summary.maxConsecutiveLosses,
+        avgWin: summary.avgWin,
+        avgLoss: summary.avgLoss,
+        equityCurve: curve,
+        showChart: params.showChart ?? true,
+        traderNote: params.customTraderNote,
+        showTradesCount: true,
+        showWinLoss: true,
+        showProfitFactor: true,
+        showMaxDrawdown: true,
+        showTraderNote: Boolean(params.customTraderNote?.trim()),
+    }
+
+    return {
+        variant: 'portfolio-summary',
+        data,
+        theme,
+        aspect: params.aspect || '16:9',
         privacy: {
             hideNominal: Boolean(params.hideNominal),
         },

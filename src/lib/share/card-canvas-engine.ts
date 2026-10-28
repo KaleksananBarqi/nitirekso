@@ -989,6 +989,78 @@ export class CardCanvasEngine {
     }
 
     /**
+     * Menggambar kurva ekuitas kumulatif pada kanvas dengan efek gradien area dan glow garis.
+     */
+    private drawEquityCurve(
+        ctx: CanvasRenderingContext2D,
+        points: { equity: number }[],
+        x: number,
+        y: number,
+        w: number,
+        h: number,
+        color: string
+    ): void {
+        if (points.length < 2) return
+
+        const minPnl = Math.min(...points.map((p) => p.equity))
+        const maxPnl = Math.max(...points.map((p) => p.equity))
+        const range = maxPnl - minPnl || 1
+
+        const getCoord = (p: { equity: number }, idx: number) => {
+            const px = x + (idx / (points.length - 1)) * w
+            const py = y + h - ((p.equity - minPnl) / range) * (h - 24) - 12
+            return { px, py }
+        }
+
+        // 1. Area Fill Gradient
+        ctx.save()
+        const areaGrad = ctx.createLinearGradient(0, y, 0, y + h)
+        areaGrad.addColorStop(0, `${color}44`)
+        areaGrad.addColorStop(1, `${color}00`)
+
+        ctx.beginPath()
+        const first = getCoord(points[0]!, 0)
+        ctx.moveTo(first.px, first.py)
+
+        for (let i = 1; i < points.length; i++) {
+            const pt = getCoord(points[i]!, i)
+            ctx.lineTo(pt.px, pt.py)
+        }
+
+        ctx.lineTo(x + w, y + h)
+        ctx.lineTo(x, y + h)
+        ctx.closePath()
+        ctx.fillStyle = areaGrad
+        ctx.fill()
+
+        // 2. Stroke Line dengan Glow
+        ctx.beginPath()
+        ctx.moveTo(first.px, first.py)
+        for (let i = 1; i < points.length; i++) {
+            const pt = getCoord(points[i]!, i)
+            ctx.lineTo(pt.px, pt.py)
+        }
+        ctx.strokeStyle = color
+        ctx.lineWidth = 4
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+        ctx.shadowColor = color
+        ctx.shadowBlur = 12
+        ctx.stroke()
+
+        // 3. Dot di Titik Terakhir
+        const last = getCoord(points[points.length - 1]!, points.length - 1)
+        ctx.beginPath()
+        ctx.arc(last.px, last.py, 6, 0, Math.PI * 2)
+        ctx.fillStyle = '#ffffff'
+        ctx.fill()
+        ctx.lineWidth = 3
+        ctx.strokeStyle = color
+        ctx.stroke()
+        ctx.restore()
+    }
+
+    /**
      * Merender kartu ringkasan analitik portofolio (portfolio-summary).
      */
     private renderPortfolioSummary(
@@ -1035,6 +1107,25 @@ export class CardCanvasEngine {
         ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
         const periodW = ctx.measureText(periodLabel).width + 24
         const periodX = padX + cardWidth - 36 - periodW
+
+        // Badge Referral jika diaktifkan
+        if (branding?.showReferral && branding?.referralCode?.trim()) {
+            const refText = `REF: ${branding.referralCode.trim()}`
+            ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+            const refW = ctx.measureText(refText).width + 20
+            const refX = periodX - refW - 12
+            ctx.beginPath()
+            ctx.roundRect(refX, headerY - 24, refW, 30, 6)
+            ctx.fillStyle = 'rgba(56, 189, 248, 0.15)'
+            ctx.fill()
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)'
+            ctx.lineWidth = 1
+            ctx.stroke()
+            ctx.fillStyle = '#38bdf8'
+            ctx.fillText(refText, refX + 10, headerY - 2)
+            ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+        }
+
         ctx.fillStyle = 'rgba(255, 255, 255, 0.08)'
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)'
         ctx.lineWidth = 1
@@ -1064,7 +1155,7 @@ export class CardCanvasEngine {
         // Label NET PNL
         ctx.font = '16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
         ctx.fillStyle = theme.textSub
-        ctx.fillText('NET REALIZED PNL', heroX + 24, heroY + 34)
+        ctx.fillText('TOTAL NET REALIZED P&L', heroX + 24, heroY + 34)
 
         // Nilai PnL
         ctx.font = 'bold 44px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
@@ -1080,8 +1171,8 @@ export class CardCanvasEngine {
         const winBoxX = heroX + heroW - winBoxW - 12
         const winBoxY = heroY + 12
 
-        ctx.fillStyle = 'rgba(56, 189, 248, 0.12)'
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)'
+        ctx.fillStyle = `${accent}22`
+        ctx.strokeStyle = `${accent}55`
         ctx.lineWidth = 1.2
         ctx.beginPath()
         ctx.roundRect(winBoxX, winBoxY, winBoxW, winBoxH, 12)
@@ -1093,86 +1184,252 @@ export class CardCanvasEngine {
         ctx.fillText('WIN RATE', winBoxX + 20, winBoxY + 30)
 
         ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        ctx.fillStyle = '#38bdf8'
+        ctx.fillStyle = accent
         ctx.fillText(`${data.winRate.toFixed(1)}%`, winBoxX + 20, winBoxY + 70)
         ctx.restore()
 
-        // 3. Grid Metrik Portofolio
-        const gridY = heroY + heroH + 20
-        const gridW = heroW
-        const gridH = 110
-        const colW = gridW / 4
+        let curY = heroY + heroH + 16
 
-        ctx.save()
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.03)'
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
-        ctx.lineWidth = 1
-        ctx.beginPath()
-        ctx.roundRect(heroX, gridY, gridW, gridH, 16)
-        ctx.fill()
-        ctx.stroke()
+        // 3. Kurva Ekuitas (Equity Curve Chart) jika tersedia
+        if (data.showChart !== false && data.equityCurve && data.equityCurve.length >= 2) {
+            const chartH = layout.height >= 1350 ? 280 : (layout.height >= 1080 ? 200 : 120)
+            const chartW = heroW
+            const chartX = heroX
 
-        const drawCol = (label: string, val: string, idx: number, color = '#ffffff') => {
-            const cxCol = heroX + colW * idx + 20
-            ctx.font = '16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = theme.textSub
-            ctx.fillText(label, cxCol, gridY + 36)
-            ctx.font = 'bold 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = color
-            ctx.fillText(val, cxCol, gridY + 78)
+            ctx.save()
+            ctx.beginPath()
+            ctx.roundRect(chartX, curY, chartW, chartH, 16)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.35)'
+            ctx.fill()
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
+            ctx.lineWidth = 1
+            ctx.stroke()
+
+            ctx.font = '600 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.55)'
+            ctx.fillText('EQUITY GROWTH TRAJECTORY', chartX + 20, curY + 26)
+
+            ctx.font = '500 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
+            ctx.fillText(`${data.equityCurve.length} points`, chartX + chartW - 90, curY + 26)
+
+            this.drawEquityCurve(ctx, data.equityCurve, chartX + 16, curY + 34, chartW - 32, chartH - 48, accent)
+            ctx.restore()
+
+            curY += chartH + 16
         }
 
-        const winLoss = `${data.winCount ?? 0}W / ${data.lossCount ?? 0}L`
-        const pf = data.profitFactor !== undefined ? data.profitFactor.toFixed(2) : '—'
-        const dd = data.maxDrawdownPercent !== undefined ? `${data.maxDrawdownPercent.toFixed(1)}%` : '—'
+        // 4. Grid Metrik Portofolio
+        const hasRichMetrics = Boolean(
+            data.totalR !== undefined ||
+            data.expectancyR !== undefined ||
+            data.recoveryFactor !== undefined ||
+            data.maxConsecutiveWins !== undefined ||
+            data.avgWin !== undefined
+        )
 
-        drawCol('TOTAL TRADES', `${data.totalTrades}`, 0)
-        drawCol('WIN / LOSS', winLoss, 1, '#38bdf8')
-        drawCol('PROFIT FACTOR', pf, 2, '#34d399')
-        drawCol('MAX DRAWDOWN', dd, 3, '#f87171')
+        if (hasRichMetrics) {
+            const gridW = heroW
+            const isVerticalLayout = layout.height >= 1350
+            const gridCols = isVerticalLayout ? 2 : 4
+            const gridGap = isVerticalLayout ? 14 : 12
+            const gridItemW = (gridW - (gridCols - 1) * gridGap) / gridCols
+            const gridItemH = isVerticalLayout ? 80 : (layout.height >= 1080 ? 72 : 60)
 
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
-        ctx.beginPath()
-        ctx.moveTo(heroX + colW, gridY + 20); ctx.lineTo(heroX + colW, gridY + gridH - 20)
-        ctx.moveTo(heroX + colW * 2, gridY + 20); ctx.lineTo(heroX + colW * 2, gridY + gridH - 20)
-        ctx.moveTo(heroX + colW * 3, gridY + 20); ctx.lineTo(heroX + colW * 3, gridY + gridH - 20)
-        ctx.stroke()
-        ctx.restore()
+            const recoveryStr = data.recoveryFactor !== undefined && data.recoveryFactor !== null
+                ? (!Number.isFinite(data.recoveryFactor) ? '∞' : data.recoveryFactor.toFixed(2))
+                : '—'
 
-        // 4. Catatan Trader (Trader Note) jika ada
-        let curBottomY = gridY + gridH + 24
-        if (data.traderNote?.trim()) {
+            const streakStr = data.maxConsecutiveWins !== undefined
+                ? `${data.maxConsecutiveWins}W / ${data.maxConsecutiveLosses ?? 0}L`
+                : '—'
+
+            const metricsData = [
+                {
+                    label: 'TOTAL TRADES',
+                    value: `${data.totalTrades} (${data.winCount ?? 0}W/${data.lossCount ?? 0}L)`
+                },
+                {
+                    label: 'PROFIT FACTOR',
+                    value: data.profitFactor !== undefined
+                        ? (Number.isFinite(data.profitFactor) ? data.profitFactor.toFixed(2) : '∞')
+                        : '—'
+                },
+                {
+                    label: 'TOTAL R',
+                    value: data.totalR !== undefined && data.totalR !== null
+                        ? `${data.totalR >= 0 ? '+' : ''}${data.totalR.toFixed(2)} R`
+                        : '—'
+                },
+                {
+                    label: 'EXPECTANCY (R)',
+                    value: data.expectancyR !== undefined && data.expectancyR !== null
+                        ? `${data.expectancyR >= 0 ? '+' : ''}${data.expectancyR.toFixed(2)} R`
+                        : (hideNominal ? '••••' : (data.expectancy !== undefined && data.expectancy !== null ? `${formatPnl(data.expectancy)} USDT` : '—'))
+                },
+                {
+                    label: 'RECOVERY FACTOR',
+                    value: recoveryStr
+                },
+                {
+                    label: 'MAX STREAK',
+                    value: streakStr
+                },
+                {
+                    label: 'MAX DRAWDOWN',
+                    value: hideNominal ? '••••' : (data.maxDrawdown !== undefined ? `${formatPnl(data.maxDrawdown)} USDT` : (data.maxDrawdownPercent !== undefined ? `${data.maxDrawdownPercent.toFixed(1)}%` : '—'))
+                },
+                {
+                    label: 'AVG WIN / LOSS',
+                    value: hideNominal ? '•••• / ••••' : `${formatPnl(data.avgWin || 0)} / ${formatPnl(data.avgLoss || 0)}`
+                }
+            ]
+
             ctx.save()
-            ctx.font = 'italic 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            const noteLines = wrapCanvasText(ctx, `“${data.traderNote.trim()}”`, heroW - 40)
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.75)'
-            noteLines.slice(0, 2).forEach((line, i) => {
-                ctx.fillText(line, heroX + 20, curBottomY + i * 28)
+            metricsData.forEach((item, idx) => {
+                const row = Math.floor(idx / gridCols)
+                const col = idx % gridCols
+                const gx = heroX + col * (gridItemW + gridGap)
+                const gy = curY + row * (gridItemH + gridGap)
+
+                ctx.beginPath()
+                ctx.roundRect(gx, gy, gridItemW, gridItemH, 12)
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.04)'
+                ctx.fill()
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
+                ctx.lineWidth = 1
+                ctx.stroke()
+
+                ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
+                ctx.fillText(item.label, gx + 14, gy + 22)
+
+                ctx.font = 'bold 17px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                ctx.fillStyle = '#ffffff'
+                ctx.fillText(item.value, gx + 14, gy + (gridItemH >= 70 ? 54 : 46))
             })
             ctx.restore()
-            curBottomY += noteLines.slice(0, 2).length * 28 + 12
+
+            const numRows = Math.ceil(metricsData.length / gridCols)
+            curY += numRows * (gridItemH + gridGap) + 12
+        } else {
+            const gridW = heroW
+            const gridH = 100
+            const colW = gridW / 4
+
+            ctx.save()
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.03)'
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
+            ctx.lineWidth = 1
+            ctx.beginPath()
+            ctx.roundRect(heroX, curY, gridW, gridH, 16)
+            ctx.fill()
+            ctx.stroke()
+
+            const drawCol = (label: string, val: string, idx: number, color = '#ffffff') => {
+                const cxCol = heroX + colW * idx + 20
+                ctx.font = '16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                ctx.fillStyle = theme.textSub
+                ctx.fillText(label, cxCol, curY + 34)
+                ctx.font = 'bold 26px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                ctx.fillStyle = color
+                ctx.fillText(val, cxCol, curY + 74)
+            }
+
+            const winLoss = `${data.winCount ?? 0}W / ${data.lossCount ?? 0}L`
+            const pf = data.profitFactor !== undefined ? data.profitFactor.toFixed(2) : '—'
+            const dd = data.maxDrawdownPercent !== undefined ? `${data.maxDrawdownPercent.toFixed(1)}%` : '—'
+
+            drawCol('TOTAL TRADES', `${data.totalTrades}`, 0)
+            drawCol('WIN / LOSS', winLoss, 1, '#38bdf8')
+            drawCol('PROFIT FACTOR', pf, 2, '#34d399')
+            drawCol('MAX DRAWDOWN', dd, 3, '#f87171')
+
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
+            ctx.beginPath()
+            ctx.moveTo(heroX + colW, curY + 16); ctx.lineTo(heroX + colW, curY + gridH - 16)
+            ctx.moveTo(heroX + colW * 2, curY + 16); ctx.lineTo(heroX + colW * 2, curY + gridH - 16)
+            ctx.moveTo(heroX + colW * 3, curY + 16); ctx.lineTo(heroX + colW * 3, curY + gridH - 16)
+            ctx.stroke()
+            ctx.restore()
+
+            curY += gridH + 16
         }
 
-        // 5. Footer: Trader Profile & Watermark
-        const footerY = padY + cardHeight - 38
-        ctx.save()
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'
-        ctx.lineWidth = 1
-        ctx.beginPath()
-        ctx.moveTo(heroX, footerY - 24)
-        ctx.lineTo(heroX + heroW, footerY - 24)
-        ctx.stroke()
+        // 5. Catatan Trader (Trader Note) jika ada
+        if (data.traderNote?.trim()) {
+            ctx.save()
+            ctx.font = 'italic 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+            const noteLines = wrapCanvasText(ctx, `“${data.traderNote.trim()}”`, heroW - 40)
+            const noteH = noteLines.length * 24 + 16
+            ctx.beginPath()
+            ctx.roundRect(heroX, curY, heroW, noteH, 10)
+            ctx.fillStyle = `${accent}15`
+            ctx.fill()
+            ctx.strokeStyle = `${accent}33`
+            ctx.lineWidth = 1
+            ctx.stroke()
 
-        ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        ctx.fillStyle = '#ffffff'
-        ctx.fillText(traderHandle, heroX, footerY + 8)
+            ctx.fillStyle = '#ffffff'
+            noteLines.forEach((line, i) => {
+                ctx.fillText(line, heroX + 20, curY + 24 + i * 24)
+            })
+            ctx.restore()
+        }
+
+        // 6. Footer: Trader Profile & Watermark
+        const footerY = padY + cardHeight - 34
+        ctx.save()
+        if (branding?.showProfile !== false) {
+            const avatarX = heroX
+            const avatarY = footerY - 14
+
+            if (branding?.avatarImage) {
+                try {
+                    ctx.save()
+                    ctx.beginPath()
+                    ctx.arc(avatarX + 18, avatarY + 18, 18, 0, Math.PI * 2)
+                    ctx.clip()
+                    ctx.drawImage(branding.avatarImage, avatarX, avatarY, 36, 36)
+                    ctx.restore()
+                    ctx.beginPath()
+                    ctx.arc(avatarX + 18, avatarY + 18, 18, 0, Math.PI * 2)
+                    ctx.strokeStyle = accent
+                    ctx.lineWidth = 2
+                    ctx.stroke()
+                } catch {
+                    // Fallback jika avatar error saat digambar
+                }
+            } else {
+                ctx.beginPath()
+                ctx.arc(avatarX + 18, avatarY + 18, 18, 0, Math.PI * 2)
+                ctx.fillStyle = `${accent}33`
+                ctx.fill()
+                ctx.strokeStyle = accent
+                ctx.lineWidth = 2
+                ctx.stroke()
+
+                ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                ctx.fillStyle = '#ffffff'
+                const initials = traderHandle.replace('@', '').slice(0, 2).toUpperCase() || 'TR'
+                ctx.fillText(initials, avatarX + 8, avatarY + 24)
+            }
+
+            ctx.font = 'bold 17px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+            ctx.fillStyle = '#ffffff'
+            ctx.fillText(traderHandle, avatarX + 46, avatarY + 16)
+
+            ctx.font = '500 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
+            ctx.fillText('Verified Trader • nitirekso.app', avatarX + 46, avatarY + 34)
+        }
 
         if (branding?.showWatermark !== false) {
-            ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            const wm = 'nitirekso Trading Journal'
+            ctx.font = '500 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
+            const wm = `${brandTitle} • ${formatDate(Date.now())}`
             const wmW = ctx.measureText(wm).width
-            ctx.fillStyle = theme.textSub
-            ctx.fillText(wm, heroX + heroW - wmW, footerY + 8)
+            ctx.fillText(wm, heroX + heroW - wmW, footerY + 12)
         }
         ctx.restore()
     }

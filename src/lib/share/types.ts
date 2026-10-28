@@ -95,6 +95,17 @@ export interface PortfolioSummaryData {
     lossCount?: number
     profitFactor?: number
     maxDrawdownPercent?: number
+    maxDrawdown?: number
+    totalR?: number | null
+    expectancy?: number | null
+    expectancyR?: number | null
+    recoveryFactor?: number | null
+    maxConsecutiveWins?: number
+    maxConsecutiveLosses?: number
+    avgWin?: number | null
+    avgLoss?: number | null
+    equityCurve?: { equity: number }[]
+    showChart?: boolean
     traderNote?: string
     showTradesCount?: boolean
     showWinLoss?: boolean

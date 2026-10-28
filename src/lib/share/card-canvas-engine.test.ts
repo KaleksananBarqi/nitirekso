@@ -536,6 +536,74 @@ describe('CardCanvasEngine', () => {
             expect(record.textDrawn.some(t => t.includes('4,850.25'))).toBe(false)
             expect(record.textDrawn.some(t => t.includes('★★★★★') || t.includes('••••'))).toBe(true)
         })
+
+        it('merender kartu analitik kumulatif dengan kurva ekuitas, 8 metrik bento grid, dan kode referral', () => {
+            const engine = new CardCanvasEngine()
+            const { canvas, record } = createMockCanvas(1080, 1350)
+
+            const richPortfolioData: PortfolioSummaryData = {
+                periodLabel: 'Q3 2026',
+                netPnlTotal: 12500,
+                winRate: 72.4,
+                totalTrades: 120,
+                winCount: 87,
+                lossCount: 33,
+                profitFactor: 2.85,
+                maxDrawdown: 1200,
+                maxDrawdownPercent: 6.4,
+                totalR: 42.5,
+                expectancyR: 0.35,
+                recoveryFactor: 4.2,
+                maxConsecutiveWins: 9,
+                maxConsecutiveLosses: 2,
+                avgWin: 210,
+                avgLoss: -110,
+                equityCurve: [
+                    { equity: 0 },
+                    { equity: 2500 },
+                    { equity: 6000 },
+                    { equity: 12500 }
+                ],
+                showChart: true,
+                traderNote: 'Disiplin eksekusi trading plan.'
+            }
+
+            const spec: CardRenderSpec = {
+                variant: 'portfolio-summary',
+                data: richPortfolioData,
+                theme: defaultTheme,
+                aspect: '4:5',
+                branding: {
+                    brandTitle: 'NITIREKSO',
+                    brandSubtitle: 'ANALYTICS',
+                    traderHandle: '@super_trader',
+                    referralCode: 'REFQUANT',
+                    showReferral: true,
+                    showProfile: true,
+                    showWatermark: true,
+                }
+            }
+
+            const layout = engine.render(canvas, spec)
+            expect(layout.width).toBe(1080)
+            expect(layout.height).toBe(1350)
+            expect(layout.isProfit).toBe(true)
+
+            expect(record.textDrawn).toContain('NITIREKSO')
+            expect(record.textDrawn).toContain('ANALYTICS')
+            expect(record.textDrawn).toContain('Q3 2026')
+            expect(record.textDrawn.some(t => t.includes('REF: REFQUANT'))).toBe(true)
+            expect(record.textDrawn.some(t => t.includes('EQUITY GROWTH TRAJECTORY'))).toBe(true)
+            expect(record.textDrawn.some(t => t.includes('4 points'))).toBe(true)
+            expect(record.textDrawn.some(t => t.includes('TOTAL R'))).toBe(true)
+            expect(record.textDrawn.some(t => t.includes('+42.50 R'))).toBe(true)
+            expect(record.textDrawn.some(t => t.includes('EXPECTANCY (R)'))).toBe(true)
+            expect(record.textDrawn.some(t => t.includes('RECOVERY FACTOR'))).toBe(true)
+            expect(record.textDrawn.some(t => t.includes('MAX STREAK'))).toBe(true)
+            expect(record.textDrawn.some(t => t.includes('9W / 2L'))).toBe(true)
+            expect(record.textDrawn.some(t => t.includes('Disiplin eksekusi trading plan.'))).toBe(true)
+            expect(record.textDrawn.some(t => t.includes('@super_trader'))).toBe(true)
+        })
     })
 
     describe('render - Static & Overload Signature', () => {
