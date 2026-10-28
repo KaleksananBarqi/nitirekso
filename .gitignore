@@ -2,9 +2,9 @@
 node_modules/
 
 # Output build
-out/
-dist/
-release/
+/out/
+/dist/
+/release/
 
 # Data lokal aplikasi — DB SQLite & screenshot runtime TIDAK boleh masuk repo
 data/
