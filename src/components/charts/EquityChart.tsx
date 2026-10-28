@@ -9,7 +9,7 @@ import {
     type ISeriesApi,
     type UTCTimestamp
 } from 'lightweight-charts'
-import type { EquityPoint } from '../../lib/analytics/metrics'
+import type { SanitizedPoint } from '../../lib/analytics'
 import type { RoiComparisonPoint } from '../../lib/btc-api'
 import { cn } from '../../lib/utils'
 
@@ -17,9 +17,9 @@ import { cn } from '../../lib/utils'
  * Kurva equity, drawdown (underwater), dan perbandingan VS ROI BTC memakai `lightweight-charts`.
  */
 
-interface EquityChartProps {
-    /** Kurva equity kumulatif. */
-    points: EquityPoint[]
+export interface EquityChartProps {
+    /** Kurva equity kumulatif yang telah disanitasi. */
+    points: ReadonlyArray<SanitizedPoint>
     /** Titik data perbandingan ROI (khusus mode 'roi') */
     roiPoints?: RoiComparisonPoint[]
     /** Mode tampilan chart: equity ($), drawdown, atau VS ROI BTC (%). */
@@ -31,7 +31,9 @@ interface EquityChartProps {
 
 /** Baca nilai warna dari CSS variable tema aktif. */
 function readThemeColor(variable: string, fallback: string): string {
-    const value = getComputedStyle(document.documentElement).getPropertyValue(variable).trim()
+    const value = typeof document !== 'undefined'
+        ? getComputedStyle(document.documentElement).getPropertyValue(variable).trim()
+        : ''
     return value === '' ? fallback : value
 }
 
@@ -132,14 +134,16 @@ export function EquityChart({
             btcSeriesRef.current = null
         }
 
-        const observer = new ResizeObserver(() => {
-            chart.applyOptions({ width: container.clientWidth })
-        })
-        observer.observe(container)
+        const observer = typeof ResizeObserver !== 'undefined'
+            ? new ResizeObserver(() => {
+                  chart.applyOptions({ width: container.clientWidth })
+              })
+            : null
+        observer?.observe(container)
         chart.applyOptions({ width: container.clientWidth })
 
         return () => {
-            observer.disconnect()
+            observer?.disconnect()
             chart.remove()
             chartRef.current = null
             seriesRef.current = null
@@ -147,55 +151,34 @@ export function EquityChart({
         }
     }, [height, variant])
 
-    // Perbarui data tanpa membuat ulang chart
+    // Perbarui data tanpa membuat ulang chart.
+    // Redundan `sanitizeData` dihapus karena `report.equityCurve` sudah tersanitasi di domain engine (#29).
     useEffect(() => {
         const series = seriesRef.current
         if (!series) return
 
-        // Helper untuk membuang duplikat timestamp & nilai tidak valid (mencegah crash "Value is null" dari lightweight-charts)
-        const sanitizeData = (raw: any[]) => {
-            const unique: any[] = []
-            let lastTime: number | null = null
-            for (const item of raw) {
-                if (item.value === null || item.value === undefined || Number.isNaN(item.value) || Number.isNaN(item.time)) continue
-                if (item.time !== lastTime) {
-                    unique.push(item)
-                    lastTime = item.time
-                } else {
-                    unique[unique.length - 1] = item
-                }
-            }
-            return unique
-        }
-
         if (variant === 'roi') {
             if (roiPoints.length > 0) {
-                const userData = sanitizeData(
-                    roiPoints.map((p) => ({
-                        time: Math.floor(p.time / 1000) as UTCTimestamp,
-                        value: p.userRoi
-                    }))
-                )
+                const userData = roiPoints.map((p) => ({
+                    time: Math.floor(p.time / 1000) as UTCTimestamp,
+                    value: p.userRoi
+                }))
                 series.setData(userData)
 
                 if (btcSeriesRef.current) {
-                    const btcData = sanitizeData(
-                        roiPoints.map((p) => ({
-                            time: Math.floor(p.time / 1000) as UTCTimestamp,
-                            value: p.btcRoi
-                        }))
-                    )
+                    const btcData = roiPoints.map((p) => ({
+                        time: Math.floor(p.time / 1000) as UTCTimestamp,
+                        value: p.btcRoi
+                    }))
                     btcSeriesRef.current.setData(btcData)
                 }
                 chartRef.current?.timeScale().fitContent()
             }
         } else {
-            const data = sanitizeData(
-                points.map((point) => ({
-                    time: Math.floor(point.time / 1000) as UTCTimestamp,
-                    value: variant === 'drawdown' ? point.drawdown : point.equity
-                }))
-            )
+            const data = points.map((point) => ({
+                time: Math.floor(point.time / 1000) as UTCTimestamp,
+                value: variant === 'drawdown' ? point.drawdown : point.equity
+            }))
 
             series.setData(data)
             chartRef.current?.timeScale().fitContent()
