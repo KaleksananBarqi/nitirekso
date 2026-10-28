@@ -307,11 +307,11 @@ pub fn update_sync_state(
     )
 }
 
-/// Upsert posisi tertutup dari exchange.
+/// Operasi batch upsert posisi tertutup pada koneksi atau transaksi SQLite aktif.
 /// HANYA menulis kolom teknis exchange di `trades`. DILARANG menyentuh `trade_journal`,
 /// `journal_checklist`, atau `planned_risk`.
-pub fn upsert_positions(
-    conn: &mut Connection,
+pub fn upsert_positions_tx(
+    conn: &Connection,
     exchange: &str,
     positions: &[RawClosedPosition],
 ) -> rusqlite::Result<UpsertResult> {
@@ -321,185 +321,208 @@ pub fn upsert_positions(
         .unwrap_or_default()
         .as_millis() as i64;
 
-    let tx = conn.transaction()?;
+    let mut find_stmt = conn.prepare(
+        "SELECT id, realized_pnl, exit_price, size, fee_close
+         FROM trades WHERE exchange = ?1 AND external_id = ?2",
+    )?;
 
-    {
-        let mut find_stmt = tx.prepare(
-            "SELECT id, realized_pnl, exit_price, size, fee_close
-             FROM trades WHERE exchange = ?1 AND external_id = ?2",
-        )?;
+    let mut insert_stmt = conn.prepare(
+        "INSERT INTO trades
+         (exchange, external_id, symbol, direction, entry_price, exit_price,
+          entry_time, exit_time, size, leverage, margin_mode, realized_pnl,
+          pnl_source, fee_open, fee_close, fee_open_maker, fee_close_maker,
+          funding_fee, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'exchange_reported',
+                 ?13, ?14, NULL, NULL, ?15, ?16, ?17)",
+    )?;
 
-        let mut insert_stmt = tx.prepare(
-            "INSERT INTO trades
-             (exchange, external_id, symbol, direction, entry_price, exit_price,
-              entry_time, exit_time, size, leverage, margin_mode, realized_pnl,
-              pnl_source, fee_open, fee_close, fee_open_maker, fee_close_maker,
-              funding_fee, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'exchange_reported',
-                     ?13, ?14, NULL, NULL, ?15, ?16, ?17)",
-        )?;
+    let mut update_stmt = conn.prepare(
+        "UPDATE trades SET
+           symbol = ?1, direction = ?2, entry_price = ?3, exit_price = ?4,
+           entry_time = ?5, exit_time = ?6, size = ?7, leverage = ?8, margin_mode = ?9,
+           realized_pnl = ?10, fee_open = ?11, fee_close = ?12, updated_at = ?13
+         WHERE id = ?14",
+    )?;
 
-        let mut update_stmt = tx.prepare(
-            "UPDATE trades SET
-               symbol = ?1, direction = ?2, entry_price = ?3, exit_price = ?4,
-               entry_time = ?5, exit_time = ?6, size = ?7, leverage = ?8, margin_mode = ?9,
-               realized_pnl = ?10, fee_open = ?11, fee_close = ?12, updated_at = ?13
-             WHERE id = ?14",
-        )?;
+    for pos in positions {
+        let existing = find_stmt
+            .query_row(params![exchange, &pos.external_id], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, f64>(1)?,
+                    row.get::<_, f64>(2)?,
+                    row.get::<_, f64>(3)?,
+                    row.get::<_, f64>(4)?,
+                ))
+            })
+            .optional()?;
 
-        for pos in positions {
-            let existing = find_stmt
-                .query_row(params![exchange, &pos.external_id], |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, f64>(1)?,
-                        row.get::<_, f64>(2)?,
-                        row.get::<_, f64>(3)?,
-                        row.get::<_, f64>(4)?,
-                    ))
-                })
-                .optional()?;
+        if let Some((id, old_pnl, old_exit, old_size, old_fee)) = existing {
+            let changed = (old_pnl - pos.realized_pnl).abs() > 1e-6
+                || (old_exit - pos.exit_price).abs() > 1e-6
+                || (old_size - pos.size).abs() > 1e-6
+                || (old_fee - pos.fee_close).abs() > 1e-6;
 
-            if let Some((id, old_pnl, old_exit, old_size, old_fee)) = existing {
-                let changed = (old_pnl - pos.realized_pnl).abs() > 1e-6
-                    || (old_exit - pos.exit_price).abs() > 1e-6
-                    || (old_size - pos.size).abs() > 1e-6
-                    || (old_fee - pos.fee_close).abs() > 1e-6;
-
-                if !changed {
-                    result.unchanged += 1;
-                    continue;
-                }
-
-                update_stmt.execute(params![
-                    pos.symbol,
-                    pos.direction,
-                    pos.entry_price,
-                    pos.exit_price,
-                    pos.entry_time,
-                    pos.exit_time,
-                    pos.size,
-                    pos.leverage,
-                    pos.margin_mode,
-                    pos.realized_pnl,
-                    pos.fee_open,
-                    pos.fee_close,
-                    now,
-                    id
-                ])?;
-                result.updated += 1;
-            } else {
-                insert_stmt.execute(params![
-                    exchange,
-                    pos.external_id,
-                    pos.symbol,
-                    pos.direction,
-                    pos.entry_price,
-                    pos.exit_price,
-                    pos.entry_time,
-                    pos.exit_time,
-                    pos.size,
-                    pos.leverage,
-                    pos.margin_mode,
-                    pos.realized_pnl,
-                    pos.fee_open,
-                    pos.fee_close,
-                    pos.funding_fee,
-                    now,
-                    now
-                ])?;
-                result.inserted += 1;
+            if !changed {
+                result.unchanged += 1;
+                continue;
             }
+
+            update_stmt.execute(params![
+                pos.symbol,
+                pos.direction,
+                pos.entry_price,
+                pos.exit_price,
+                pos.entry_time,
+                pos.exit_time,
+                pos.size,
+                pos.leverage,
+                pos.margin_mode,
+                pos.realized_pnl,
+                pos.fee_open,
+                pos.fee_close,
+                now,
+                id
+            ])?;
+            result.updated += 1;
+        } else {
+            insert_stmt.execute(params![
+                exchange,
+                pos.external_id,
+                pos.symbol,
+                pos.direction,
+                pos.entry_price,
+                pos.exit_price,
+                pos.entry_time,
+                pos.exit_time,
+                pos.size,
+                pos.leverage,
+                pos.margin_mode,
+                pos.realized_pnl,
+                pos.fee_open,
+                pos.fee_close,
+                pos.funding_fee,
+                now,
+                now
+            ])?;
+            result.inserted += 1;
         }
     }
 
+    Ok(result)
+}
+
+/// Upsert posisi tertutup dari exchange (membuka transaksi mandiri jika dipanggil tersendiri).
+pub fn upsert_positions(
+    conn: &mut Connection,
+    exchange: &str,
+    positions: &[RawClosedPosition],
+) -> rusqlite::Result<UpsertResult> {
+    let tx = conn.transaction()?;
+    let result = upsert_positions_tx(&tx, exchange, positions)?;
     tx.commit()?;
     Ok(result)
 }
 
+/// Operasi batch upsert data eksekusi (trade fills) pada koneksi atau transaksi SQLite aktif.
+pub fn upsert_fills_tx(
+    conn: &Connection,
+    exchange: &str,
+    fills: &[RawFill],
+) -> rusqlite::Result<UpsertResult> {
+    let mut result = UpsertResult::default();
+    let mut insert_stmt = conn.prepare(
+        "INSERT INTO trade_fills
+         (trade_id, exchange, external_id, symbol, side, price, qty, fee, is_maker, filled_at)
+         VALUES (NULL, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+         ON CONFLICT(exchange, external_id) DO UPDATE SET
+           symbol   = excluded.symbol,
+           side     = excluded.side,
+           price    = excluded.price,
+           qty      = excluded.qty,
+           fee      = excluded.fee,
+           is_maker = excluded.is_maker",
+    )?;
+
+    for fill in fills {
+        let maker_val = fill.is_maker.map(|m| if m { 1 } else { 0 });
+        let changes = insert_stmt.execute(params![
+            exchange,
+            fill.external_id,
+            fill.symbol,
+            fill.side,
+            fill.price,
+            fill.qty,
+            fill.fee,
+            maker_val,
+            fill.filled_at
+        ])?;
+
+        if changes > 0 {
+            result.inserted += 1;
+        } else {
+            result.unchanged += 1;
+        }
+    }
+
+    Ok(result)
+}
+
+/// Upsert fills dari exchange (membuka transaksi mandiri jika dipanggil tersendiri).
 pub fn upsert_fills(
     conn: &mut Connection,
     exchange: &str,
     fills: &[RawFill],
 ) -> rusqlite::Result<UpsertResult> {
-    let mut result = UpsertResult::default();
     let tx = conn.transaction()?;
-
-    {
-        let mut insert_stmt = tx.prepare(
-            "INSERT INTO trade_fills
-             (trade_id, exchange, external_id, symbol, side, price, qty, fee, is_maker, filled_at)
-             VALUES (NULL, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-             ON CONFLICT(exchange, external_id) DO UPDATE SET
-               symbol   = excluded.symbol,
-               side     = excluded.side,
-               price    = excluded.price,
-               qty      = excluded.qty,
-               fee      = excluded.fee,
-               is_maker = excluded.is_maker",
-        )?;
-
-        for fill in fills {
-            let maker_val = fill.is_maker.map(|m| if m { 1 } else { 0 });
-            let changes = insert_stmt.execute(params![
-                exchange,
-                fill.external_id,
-                fill.symbol,
-                fill.side,
-                fill.price,
-                fill.qty,
-                fill.fee,
-                maker_val,
-                fill.filled_at
-            ])?;
-
-            if changes > 0 {
-                result.inserted += 1;
-            } else {
-                result.unchanged += 1;
-            }
-        }
-    }
-
+    let result = upsert_fills_tx(&tx, exchange, fills)?;
     tx.commit()?;
     Ok(result)
 }
 
+/// Operasi batch upsert data biaya pendanaan (funding fees) pada koneksi atau transaksi SQLite aktif.
+pub fn upsert_funding_fees_tx(
+    conn: &Connection,
+    exchange: &str,
+    fees: &[RawFundingFee],
+) -> rusqlite::Result<UpsertResult> {
+    let mut result = UpsertResult::default();
+    let mut insert_stmt = conn.prepare(
+        "INSERT INTO funding_fees (exchange, external_id, symbol, amount, rate, charged_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(exchange, external_id) DO UPDATE SET
+           amount = excluded.amount,
+           rate   = excluded.rate",
+    )?;
+
+    for fee in fees {
+        let changes = insert_stmt.execute(params![
+            exchange,
+            fee.external_id,
+            fee.symbol,
+            fee.amount,
+            fee.rate,
+            fee.charged_at
+        ])?;
+
+        if changes > 0 {
+            result.inserted += 1;
+        } else {
+            result.unchanged += 1;
+        }
+    }
+
+    Ok(result)
+}
+
+/// Upsert biaya funding dari exchange (membuka transaksi mandiri jika dipanggil tersendiri).
 pub fn upsert_funding_fees(
     conn: &mut Connection,
     exchange: &str,
     fees: &[RawFundingFee],
 ) -> rusqlite::Result<UpsertResult> {
-    let mut result = UpsertResult::default();
     let tx = conn.transaction()?;
-
-    {
-        let mut insert_stmt = tx.prepare(
-            "INSERT INTO funding_fees (exchange, external_id, symbol, amount, rate, charged_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT(exchange, external_id) DO UPDATE SET
-               amount = excluded.amount,
-               rate   = excluded.rate",
-        )?;
-
-        for fee in fees {
-            let changes = insert_stmt.execute(params![
-                exchange,
-                fee.external_id,
-                fee.symbol,
-                fee.amount,
-                fee.rate,
-                fee.charged_at
-            ])?;
-
-            if changes > 0 {
-                result.inserted += 1;
-            } else {
-                result.unchanged += 1;
-            }
-        }
-    }
-
+    let result = upsert_funding_fees_tx(&tx, exchange, fees)?;
     tx.commit()?;
     Ok(result)
 }
