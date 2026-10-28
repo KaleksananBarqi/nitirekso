@@ -1,6 +1,7 @@
 use crate::exchanges::types::{RawClosedPosition, RawFill, RawFundingFee, SyncCursor};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+#[cfg(not(test))]
 use std::sync::atomic::{AtomicI8, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -64,6 +65,7 @@ pub struct UpsertResult {
     pub unchanged: usize,
 }
 
+#[cfg(not(test))]
 static SYNC_STATE_HAS_STREAM_CURSORS: AtomicI8 = AtomicI8::new(-1);
 
 /// Memeriksa keberadaan kolom kursor stream pada tabel sync_state dengan optimasi cache
