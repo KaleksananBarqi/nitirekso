@@ -253,19 +253,25 @@ export class NativeTauriAdapter implements IpcClient {
             audioData?: Uint8Array
         ): Promise<AppResult<Uint8Array>> => {
             try {
-                const res = await invoke<MutationResult<number[]>>('remux_video_mp4', {
-                    data: Array.from(data),
-                    audioData: audioData ? Array.from(audioData) : null,
-                })
-                if (res.ok && res.data) {
-                    return ok(new Uint8Array(res.data))
+                // Susun payload biner teroptimasi (envelope bebas alokasi JSON):
+                // - 4 byte pertama: integer u32 big-endian penanda panjang trek audio (audioLen).
+                // - audioLen byte berikutnya: byte data audio sekunder (jika ada).
+                // - sisa byte: byte data video mentah fMP4.
+                const audioLen = audioData ? audioData.byteLength : 0
+                const payload = new Uint8Array(4 + audioLen + data.byteLength)
+                const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+                view.setUint32(0, audioLen, false) // Format big-endian baku jaringan
+
+                if (audioData && audioLen > 0) {
+                    payload.set(audioData, 4)
                 }
-                return err(
-                    createAppError(
-                        'VIDEO_REMUX_FAILED',
-                        res.error ?? 'Gagal memproses remux video MP4'
-                    )
-                )
+                payload.set(data, 4 + audioLen)
+
+                // Transmisi biner langsung via invoke Tauri v2 tanpa serialisasi array JSON
+                const response = await invoke<ArrayBuffer | Uint8Array>('remux_video_mp4', payload)
+                const resultBytes =
+                    response instanceof Uint8Array ? response : new Uint8Array(response)
+                return ok(resultBytes)
             } catch (e) {
                 return err(normalizeAppError(e, 'VIDEO_REMUX_ERROR'))
             }
@@ -276,9 +282,12 @@ export class NativeTauriAdapter implements IpcClient {
             data: Uint8Array
         ): Promise<AppResult<string | null>> => {
             try {
-                const res = await invoke<MutationResult<string | null>>('save_video_file', {
-                    defaultName,
-                    data: Array.from(data),
+                // Kirim buffer biner mentah langsung ke backend tanpa overhead JSON [u8; N].
+                // Nama berkas bawaan disisipkan secara aman melalui header IPC (URL-encoded).
+                const res = await invoke<MutationResult<string | null>>('save_video_file', data, {
+                    headers: {
+                        'x-file-name': encodeURIComponent(defaultName),
+                    },
                 })
                 if (res.ok) {
                     return ok(res.data ?? null)

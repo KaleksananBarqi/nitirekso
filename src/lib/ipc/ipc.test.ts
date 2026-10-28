@@ -300,6 +300,7 @@ describe('InMemoryMockAdapter', () => {
             if (saveRes.ok) {
                 expect(saveRes.data).toContain('export.mp4')
             }
+            expect(mock.getSavedVideo('export.mp4')).toEqual(testBytes)
         })
 
         it('menguji alur backup dan pemulihan', async () => {
@@ -444,6 +445,84 @@ describe('NativeTauriAdapter & Error Normalization', () => {
         expect(createRes.ok).toBe(true)
         if (createRes.ok) {
             expect(createRes.data).toBe(42)
+        }
+    })
+
+    it('mengoptimalkan aliran biner media video tanpa serialisasi array JSON', async () => {
+        const adapter = new NativeTauriAdapter()
+        const { invoke } = await import('@tauri-apps/api/core')
+        const invokeMock = vi.mocked(invoke)
+
+        // 1. Uji remuxVideoMp4 dengan audio sekunder
+        const dummyVideo = new Uint8Array([10, 20, 30, 40])
+        const dummyAudio = new Uint8Array([100, 200])
+        const remuxedBuffer = new Uint8Array([7, 8, 9]).buffer
+
+        invokeMock.mockResolvedValueOnce(remuxedBuffer)
+        const remuxRes = await adapter.media.remuxVideoMp4(dummyVideo, dummyAudio)
+
+        expect(invokeMock).toHaveBeenCalledWith('remux_video_mp4', expect.any(Uint8Array))
+
+        // Verifikasi payload yang dikirim ke invoke adalah Uint8Array mentah (bukan array number JSON)
+        const passedPayload = invokeMock.mock.calls[0]?.[1] as Uint8Array
+        expect(passedPayload).toBeInstanceOf(Uint8Array)
+        // Panjang payload harus = 4 (header) + 2 (audio) + 4 (video) = 10 byte
+        expect(passedPayload.byteLength).toBe(10)
+
+        // Verifikasi header audio_len big-endian
+        const view = new DataView(passedPayload.buffer, passedPayload.byteOffset, passedPayload.byteLength)
+        expect(view.getUint32(0, false)).toBe(2)
+        // Verifikasi isi audio dan video
+        expect(Array.from(passedPayload.slice(4, 6))).toEqual([100, 200])
+        expect(Array.from(passedPayload.slice(6))).toEqual([10, 20, 30, 40])
+
+        // Verifikasi hasil kembalian adalah Uint8Array
+        expect(remuxRes.ok).toBe(true)
+        if (remuxRes.ok) {
+            expect(remuxRes.data).toBeInstanceOf(Uint8Array)
+            expect(Array.from(remuxRes.data)).toEqual([7, 8, 9])
+        }
+
+        // 2. Uji remuxVideoMp4 tanpa audio (audio_len = 0)
+        invokeMock.mockResolvedValueOnce(new Uint8Array([1, 2, 3]))
+        const remuxNoAudioRes = await adapter.media.remuxVideoMp4(dummyVideo)
+        const passedNoAudio = invokeMock.mock.calls[1]?.[1] as Uint8Array
+        const noAudioView = new DataView(passedNoAudio.buffer, passedNoAudio.byteOffset, passedNoAudio.byteLength)
+        expect(noAudioView.getUint32(0, false)).toBe(0)
+        expect(passedNoAudio.byteLength).toBe(4 + dummyVideo.byteLength)
+        expect(remuxNoAudioRes.ok).toBe(true)
+
+        // 3. Uji remuxVideoMp4 saat backend melempar error
+        invokeMock.mockRejectedValueOnce(new Error('FFmpeg missing in system'))
+        const remuxFail = await adapter.media.remuxVideoMp4(dummyVideo)
+        expect(remuxFail.ok).toBe(false)
+        if (!remuxFail.ok) {
+            expect(remuxFail.error.code).toBe('VIDEO_REMUX_ERROR')
+            expect(remuxFail.error.message).toContain('FFmpeg missing')
+        }
+
+        // 4. Uji saveVideoFile mentransmisikan Uint8Array dan header URL-encoded
+        const saveBytes = new Uint8Array([55, 66, 77, 88])
+        invokeMock.mockResolvedValueOnce({ ok: true, data: '/path/to/saved/video.mp4' })
+        const saveRes = await adapter.media.saveVideoFile('hasil export 2026.mp4', saveBytes)
+
+        expect(invokeMock).toHaveBeenCalledWith('save_video_file', saveBytes, {
+            headers: {
+                'x-file-name': 'hasil%20export%202026.mp4',
+            },
+        })
+        expect(saveRes.ok).toBe(true)
+        if (saveRes.ok) {
+            expect(saveRes.data).toBe('/path/to/saved/video.mp4')
+        }
+
+        // 5. Uji saveVideoFile kegagalan mutasi backend
+        invokeMock.mockResolvedValueOnce({ ok: false, error: 'Akses disk ditolak' })
+        const saveFail = await adapter.media.saveVideoFile('test.mp4', saveBytes)
+        expect(saveFail.ok).toBe(false)
+        if (!saveFail.ok) {
+            expect(saveFail.error.code).toBe('SAVE_VIDEO_FAILED')
+            expect(saveFail.error.message).toBe('Akses disk ditolak')
         }
     })
 })
