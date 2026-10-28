@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { type ExecutionGrade, type TradeDetail, computePlannedRR } from '@shared/domain'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { type TradeDetail, computePlannedRR } from '@shared/domain'
 import { Modal } from './ui'
-import { formatDate, formatDateTime, formatDuration, formatPercent, formatPnl, formatPrice, formatR } from '../lib/format'
+import { formatDuration } from '../lib/format'
 import { cn } from '../lib/utils'
 import {
     BUILTIN_TEMPLATES,
@@ -32,15 +32,20 @@ import {
     VIDEO_DURATION_OPTIONS
 } from '../lib/shareSettings'
 import { nitireksoLogo, getExchangeDefaultLogo } from '../lib/exchangeAssets'
-import { captureAndExportGif } from '../lib/gif-export'
-import { captureAndExportVideo, mediaUrlToBytes } from '../lib/video-export'
 import { composeAspectFrame } from '../lib/share-frame'
 import { SharePnlErrorCode, logSharePnlError, getSharePnlUserMessage } from '../lib/shareErrorCodes'
 import { BackgroundAdjustBar } from './share/BackgroundAdjustBar'
 import { AspectFrameControls } from './share/AspectFrameControls'
 import { CaptionMakerPanel } from './share/CaptionMakerPanel'
+import { PnlCard } from './share/PnlCard'
 import { buildCaptionContext, renderCaption } from '../lib/caption-generator'
 import { useHidePnl } from '../hooks/useHidePnl'
+import {
+    CardCanvasEngine,
+    buildPnlCardSpec,
+    exportCardMedia,
+    saveMediaFile
+} from '../lib/share'
 
 // ---------------------------------------------------------------------------
 // Tipe Props
@@ -51,144 +56,6 @@ export interface SharePnlModalProps {
     detail?: TradeDetail | null
     isOpen?: boolean
     onClose: () => void
-}
-
-// ---------------------------------------------------------------------------
-// Helper Dimming Gradient (CSS & Canvas)
-// ---------------------------------------------------------------------------
-
-export function getGradientDimmingStyle(bgDimming: number, direction: BgDimmingDirection = 'uniform'): React.CSSProperties {
-    const baseOpacity = bgDimming / 100
-    const darkOpacity = Math.min(0.96, baseOpacity * 1.15)
-    const lightOpacity = Math.max(0.12, baseOpacity * 0.28)
-
-    switch (direction) {
-        case 'top-right':
-            return {
-                background: `linear-gradient(to top right, rgba(0,0,0,${darkOpacity}) 0%, rgba(0,0,0,${baseOpacity}) 45%, rgba(0,0,0,${lightOpacity}) 100%)`
-            }
-        case 'top-left':
-            return {
-                background: `linear-gradient(to top left, rgba(0,0,0,${darkOpacity}) 0%, rgba(0,0,0,${baseOpacity}) 45%, rgba(0,0,0,${lightOpacity}) 100%)`
-            }
-        case 'bottom-right':
-            return {
-                background: `linear-gradient(to bottom right, rgba(0,0,0,${darkOpacity}) 0%, rgba(0,0,0,${baseOpacity}) 45%, rgba(0,0,0,${lightOpacity}) 100%)`
-            }
-        case 'bottom-left':
-            return {
-                background: `linear-gradient(to bottom left, rgba(0,0,0,${darkOpacity}) 0%, rgba(0,0,0,${baseOpacity}) 45%, rgba(0,0,0,${lightOpacity}) 100%)`
-            }
-        case 'left':
-            return {
-                background: `linear-gradient(to right, rgba(0,0,0,${lightOpacity}) 0%, rgba(0,0,0,${darkOpacity}) 100%)`
-            }
-        case 'right':
-            return {
-                background: `linear-gradient(to left, rgba(0,0,0,${lightOpacity}) 0%, rgba(0,0,0,${darkOpacity}) 100%)`
-            }
-        case 'uniform':
-        default:
-            return {
-                backgroundColor: `rgba(0, 0, 0, ${baseOpacity})`
-            }
-    }
-}
-
-export function applyCanvasDimming(
-    ctx: CanvasRenderingContext2D,
-    W: number,
-    H: number,
-    bgDimming: number,
-    direction: BgDimmingDirection = 'uniform'
-): void {
-    const baseOpacity = bgDimming / 100
-    const darkOpacity = Math.min(0.96, baseOpacity * 1.15)
-    const lightOpacity = Math.max(0.12, baseOpacity * 0.28)
-
-    switch (direction) {
-        case 'top-right': {
-            const grad = ctx.createLinearGradient(0, H, W, 0)
-            grad.addColorStop(0, `rgba(0, 0, 0, ${darkOpacity})`)
-            grad.addColorStop(0.45, `rgba(0, 0, 0, ${baseOpacity})`)
-            grad.addColorStop(1, `rgba(0, 0, 0, ${lightOpacity})`)
-            ctx.fillStyle = grad
-            break
-        }
-        case 'top-left': {
-            const grad = ctx.createLinearGradient(W, H, 0, 0)
-            grad.addColorStop(0, `rgba(0, 0, 0, ${darkOpacity})`)
-            grad.addColorStop(0.45, `rgba(0, 0, 0, ${baseOpacity})`)
-            grad.addColorStop(1, `rgba(0, 0, 0, ${lightOpacity})`)
-            ctx.fillStyle = grad
-            break
-        }
-        case 'bottom-right': {
-            const grad = ctx.createLinearGradient(0, 0, W, H)
-            grad.addColorStop(0, `rgba(0, 0, 0, ${darkOpacity})`)
-            grad.addColorStop(0.45, `rgba(0, 0, 0, ${baseOpacity})`)
-            grad.addColorStop(1, `rgba(0, 0, 0, ${lightOpacity})`)
-            ctx.fillStyle = grad
-            break
-        }
-        case 'bottom-left': {
-            const grad = ctx.createLinearGradient(W, 0, 0, H)
-            grad.addColorStop(0, `rgba(0, 0, 0, ${darkOpacity})`)
-            grad.addColorStop(0.45, `rgba(0, 0, 0, ${baseOpacity})`)
-            grad.addColorStop(1, `rgba(0, 0, 0, ${lightOpacity})`)
-            ctx.fillStyle = grad
-            break
-        }
-        case 'left': {
-            const grad = ctx.createLinearGradient(W, 0, 0, 0)
-            grad.addColorStop(0, `rgba(0, 0, 0, ${darkOpacity})`)
-            grad.addColorStop(1, `rgba(0, 0, 0, ${lightOpacity})`)
-            ctx.fillStyle = grad
-            break
-        }
-        case 'right': {
-            const grad = ctx.createLinearGradient(0, 0, W, 0)
-            grad.addColorStop(0, `rgba(0, 0, 0, ${darkOpacity})`)
-            grad.addColorStop(1, `rgba(0, 0, 0, ${lightOpacity})`)
-            ctx.fillStyle = grad
-            break
-        }
-        case 'uniform':
-        default: {
-            ctx.fillStyle = `rgba(0, 0, 0, ${baseOpacity})`
-            break
-        }
-    }
-    ctx.fillRect(0, 0, W, H)
-}
-
-// ---------------------------------------------------------------------------
-// Helper Pemecah Teks Canvas (Word Wrap Dinamis)
-// ---------------------------------------------------------------------------
-
-function wrapCanvasText(
-    ctx: CanvasRenderingContext2D,
-    text: string,
-    maxWidth: number
-): string[] {
-    const words = text.split(/\s+/)
-    const lines: string[] = []
-    let currentLine = ''
-
-    for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word
-        const metrics = ctx.measureText(testLine)
-        if (metrics.width > maxWidth && currentLine) {
-            lines.push(currentLine)
-            currentLine = word
-        } else {
-            currentLine = testLine
-        }
-    }
-    if (currentLine) {
-        lines.push(currentLine)
-    }
-    return lines
 }
 
 // ---------------------------------------------------------------------------
@@ -727,14 +594,19 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const lastValidBgCanvasRef = useRef<HTMLCanvasElement | null>(null)
     const exchangeLogoImgRef = useRef<HTMLImageElement | null>(null)
     const nitireksoLogoImgRef = useRef<HTMLImageElement | null>(null)
+    const [, setMediaVersion] = useState(0)
+    const triggerCanvasRedraw = useCallback(() => setMediaVersion((v) => v + 1), [])
 
     // Preload logo Nitirekso (untuk watermark canvas)
     useEffect(() => {
         const img = new Image()
         img.crossOrigin = 'anonymous'
         img.src = nitireksoLogo
-        img.onload = () => { nitireksoLogoImgRef.current = img }
-    }, [])
+        img.onload = () => {
+            nitireksoLogoImgRef.current = img
+            triggerCanvasRedraw()
+        }
+    }, [triggerCanvasRedraw])
 
     // Preload gambar Avatar
     useEffect(() => {
@@ -742,11 +614,14 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             const img = new Image()
             img.crossOrigin = 'anonymous'
             img.src = avatarUrl
-            img.onload = () => { avatarImgRef.current = img }
+            img.onload = () => {
+                avatarImgRef.current = img
+                triggerCanvasRedraw()
+            }
         } else {
             avatarImgRef.current = null
         }
-    }, [avatarUrl])
+    }, [avatarUrl, triggerCanvasRedraw])
 
     // Preload gambar atau video Custom Background Aktif untuk mesin canvas / video export
     useEffect(() => {
@@ -825,7 +700,10 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                     img.crossOrigin = 'anonymous'
                 }
                 img.src = playableUrl
-                img.onload = () => { customBgImgRef.current = img }
+                img.onload = () => {
+                    customBgImgRef.current = img
+                    triggerCanvasRedraw()
+                }
                 offscreenBgVideoRef.current = null
             }
         } else {
@@ -833,7 +711,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             customBgImgRef.current = null
             offscreenBgVideoRef.current = null
         }
-    }, [activeCustomBgPlayableUrl, activeCustomBgMediaType])
+    }, [activeCustomBgPlayableUrl, activeCustomBgMediaType, triggerCanvasRedraw])
 
     // Preload logo exchange aktif
     useEffect(() => {
@@ -841,734 +719,137 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             const img = new Image()
             img.crossOrigin = 'anonymous'
             img.src = activeLogoUrl
-            img.onload = () => { exchangeLogoImgRef.current = img }
+            img.onload = () => {
+                exchangeLogoImgRef.current = img
+                triggerCanvasRedraw()
+            }
         } else {
             exchangeLogoImgRef.current = null
         }
-    }, [activeLogoUrl])
-
-    const activeLogoImg = exchangeLogoImgRef.current
+    }, [activeLogoUrl, triggerCanvasRedraw])
 
     // -----------------------------------------------------------------------
-    // Mesin Render Canvas Dinamis (Auto-Flow Y Layout Engine)
+    // Pembangun Spesifikasi Render & Delegasi ke CardCanvasEngine
     // -----------------------------------------------------------------------
-    const drawToCanvas = useCallback((targetCanvas?: HTMLCanvasElement): HTMLCanvasElement => {
-        const canvas = targetCanvas || canvasRef.current || document.createElement('canvas')
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return canvas
-
-        // 1. Ukuran Kartu Standar & Usable Area
-        const W = 1080
-        const mx = 48
-        const cw = W - mx * 2 // 984px
-        const cx = mx + 52
-        const contentW = cw - 104 // 880px
-
-        // 2. Hitung Ukuran Teks Thesis (Penuh atau Compact)
-        ctx.font = 'italic 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        let thesisLines: string[] = []
-        let thesisBoxH = 0
-        if (showThesis && customThesis.trim()) {
-            thesisLines = wrapCanvasText(ctx, customThesis.trim(), contentW - 48)
-            if (!showFullText && thesisLines.length > 4) {
-                thesisLines = thesisLines.slice(0, 4)
-                thesisLines[3] = (thesisLines[3] || '') + '…'
-            }
-            thesisBoxH = 46 + thesisLines.length * 36 + 22
-        }
-
-        // 3. Hitung Ukuran Teks Review (Penuh atau Compact)
-        ctx.font = '22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        let reviewLines: string[] = []
-        let reviewBoxH = 0
-        if (showReview && customReview.trim()) {
-            reviewLines = wrapCanvasText(ctx, customReview.trim(), contentW - 48)
-            if (!showFullText && reviewLines.length > 3) {
-                reviewLines = reviewLines.slice(0, 3)
-                reviewLines[2] = (reviewLines[2] || '') + '…'
-            }
-            reviewBoxH = 44 + reviewLines.length * 34 + 22
-        }
-
-        // 4. Hitung Tinggi Total Kartu Secara Dinamis
-        const hasReferralDisplay = showReferral && !!activeReferral.trim()
-        const headerH = hasReferralDisplay ? 68 : 40
-        const my = 48
-        const padTop = 52
-        const padBottom = 48
-        const symbolH = 48
-        const roiH = showRoi ? 92 : 0
-        const pnlH = showPnl ? 46 : 0
-        const statsH = showTradeTimes ? 158 : 132
-        const planBoxH = 120
-        const footerH = (showProfile || showWatermark) ? 68 : 0
-
-        const hasBadges = (showSetup && !!setupTag) || (showGrade && !!executionGrade) || (showEmotion && !!emotionTag)
-        const badgesH = hasBadges ? 40 : 0
-
-        let innerH = padTop + headerH + 32 + symbolH + (hasBadges ? 16 + badgesH : 0) + 24
-        if (showRoi) innerH += roiH + 16
-        if (showPnl) innerH += pnlH + 28
-        innerH += statsH
-        if (showPlan) {
-            innerH += 16 + planBoxH + 20
-        } else {
-            innerH += 28
-        }
-        if (thesisBoxH > 0) innerH += thesisBoxH + 20
-        if (reviewBoxH > 0) innerH += reviewBoxH + 20
-        if (footerH > 0) innerH += 24 + 1 + 24 + footerH
-        innerH += padBottom
-
-        const ch = innerH
-        const H = ch + my * 2
-
-        canvas.width = W
-        canvas.height = H
-
-        // 5. Gambar Latar Belakang Luar
-        const isTransparentMode = !isCustomBgActive && bg.isTransparent
-
-        if (isTransparentMode) {
-            ctx.clearRect(0, 0, W, H)
-        } else {
-            const bgGrad = ctx.createLinearGradient(0, 0, W, H)
-            if (bg.isCustom && bg.bgStart && bg.bgEnd) {
-                bgGrad.addColorStop(0, bg.bgStart)
-                bgGrad.addColorStop(1, bg.bgEnd)
-                ctx.fillStyle = bgGrad
-            } else if (bg.id === 'cyberpunk') {
-                const radGrad = ctx.createRadialGradient(W * 0.3, H * 0.2, 50, W * 0.5, H * 0.5, W)
-                radGrad.addColorStop(0, '#1e0836')
-                radGrad.addColorStop(0.6, '#0a0014')
-                radGrad.addColorStop(1, '#000000')
-                ctx.fillStyle = radGrad
-            } else if (bg.id === 'emerald') {
-                bgGrad.addColorStop(0, '#064e3b')
-                bgGrad.addColorStop(0.6, '#022c22')
-                bgGrad.addColorStop(1, '#020617')
-                ctx.fillStyle = bgGrad
-            } else if (bg.id === 'sunset') {
-                bgGrad.addColorStop(0, '#2e1065')
-                bgGrad.addColorStop(0.4, '#1e0a30')
-                bgGrad.addColorStop(1, '#0f172a')
-                ctx.fillStyle = bgGrad
-            } else if (bg.id === 'obsidian') {
-                bgGrad.addColorStop(0, '#18181b')
-                bgGrad.addColorStop(0.6, '#09090b')
-                bgGrad.addColorStop(1, '#000000')
-                ctx.fillStyle = bgGrad
-            } else {
-                bgGrad.addColorStop(0, '#0d1117')
-                bgGrad.addColorStop(0.5, '#0a0e1a')
-                bgGrad.addColorStop(1, '#060912')
-                ctx.fillStyle = bgGrad
-            }
-            ctx.fillRect(0, 0, W, H)
-        }
-
-        // 6. Custom Background (Gambar atau Video) jika aktif
+    const buildCurrentSpec = useCallback(() => {
+        let customMedia: CanvasImageSource | null = null
         if (isCustomBgActive) {
-            let drewMedia = false
-
             const activeVid = offscreenBgVideoRef.current || domBgVideoRef.current
             if (activeCustomBgMediaType === 'video' && activeVid) {
-                const vid = activeVid
-                const hasValidFrame = (vid.videoWidth > 0 && vid.videoHeight > 0) || vid.readyState >= 1
+                const hasValidFrame = (activeVid.videoWidth > 0 && activeVid.videoHeight > 0) || activeVid.readyState >= 1
                 if (hasValidFrame) {
-                    const vidW = vid.videoWidth || 1920
-                    const vidH = vid.videoHeight || 1080
-                    const vidAspect = vidW / vidH
-                    const canvasAspect = W / H
-                    let dw = W, dh = H, dx = 0, dy = 0
-
-                    if (vidAspect > canvasAspect) {
-                        dh = H
-                        dw = H * vidAspect
-                        dx = (W - dw) * (bgPosX / 100)
-                        dy = (H - dh) * (bgPosY / 100)
-                    } else {
-                        dw = W
-                        dh = W / vidAspect
-                        dx = (W - dw) * (bgPosX / 100)
-                        dy = (H - dh) * (bgPosY / 100)
+                    customMedia = activeVid
+                    if (!lastValidBgCanvasRef.current) {
+                        lastValidBgCanvasRef.current = document.createElement('canvas')
                     }
-
-                    try {
-                        ctx.drawImage(vid, dx, dy, dw, dh)
-                        drewMedia = true
-
-                        // Cache frame video yang valid ke canvas offscreen sebagai benteng anti-flicker
-                        if (!lastValidBgCanvasRef.current) {
-                            lastValidBgCanvasRef.current = document.createElement('canvas')
-                        }
-                        if (lastValidBgCanvasRef.current.width !== W || lastValidBgCanvasRef.current.height !== H) {
-                            lastValidBgCanvasRef.current.width = W
-                            lastValidBgCanvasRef.current.height = H
-                        }
-                        const cacheCtx = lastValidBgCanvasRef.current.getContext('2d')
-                        if (cacheCtx) {
-                            cacheCtx.drawImage(vid, dx, dy, dw, dh)
-                        }
-                    } catch (e) {
-                        console.warn('[SharePnl] Gagal menggambar frame video langsung:', e)
+                    const vidW = activeVid.videoWidth || 1920
+                    const vidH = activeVid.videoHeight || 1080
+                    if (lastValidBgCanvasRef.current.width !== vidW || lastValidBgCanvasRef.current.height !== vidH) {
+                        lastValidBgCanvasRef.current.width = vidW
+                        lastValidBgCanvasRef.current.height = vidH
                     }
-                }
-                
-                if (!drewMedia && lastValidBgCanvasRef.current) {
-                    // Fallback defensif: gunakan frame video terakhir yang valid agar tidak pernah terjadi kedip hitam
-                    ctx.drawImage(lastValidBgCanvasRef.current, 0, 0, W, H)
-                    drewMedia = true
+                    const cacheCtx = lastValidBgCanvasRef.current.getContext('2d')
+                    if (cacheCtx) {
+                        try {
+                            cacheCtx.drawImage(activeVid, 0, 0)
+                        } catch {
+                            // Abaikan jika frame belum siap
+                        }
+                    }
+                } else if (lastValidBgCanvasRef.current) {
+                    customMedia = lastValidBgCanvasRef.current
                 }
             } else if (customBgImgRef.current && customBgImgRef.current.complete) {
-                const img = customBgImgRef.current
-                const imgAspect = img.width / img.height
-                const canvasAspect = W / H
-                let dw = W, dh = H, dx = 0, dy = 0
-
-                if (imgAspect > canvasAspect) {
-                    dh = H
-                    dw = H * imgAspect
-                    dx = (W - dw) * (bgPosX / 100)
-                    dy = (H - dh) * (bgPosY / 100)
-                } else {
-                    dw = W
-                    dh = W / imgAspect
-                    dx = (W - dw) * (bgPosX / 100)
-                    dy = (H - dh) * (bgPosY / 100)
-                }
-                ctx.drawImage(img, dx, dy, dw, dh)
-                drewMedia = true
-            }
-
-            if (drewMedia) {
-                applyCanvasDimming(ctx, W, H, bgDimming, bgDimmingDirection)
+                customMedia = customBgImgRef.current
             }
         }
 
-        // 7. Grid Texture & Ambient Glow
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)'
-        ctx.lineWidth = 1
-        for (let x = 0; x < W; x += 64) {
-            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke()
-        }
-        for (let y = 0; y < H; y += 64) {
-            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke()
-        }
-
-        const glowRad = ctx.createRadialGradient(W / 2, my + 200, 30, W / 2, my + 200, W * 0.45)
-        glowRad.addColorStop(0, `${accent}1c`)
-        glowRad.addColorStop(1, 'transparent')
-        ctx.fillStyle = glowRad
-        ctx.fillRect(0, 0, W, H)
-
-        // 8. Kontainer Kartu Glassmorphism
-        const cr = 32
-        ctx.save()
-        ctx.beginPath()
-        ctx.roundRect(mx, my, cw, ch, cr)
-        if (isTransparentMode) {
-            ctx.fillStyle = 'rgba(11, 15, 25, 0.88)'
-            ctx.strokeStyle = `${accent}66`
-        } else {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.03)'
-            ctx.strokeStyle = `${accent}44`
-        }
-        ctx.lineWidth = 1.5
-        ctx.fill()
-        ctx.stroke()
-        ctx.restore()
-
-        // -------------------------------------------------------------------
-        // Penataan Elemen Berurutan Secara Dinamis (Auto Flow Y)
-        // -------------------------------------------------------------------
-        let curY = my + padTop
-
-        // A. Header: Logo/Nama Brand + Logo Exchange & Kode Referral
-        ctx.save()
-        // Nama Brand Utama (dinamis dari settings)
-        ctx.font = 'bold 30px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        ctx.fillStyle = '#ffffff'
-        ctx.fillText(brandTitle, cx, curY + 28)
-
-        // Sub-label Badge Brand (dinamis dari settings)
-        const brandTitleW = ctx.measureText(brandTitle).width
-        ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        const badgeW = ctx.measureText(brandSubtitle).width + 24
-        ctx.fillStyle = `${accent}26`
-        ctx.strokeStyle = `${accent}55`
-        ctx.lineWidth = 1
-        ctx.beginPath()
-        ctx.roundRect(cx + brandTitleW + 16, curY + 6, badgeW, 28, 6)
-        ctx.fill()
-        ctx.stroke()
-        ctx.fillStyle = accent
-        ctx.fillText(brandSubtitle, cx + brandTitleW + 28, curY + 26)
-
-        // Exchange Logo / Badge (Sisi Kanan)
-        const rightEdgeX = mx + cw - 52
-        if (activeLogoImg && activeLogoImg.complete) {
-            // Render gambar logo kustom
-            const maxLogoH = 34
-            const logoAspect = activeLogoImg.width / activeLogoImg.height
-            const logoW = Math.min(140, maxLogoH * logoAspect)
-            const logoX = rightEdgeX - logoW
-            ctx.drawImage(activeLogoImg, logoX, curY + 2, logoW, maxLogoH)
-
-            // Tampilkan Referral di bawah logo jika ada
-            if (hasReferralDisplay) {
-                const refText = `Ref: ${activeReferral}`
-                ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                const refW = ctx.measureText(refText).width + 20
-                const refX = rightEdgeX - refW
-                const refY = curY + maxLogoH + 8
-
-                ctx.fillStyle = 'rgba(56, 189, 248, 0.15)'
-                ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)'
-                ctx.lineWidth = 1
-                ctx.beginPath()
-                ctx.roundRect(refX, refY, refW, 24, 6)
-                ctx.fill()
-                ctx.stroke()
-                ctx.fillStyle = '#38bdf8'
-                ctx.fillText(refText, refX + 10, refY + 18)
-            }
-        } else {
-            // Render badge teks default exchange (MEXC / BITUNIX)
-            const exText = selectedExchange.toUpperCase()
-            ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            const exW = ctx.measureText(exText).width + 32
-            const exX = rightEdgeX - exW
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.08)'
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)'
-            ctx.lineWidth = 1
-            ctx.beginPath()
-            ctx.roundRect(exX, curY + 2, exW, 32, 8)
-            ctx.fill()
-            ctx.stroke()
-            ctx.fillStyle = '#cbd5e1'
-            ctx.fillText(exText, exX + 16, curY + 25)
-
-            // Tampilkan Referral di bawah badge exchange
-            if (hasReferralDisplay) {
-                const refText = `Ref: ${activeReferral}`
-                ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                const refW = ctx.measureText(refText).width + 20
-                const refX = rightEdgeX - refW
-                const refY = curY + 40
-
-                ctx.fillStyle = 'rgba(56, 189, 248, 0.15)'
-                ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)'
-                ctx.lineWidth = 1
-                ctx.beginPath()
-                ctx.roundRect(refX, refY, refW, 24, 6)
-                ctx.fill()
-                ctx.stroke()
-                ctx.fillStyle = '#38bdf8'
-                ctx.fillText(refText, refX + 10, refY + 18)
-            }
-        }
-        ctx.restore()
-
-        curY += headerH + 32
-
-        // B. Symbol + Direction + Leverage
-        ctx.save()
-        ctx.font = 'bold 48px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        ctx.fillStyle = '#ffffff'
-        ctx.fillText(trade.trade.symbol, cx, curY + 36)
-
-        if (showSide) {
-            const symW = ctx.measureText(trade.trade.symbol).width
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.25)'
-            ctx.fillRect(cx + symW + 20, curY + 6, 2, 34)
-
-            ctx.font = 'bold 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = accent
-            const dirStr = trade.trade.direction.toUpperCase()
-            ctx.fillText(dirStr, cx + symW + 36, curY + 34)
-
-            const dirW = ctx.measureText(dirStr).width
-            ctx.fillStyle = '#ffffff'
-            ctx.font = 'bold 26px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillText(`${leverage}X`, cx + symW + 36 + dirW + 12, curY + 34)
-        }
-        ctx.restore()
-
-        // B2. Journal Meta Badges (Setup, Grade, Emotion) di Canvas
-        if (hasBadges) {
-            curY += symbolH + 16
-            ctx.save()
-            let badgeX = cx
-            const badgeY = curY
-            const badgeH = 36
-            const badgeRadius = 10
-
-            const drawBadge = (label: string, icon: string, textColor: string, bgColor: string, borderColor: string) => {
-                ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                const fullText = `${icon} ${label}`
-                const textW = ctx.measureText(fullText).width
-                const pillW = textW + 28
-
-                if (badgeX + pillW > cx + contentW) return
-
-                ctx.fillStyle = bgColor
-                ctx.strokeStyle = borderColor
-                ctx.lineWidth = 1.2
-                ctx.beginPath()
-                ctx.roundRect(badgeX, badgeY, pillW, badgeH, badgeRadius)
-                ctx.fill()
-                ctx.stroke()
-
-                ctx.fillStyle = textColor
-                ctx.fillText(fullText, badgeX + 14, badgeY + 25)
-
-                badgeX += pillW + 12
-            }
-
-            if (showSetup && setupTag) {
-                drawBadge(setupTag, '🎯', '#38bdf8', 'rgba(56, 189, 248, 0.14)', 'rgba(56, 189, 248, 0.32)')
-            }
-
-            if (showGrade && executionGrade) {
-                const gradeColors: Record<string, { text: string; bg: string; border: string }> = {
-                    A: { text: '#34d399', bg: 'rgba(52, 211, 153, 0.16)', border: 'rgba(52, 211, 153, 0.36)' },
-                    B: { text: '#38bdf8', bg: 'rgba(56, 189, 248, 0.16)', border: 'rgba(56, 189, 248, 0.36)' },
-                    C: { text: '#fbbf24', bg: 'rgba(251, 191, 36, 0.16)', border: 'rgba(251, 191, 36, 0.36)' },
-                    D: { text: '#f87171', bg: 'rgba(248, 113, 113, 0.16)', border: 'rgba(248, 113, 113, 0.36)' }
-                }
-                const defaultGradeColor = { text: '#38bdf8', bg: 'rgba(56, 189, 248, 0.16)', border: 'rgba(56, 189, 248, 0.36)' }
-                const gc = gradeColors[executionGrade] || defaultGradeColor
-                drawBadge(`Grade ${executionGrade}`, '⭐', gc.text, gc.bg, gc.border)
-            }
-
-            if (showEmotion && emotionTag) {
-                const emotionIcons: Record<string, string> = {
-                    calm: '😌',
-                    fomo: '⚡',
-                    greed: '🔥',
-                    revenge: '😤',
-                    anxious: '😰',
-                    overconfident: '😎'
-                }
-                const emoIcon = emotionIcons[emotionTag.toLowerCase()] || '🧠'
-                drawBadge(emotionTag.charAt(0).toUpperCase() + emotionTag.slice(1), emoIcon, '#c084fc', 'rgba(192, 132, 252, 0.15)', 'rgba(192, 132, 252, 0.35)')
-            }
-
-            ctx.restore()
-            curY += badgesH + 24
-        } else {
-            curY += symbolH + 24
-        }
-
-        // C. ROI Hero Text
-        if (showRoi) {
-            ctx.save()
-            ctx.font = 'bold 96px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = accent
-            ctx.fillText(formatPercent(roiPercent), cx, curY + 76)
-            ctx.restore()
-            curY += roiH + 16
-        }
-
-        // D. PnL Amount & R-Multiple
-        if (showPnl) {
-            ctx.save()
-            ctx.font = '600 38px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = accent
-            const pnlStr = hidePnl ? '••••' : `${formatPnl(trade.trade.realizedPnl)} USDT`
-            ctx.fillText(pnlStr, cx, curY + 32)
-
-            if (trade.rMultiple !== null && trade.rMultiple !== undefined) {
-                const pnlW = ctx.measureText(pnlStr).width
-                ctx.fillStyle = '#38bdf8'
-                ctx.font = '500 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                ctx.fillText(`  ·  ${formatR(trade.rMultiple)}`, cx + pnlW, curY + 32)
-            }
-            ctx.restore()
-            curY += pnlH + 28
-        }
-
-        // E. Stats Row Grid (Entry, Exit, Duration, Aktual R:R)
-        ctx.save()
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.04)'
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
-        ctx.lineWidth = 1
-        ctx.beginPath()
-        ctx.roundRect(cx, curY, contentW, statsH, 18)
-        ctx.fill()
-        ctx.stroke()
-
-        const statColW = contentW / 4
-        const drawStatCol = (title: string, val: string, colIdx: number, valColor = '#ffffff', subText?: string) => {
-            const colX = cx + statColW * colIdx + 20
-            ctx.font = '20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = bg.textSub
-            ctx.fillText(title, colX, curY + 44)
-
-            ctx.font = 'bold 26px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = valColor
-            ctx.fillText(val, colX, curY + 86)
-
-            if (subText) {
-                ctx.font = '15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                ctx.fillStyle = bg.textSub
-                ctx.fillText(subText, colX, curY + 124)
-            }
-        }
-
-        const actualRVal = trade.rMultiple !== null && trade.rMultiple !== undefined
-            ? formatR(trade.rMultiple)
-            : '—'
-        const actualRColor = trade.rMultiple !== null && trade.rMultiple !== undefined
-            ? (trade.rMultiple > 0 ? bg.accentProfit : trade.rMultiple < 0 ? bg.accentLoss : '#ffffff')
-            : '#ffffff'
-
-        const entryTimeText = showTradeTimes && trade.trade.entryTime ? formatDateTime(trade.trade.entryTime) : undefined
-        const exitTimeText = showTradeTimes ? (trade.trade.exitTime ? formatDateTime(trade.trade.exitTime) : 'Posisi Terbuka') : undefined
-
-        drawStatCol('Entry Price', formatPrice(trade.trade.entryPrice), 0, '#ffffff', entryTimeText)
-        drawStatCol('Exit Price', formatPrice(trade.trade.exitPrice), 1, '#ffffff', exitTimeText)
-        drawStatCol('Duration', showDuration ? duration : '—', 2)
-        drawStatCol('R-Multiple', actualRVal, 3, actualRColor)
-
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
-        ctx.beginPath()
-        ctx.moveTo(cx + statColW, curY + 24); ctx.lineTo(cx + statColW, curY + statsH - 24)
-        ctx.moveTo(cx + statColW * 2, curY + 24); ctx.lineTo(cx + statColW * 2, curY + statsH - 24)
-        ctx.moveTo(cx + statColW * 3, curY + 24); ctx.lineTo(cx + statColW * 3, curY + statsH - 24)
-        ctx.stroke()
-        ctx.restore()
-
-        curY += statsH + (showPlan ? 16 : 28)
-
-        // E2. Plan Risk Grid (Plan SL, Plan TP, Plan R:R)
-        if (showPlan) {
-            ctx.save()
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.03)'
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)'
-            ctx.lineWidth = 1
-            ctx.beginPath()
-            ctx.roundRect(cx, curY, contentW, planBoxH, 18)
-            ctx.fill()
-            ctx.stroke()
-
-            const planColW = contentW / 3
-            const drawPlanCol = (title: string, val: string, colIdx: number, valColor: string) => {
-                const colX = cx + planColW * colIdx + 24
-                ctx.font = '20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                ctx.fillStyle = bg.textSub
-                ctx.fillText(title, colX, curY + 44)
-
-                ctx.font = 'bold 26px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                ctx.fillStyle = valColor
-                ctx.fillText(val, colX, curY + 86)
-            }
-
-            const slStr = plannedStop !== null ? formatPrice(plannedStop) : '—'
-            const tpStr = plannedTarget !== null ? formatPrice(plannedTarget) : '—'
-            const rrStr = plannedRr !== null ? `1:${plannedRr.toFixed(2)}` : '—'
-
-            drawPlanCol('Plan SL', slStr, 0, '#f87171')
-            drawPlanCol('Plan TP', tpStr, 1, '#34d399')
-            drawPlanCol('Plan R:R', rrStr, 2, '#38bdf8')
-
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)'
-            ctx.beginPath()
-            ctx.moveTo(cx + planColW, curY + 20); ctx.lineTo(cx + planColW, curY + planBoxH - 20)
-            ctx.moveTo(cx + planColW * 2, curY + 20); ctx.lineTo(cx + planColW * 2, curY + planBoxH - 20)
-            ctx.stroke()
-            ctx.restore()
-
-            curY += planBoxH + 20
-        }
-
-        // F. Trade Thesis (Dinamis: Penuh / Compact)
-        if (thesisBoxH > 0) {
-            ctx.save()
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.7)'
-            ctx.strokeStyle = `${accent}44`
-            ctx.lineWidth = 1.5
-            ctx.beginPath()
-            ctx.roundRect(cx, curY, contentW, thesisBoxH, 18)
-            ctx.fill()
-            ctx.stroke()
-
-            ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = accent
-            ctx.fillText('💡 Trade Thesis', cx + 24, curY + 34)
-
-            ctx.font = 'italic 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.88)'
-            thesisLines.forEach((l, i) => {
-                ctx.fillText(l, cx + 24, curY + 70 + i * 36)
-            })
-            ctx.restore()
-
-            curY += thesisBoxH + 20
-        }
-
-        // G. Post-Trade Review (Dinamis: Penuh / Compact)
-        if (reviewBoxH > 0) {
-            ctx.save()
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.55)'
-            ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)'
-            ctx.lineWidth = 1
-            ctx.beginPath()
-            ctx.roundRect(cx, curY, contentW, reviewBoxH, 18)
-            ctx.fill()
-            ctx.stroke()
-
-            ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = '#38bdf8'
-            ctx.fillText('📝 Post-Trade Review', cx + 24, curY + 32)
-
-            ctx.font = '22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'
-            reviewLines.forEach((l, i) => {
-                ctx.fillText(l, cx + 24, curY + 66 + i * 34)
-            })
-            ctx.restore()
-
-            curY += reviewBoxH + 20
-        }
-
-        // H. Footer: Avatar Gambar / Inisial + Handle + Watermark
-        if (showProfile || showWatermark) {
-            curY += 12
-
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'
-            ctx.lineWidth = 1
-            ctx.beginPath()
-            ctx.moveTo(cx, curY)
-            ctx.lineTo(cx + contentW, curY)
-            ctx.stroke()
-
-            curY += 24
-
-            if (showProfile) {
-                const avatarSize = 54
-                const avatarX = cx
-                const avatarY = curY + 4
-
-                if (avatarImgRef.current && avatarImgRef.current.complete) {
-                    ctx.save()
-                    ctx.beginPath()
-                    ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2)
-                    ctx.closePath()
-                    ctx.clip()
-                    ctx.drawImage(avatarImgRef.current, avatarX, avatarY, avatarSize, avatarSize)
-                    ctx.restore()
-
-                    ctx.save()
-                    ctx.strokeStyle = accent
-                    ctx.lineWidth = 2.5
-                    ctx.beginPath()
-                    ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2)
-                    ctx.stroke()
-                    ctx.restore()
-                } else {
-                    ctx.save()
-                    ctx.fillStyle = `${accent}33`
-                    ctx.strokeStyle = accent
-                    ctx.lineWidth = 2
-                    ctx.beginPath()
-                    ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2)
-                    ctx.fill()
-                    ctx.stroke()
-
-                    ctx.fillStyle = '#ffffff'
-                    ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                    const initText = traderHandle.replace('@', '').slice(0, 2).toUpperCase() || 'TR'
-                    const initW = ctx.measureText(initText).width
-                    ctx.fillText(initText, avatarX + (avatarSize - initW) / 2, avatarY + 35)
-                    ctx.restore()
-                }
-
-                ctx.save()
-                ctx.font = 'bold 26px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                ctx.fillStyle = '#ffffff'
-                ctx.fillText(traderHandle, avatarX + avatarSize + 18, avatarY + 26)
-
-                ctx.font = '20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                ctx.fillStyle = bg.textSub
-                ctx.fillText(formatDate(trade.trade.exitTime), avatarX + avatarSize + 18, avatarY + 52)
-                ctx.restore()
-            }
-
-            if (showWatermark) {
-                ctx.save()
-                const wmLogoImg = nitireksoLogoImgRef.current
-                const logoSize = 42
-                const gap = 12
-
-                ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                const wm1 = 'nitirekso'
-                const w1W = ctx.measureText(wm1).width
-
-                ctx.font = '18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                const wm2 = 'Trading Journal'
-                const w2W = ctx.measureText(wm2).width
-
-                const textBlockW = Math.max(w1W, w2W)
-                const hasLogo = wmLogoImg && wmLogoImg.complete
-                const totalW = hasLogo ? logoSize + gap + textBlockW : textBlockW
-
-                const startX = mx + cw - 52 - totalW
-
-                // Gambar logo nitirekso di samping teks jika sudah termuat
-                if (hasLogo) {
-                    ctx.save()
-                    ctx.beginPath()
-                    ctx.roundRect(startX, curY + 12, logoSize, logoSize, 8)
-                    ctx.clip()
-                    ctx.drawImage(wmLogoImg, startX, curY + 12, logoSize, logoSize)
-                    ctx.restore()
-                }
-
-                const textStartX = hasLogo ? startX + logoSize + gap : startX
-
-                ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'
-                ctx.fillText(wm1, textStartX, curY + 28)
-
-                ctx.font = '18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                ctx.fillStyle = bg.textSub
-                ctx.fillText(wm2, textStartX, curY + 50)
-                ctx.restore()
-            }
-        }
-
-        return canvas
+        return buildPnlCardSpec({
+            trade,
+            bg,
+            isCustomBgActive,
+            customMedia,
+            bgDimming,
+            bgDimmingDirection,
+            bgPosX,
+            bgPosY,
+            brandTitle,
+            brandSubtitle,
+            traderHandle,
+            selectedExchange,
+            activeReferral,
+            exchangeLogo: (exchangeLogoImgRef.current && exchangeLogoImgRef.current.complete) ? exchangeLogoImgRef.current : null,
+            avatarImage: (avatarImgRef.current && avatarImgRef.current.complete) ? avatarImgRef.current : null,
+            watermarkLogo: (nitireksoLogoImgRef.current && nitireksoLogoImgRef.current.complete) ? nitireksoLogoImgRef.current : null,
+            showProfile,
+            showWatermark,
+            showReferral,
+            showSide,
+            showPnl,
+            showRoi,
+            showTradeTimes,
+            showDuration,
+            showPlan,
+            plannedStop,
+            plannedTarget,
+            plannedRr,
+            showSetup,
+            setupTag,
+            showGrade,
+            executionGrade,
+            showEmotion,
+            emotionTag,
+            showThesis,
+            customThesis,
+            showReview,
+            customReview,
+            showFullText,
+            roiPercent,
+            duration,
+            leverage,
+            hideNominal: hidePnl,
+        })
     }, [
-        bg, accent, selectedExchange, trade,
-        showSide, showPnl, showRoi, showProfile, showWatermark, showDuration,
+        trade, bg, isCustomBgActive, activeCustomBgMediaType,
+        bgDimming, bgDimmingDirection, bgPosX, bgPosY,
+        brandTitle, brandSubtitle, traderHandle, selectedExchange, activeReferral,
+        showProfile, showWatermark, showReferral,
+        showSide, showPnl, showRoi, showTradeTimes, showDuration,
         showPlan, plannedStop, plannedTarget, plannedRr,
         showSetup, setupTag, showGrade, executionGrade, showEmotion, emotionTag,
-        showThesis, customThesis, showReview, customReview, showFullText, showReferral,
-        traderHandle, brandTitle, brandSubtitle, activeLogoImg, activeReferral,
-        duration, roiPercent, leverage,
-        isCustomBgActive, activeCustomBgMediaType, bgDimming, bgDimmingDirection,
-        bgPosX, bgPosY
+        showThesis, customThesis, showReview, customReview, showFullText,
+        roiPercent, duration, leverage, hidePnl,
     ])
+
+    const drawToCanvas = useCallback((targetCanvas?: HTMLCanvasElement): HTMLCanvasElement => {
+        const canvas = targetCanvas || canvasRef.current || document.createElement('canvas')
+        const spec = buildCurrentSpec()
+        CardCanvasEngine.render(spec, canvas)
+        return canvas
+    }, [buildCurrentSpec])
 
     // Update canvas preview saat parameter berubah
     useEffect(() => {
         drawToCanvas()
     }, [drawToCanvas])
 
+    // Mengambil elemen media latar belakang aktif (video atau gambar)
+    const getActiveWallpaperMedia = useCallback(() => {
+        return activeCustomBgMediaType === 'video'
+            ? ((offscreenBgVideoRef.current && (offscreenBgVideoRef.current.videoWidth > 0 || offscreenBgVideoRef.current.readyState >= 1))
+                ? offscreenBgVideoRef.current
+                : (domBgVideoRef.current && (domBgVideoRef.current.videoWidth > 0 || domBgVideoRef.current.readyState >= 1))
+                    ? domBgVideoRef.current
+                    : (lastValidBgCanvasRef.current || null))
+            : (customBgImgRef.current || null)
+    }, [activeCustomBgMediaType])
+
     // Mendapatkan canvas final yang telah dikomposisikan dengan rasio aspek yang dipilih (misal TikTok 9:16)
     const getFinalRenderCanvas = useCallback((): HTMLCanvasElement => {
         const rawCardCanvas = drawToCanvas()
         if (exportAspect === '9:16') {
             const targetCanvas = document.createElement('canvas')
-            const activeWp = activeCustomBgMediaType === 'video'
-                ? ((offscreenBgVideoRef.current && (offscreenBgVideoRef.current.videoWidth > 0 || offscreenBgVideoRef.current.readyState >= 1))
-                    ? offscreenBgVideoRef.current
-                    : (domBgVideoRef.current && (domBgVideoRef.current.videoWidth > 0 || domBgVideoRef.current.readyState >= 1))
-                        ? domBgVideoRef.current
-                        : (lastValidBgCanvasRef.current || null))
-                : (customBgImgRef.current || null)
+            const activeWp = getActiveWallpaperMedia()
 
             try {
                 composeAspectFrame(rawCardCanvas, targetCanvas, {
@@ -1590,18 +871,22 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             return targetCanvas
         }
         return rawCardCanvas
-    }, [drawToCanvas, exportAspect, activeCustomBgMediaType, frameBgSource, frameBlur, frameDim, isCustomBgActive])
+    }, [drawToCanvas, exportAspect, getActiveWallpaperMedia, frameBgSource, frameBlur, frameDim, isCustomBgActive])
 
-    const handleDownload = () => {
+    const handleDownload = async () => {
         setDownloading(true)
         try {
-            const canvas = getFinalRenderCanvas()
-            const link = document.createElement('a')
-            const dateStr = new Date().toISOString().slice(0, 10)
-            const aspectSuffix = exportAspect === '9:16' ? '-9x16' : ''
-            link.download = `${brandTitle}-${trade.trade.symbol}-${dateStr}${aspectSuffix}.png`
-            link.href = canvas.toDataURL('image/png')
-            link.click()
+            const spec = buildCurrentSpec()
+            const activeWp = getActiveWallpaperMedia()
+            await exportCardMedia({
+                spec,
+                format: 'png',
+                aspect: exportAspect,
+                frameBgSource,
+                frameBlur,
+                frameDim,
+                wallpaperMediaElement: isCustomBgActive ? activeWp : null,
+            })
         } catch (err) {
             logSharePnlError(
                 SharePnlErrorCode.FILE_SAVE_FAILED,
@@ -1639,21 +924,11 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const handleExportVideo = async () => {
         setExportingVideo(true)
         setVideoProgress(0)
-        const activeVideoEl = offscreenBgVideoRef.current || domBgVideoRef.current
         try {
-            // Hitung durasi rekaman berdasarkan opsi terpilih
+            const spec = buildCurrentSpec()
+            const activeWp = getActiveWallpaperMedia()
             const effectiveSec = getEffectiveDurationSec()
             const durationMs = effectiveSec * 1000
-
-            // Jika wallpaper video aktif, pause dan setel ke awal agar frame dapat dikendalikan per frame
-            if (activeCustomBgMediaType === 'video' && activeVideoEl) {
-                try {
-                    activeVideoEl.pause()
-                    activeVideoEl.currentTime = 0
-                } catch {
-                    // Abaikan jika kontrol video dicegah oleh browser
-                }
-            }
 
             let fps = 30
             let videoBitsPerSecond = 8_000_000
@@ -1665,165 +940,27 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 videoBitsPerSecond = 16_000_000
             }
 
-            let rawCardCanvas: HTMLCanvasElement | null = null
-
-            const result = await captureAndExportVideo(async (targetCanvas, context) => {
-                // Selaraskan waktu video latar belakang secara deterministik per frame
-                if (isCustomBgActive && activeCustomBgMediaType === 'video' && activeVideoEl) {
-                    const vid = activeVideoEl
-                    if (!vid.paused) {
-                        vid.pause()
-                    }
-                    if (vid.duration && isFinite(vid.duration) && vid.duration > 0) {
-                        const targetTime = context ? (context.currentTimeSec % vid.duration) : 0
-                        if (Math.abs(vid.currentTime - targetTime) > 0.001) {
-                            vid.currentTime = targetTime
-                            await new Promise<void>((resolve) => {
-                                let resolved = false
-                                const onDone = () => {
-                                    if (resolved) return
-                                    resolved = true
-                                    vid.removeEventListener('seeked', onDone)
-                                    resolve()
-                                }
-                                vid.addEventListener('seeked', onDone, { once: true })
-                                // Safety timeout 250ms jika seek event terhambat browser
-                                setTimeout(onDone, 250)
-                            })
-                            // Pastikan frame video ter-commit ke rendering context
-                            if ('requestVideoFrameCallback' in vid && typeof (vid as any).requestVideoFrameCallback === 'function') {
-                                await new Promise<void>((r) => {
-                                    ;(vid as any).requestVideoFrameCallback(() => r())
-                                    setTimeout(r, 40)
-                                })
-                            } else {
-                                await new Promise((r) => setTimeout(r, 8))
-                            }
-                        }
-                    }
-                }
-
-                if (exportAspect === '9:16') {
-                    if (!rawCardCanvas) {
-                        rawCardCanvas = document.createElement('canvas')
-                    }
-                    drawToCanvas(rawCardCanvas)
-                    const activeWp = activeCustomBgMediaType === 'video'
-                        ? ((activeVideoEl && (activeVideoEl.videoWidth > 0 || activeVideoEl.readyState >= 1))
-                            ? activeVideoEl
-                            : (lastValidBgCanvasRef.current || activeVideoEl || null))
-                        : (customBgImgRef.current || null)
-
-                    composeAspectFrame(rawCardCanvas, targetCanvas, {
-                        aspect: '9:16',
-                        bgSource: frameBgSource,
-                        blurPx: frameBlur,
-                        dimPercent: frameDim,
-                        wallpaperSource: isCustomBgActive ? activeWp : null,
-                    })
-                } else {
-                    drawToCanvas(targetCanvas)
-                }
-            }, {
+            const result = await exportCardMedia({
+                spec,
+                format: 'mp4',
+                aspect: exportAspect,
                 durationMs,
                 fps,
                 videoBitsPerSecond,
+                frameBgSource,
+                frameBlur,
+                frameDim,
+                wallpaperMediaElement: isCustomBgActive ? activeWp : null,
+                wallpaperAudioUrl: (isCustomBgActive && activeCustomBgMediaType === 'video' && activeCustomBgUrl) ? activeCustomBgUrl : undefined,
                 onProgress: (pct) => setVideoProgress(pct),
-                audioSourceVideo: activeCustomBgMediaType === 'video' ? (activeVideoEl || undefined) : undefined
             })
 
-            let finalBlob = result.blob
-
-            // Otomatis remux fMP4 Chromium menjadi Standard Linear MP4 (+faststart) agar terbaca utuh di TikTok & medsos
-            if (result.extension === 'mp4' && typeof window !== 'undefined' && window.api?.remuxVideoMp4) {
-                try {
-                    const arrayBuffer = await result.blob.arrayBuffer()
-                    
-                    let bgAudioData: Uint8Array | undefined = undefined
-                    if (isCustomBgActive && activeCustomBgMediaType === 'video' && activeCustomBgUrl) {
-                        try {
-                            bgAudioData = await mediaUrlToBytes(activeCustomBgUrl)
-                            console.log(`[video-export] File video latar berhasil dimuat (${bgAudioData.length} bytes) untuk muxing audio via ffmpeg.`)
-                        } catch (bgErr) {
-                            console.warn('Gagal memuat file audio background untuk remux:', bgErr)
-                        }
-                    }
-
-                    const remuxRes = await window.api.remuxVideoMp4(new Uint8Array(arrayBuffer), bgAudioData)
-                    if (remuxRes?.ok && remuxRes.data && remuxRes.data.length > 0) {
-                        finalBlob = new Blob([remuxRes.data as unknown as BlobPart], { type: 'video/mp4' })
-                    } else if (remuxRes && !remuxRes.ok) {
-                        logSharePnlError(
-                            SharePnlErrorCode.BACKEND_REMUX_FAILED,
-                            `Remuxing backend FFmpeg gagal: ${remuxRes.error || 'Unknown error'}`,
-                            remuxRes,
-                            'WARN'
-                        )
-                    }
-                } catch (remuxErr) {
-                    logSharePnlError(
-                        SharePnlErrorCode.BACKEND_REMUX_FAILED,
-                        'Remuxing video gagal di backend, beralih menggunakan rekaman asli',
-                        remuxErr,
-                        'WARN'
-                    )
-                }
-            }
-
-            const dateStr = new Date().toISOString().slice(0, 10)
-            const aspectSuffix = exportAspect === '9:16' ? '-9x16' : ''
-            const defaultFilename = `${brandTitle}-${trade.trade.symbol}-${dateStr}${aspectSuffix}.${result.extension}`
-            const arrayBuffer = await finalBlob.arrayBuffer()
-            let savedFilePath: string | null = null
-
-            // Prioritaskan dialog native Save File jika berjalan di lingkungan Tauri
-            if (typeof window !== 'undefined' && window.api?.saveVideoFile) {
-                try {
-                    const saveRes = await window.api.saveVideoFile(defaultFilename, new Uint8Array(arrayBuffer))
-                    if (saveRes?.ok && saveRes.data) {
-                        savedFilePath = saveRes.data
-                        console.log('[SharePnlModal] Berkas video berhasil disimpan ke:', savedFilePath)
-                    } else if (saveRes?.ok && saveRes.data === null) {
-                        console.log('[SharePnlModal] Pemilihan folder penyimpanan dibatalkan pengguna')
-                    } else if (saveRes && !saveRes.ok) {
-                        logSharePnlError(
-                            SharePnlErrorCode.FILE_SAVE_FAILED,
-                            `Gagal menyimpan berkas via native save: ${saveRes.error || 'Unknown'}`,
-                            saveRes,
-                            'WARN'
-                        )
-                    }
-                } catch (saveErr) {
-                    logSharePnlError(
-                        SharePnlErrorCode.FILE_SAVE_FAILED,
-                        'Gagal memanggil native save file dialog, fallback ke unduhan browser',
-                        saveErr,
-                        'WARN'
-                    )
-                    const url = URL.createObjectURL(finalBlob)
-                    const link = document.createElement('a')
-                    link.download = defaultFilename
-                    link.href = url
-                    link.click()
-                    URL.revokeObjectURL(url)
-                }
-            } else {
-                // Fallback untuk browser web reguler
-                const url = URL.createObjectURL(finalBlob)
-                const link = document.createElement('a')
-                link.download = defaultFilename
-                link.href = url
-                link.click()
-                URL.revokeObjectURL(url)
-            }
-
-            // Tampilkan pemutar hasil ekspor di dalam modal
-            const previewUrl = URL.createObjectURL(finalBlob)
+            const previewUrl = URL.createObjectURL(result.blob)
             setExportedVideoResult({
                 url: previewUrl,
-                blob: finalBlob,
-                filename: defaultFilename,
-                savedPath: savedFilePath
+                blob: result.blob,
+                filename: result.filename,
+                savedPath: result.savedFilePath ?? null
             })
         } catch (err) {
             logSharePnlError(
@@ -1833,13 +970,6 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 'ERROR'
             )
         } finally {
-            if (activeCustomBgMediaType === 'video' && activeVideoEl) {
-                try {
-                    void activeVideoEl.play().catch(() => {})
-                } catch {
-                    // Abaikan jika pemutaran preview dicegah
-                }
-            }
             setExportingVideo(false)
             setVideoProgress(0)
         }
@@ -1850,17 +980,12 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         if (!exportedVideoResult) return
         setIsSavingExportedAgain(true)
         try {
-            const arrayBuffer = await exportedVideoResult.blob.arrayBuffer()
-            if (typeof window !== 'undefined' && window.api?.saveVideoFile) {
-                const saveRes = await window.api.saveVideoFile(exportedVideoResult.filename, new Uint8Array(arrayBuffer))
-                if (saveRes?.ok && saveRes.data) {
-                    setExportedVideoResult((prev) => prev ? { ...prev, savedPath: saveRes.data ?? null } : null)
-                }
-            } else {
-                const link = document.createElement('a')
-                link.download = exportedVideoResult.filename
-                link.href = exportedVideoResult.url
-                link.click()
+            const savedPath = await saveMediaFile(
+                exportedVideoResult.filename,
+                exportedVideoResult.blob
+            )
+            if (savedPath) {
+                setExportedVideoResult((prev) => prev ? { ...prev, savedPath } : null)
             }
         } catch (e) {
             logSharePnlError(
@@ -1878,21 +1003,20 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         setExportingGif(true)
         setGifProgress(0)
         try {
-            const blob = await captureAndExportGif((targetCanvas) => {
-                drawToCanvas(targetCanvas)
-            }, {
-                frameCount: 16,
+            const spec = buildCurrentSpec()
+            const activeWp = getActiveWallpaperMedia()
+            await exportCardMedia({
+                spec,
+                format: 'gif',
+                aspect: exportAspect,
+                durationMs: 2000,
                 fps: 8,
-                onProgress: (pct) => setGifProgress(pct)
+                frameBgSource,
+                frameBlur,
+                frameDim,
+                wallpaperMediaElement: isCustomBgActive ? activeWp : null,
+                onProgress: (pct) => setGifProgress(pct),
             })
-
-            const url = URL.createObjectURL(blob)
-            const link = document.createElement('a')
-            const dateStr = new Date().toISOString().slice(0, 10)
-            link.download = `${brandTitle}-${trade.trade.symbol}-${dateStr}.gif`
-            link.href = url
-            link.click()
-            URL.revokeObjectURL(url)
         } catch (err) {
             logSharePnlError(
                 SharePnlErrorCode.VIDEO_ENCODE_FRAME_FAILED,
@@ -2048,50 +1172,13 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                 }}
                             >
                                 <PnlCard
-                                    trade={trade}
-                                    bg={bg}
-                                    accent={accent}
-                                    roiPercent={roiPercent}
-                                    duration={duration}
-                                    leverage={leverage}
-                                    selectedExchange={selectedExchange}
-                                    traderHandle={traderHandle}
-                                    brandTitle={brandTitle}
-                                    brandSubtitle={brandSubtitle}
-                                    activeLogoUrl={activeLogoUrl}
-                                    activeReferral={activeReferral}
-                                    avatarUrl={avatarUrl}
-                                    isCustomBgActive={isCustomBgActive}
+                                    spec={buildCurrentSpec()}
+                                    videoRef={domBgVideoRef}
                                     customBgUrl={activeCustomBgPlayableUrl || activeCustomBgUrl}
                                     customBgMediaType={activeCustomBgMediaType}
-                                    bgDimming={bgDimming}
-                                    bgDimmingDirection={bgDimmingDirection}
-                                    bgPosX={bgPosX}
-                                    bgPosY={bgPosY}
-                                    videoRef={domBgVideoRef}
-                                    showSide={showSide}
-                                    showPnl={showPnl}
-                                    showRoi={showRoi}
-                                    showTradeTimes={showTradeTimes}
-                                    showProfile={showProfile}
-                                    showWatermark={showWatermark}
-                                    showDuration={showDuration}
-                                    showPlan={showPlan}
-                                    plannedStop={plannedStop}
-                                    plannedTarget={plannedTarget}
-                                    plannedRr={plannedRr}
-                                    setupTag={setupTag}
-                                    executionGrade={executionGrade}
-                                    emotionTag={emotionTag}
-                                    showSetup={showSetup}
-                                    showGrade={showGrade}
-                                    showEmotion={showEmotion}
-                                    showReferral={showReferral}
-                                    showThesis={showThesis}
-                                    customThesis={customThesis}
-                                    showReview={showReview}
-                                    customReview={customReview}
-                                    showFullText={showFullText}
+                                    activeLogoUrl={activeLogoUrl}
+                                    avatarUrl={avatarUrl}
+                                    isCustomBgActive={isCustomBgActive}
                                 />
                             </div>
                         </div>
@@ -2112,50 +1199,13 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                             )}
                         >
                             <PnlCard
-                                trade={trade}
-                                bg={bg}
-                                accent={accent}
-                                roiPercent={roiPercent}
-                                duration={duration}
-                                leverage={leverage}
-                                selectedExchange={selectedExchange}
-                                traderHandle={traderHandle}
-                                brandTitle={brandTitle}
-                                brandSubtitle={brandSubtitle}
-                                activeLogoUrl={activeLogoUrl}
-                                activeReferral={activeReferral}
-                                avatarUrl={avatarUrl}
-                                isCustomBgActive={isCustomBgActive}
+                                spec={buildCurrentSpec()}
+                                videoRef={domBgVideoRef}
                                 customBgUrl={activeCustomBgPlayableUrl || activeCustomBgUrl}
                                 customBgMediaType={activeCustomBgMediaType}
-                                bgDimming={bgDimming}
-                                bgDimmingDirection={bgDimmingDirection}
-                                bgPosX={bgPosX}
-                                bgPosY={bgPosY}
-                                videoRef={domBgVideoRef}
-                                showSide={showSide}
-                                showPnl={showPnl}
-                                showRoi={showRoi}
-                                showTradeTimes={showTradeTimes}
-                                showProfile={showProfile}
-                                showWatermark={showWatermark}
-                                showDuration={showDuration}
-                                showPlan={showPlan}
-                                plannedStop={plannedStop}
-                                plannedTarget={plannedTarget}
-                                plannedRr={plannedRr}
-                                setupTag={setupTag}
-                                executionGrade={executionGrade}
-                                emotionTag={emotionTag}
-                                showSetup={showSetup}
-                                showGrade={showGrade}
-                                showEmotion={showEmotion}
-                                showReferral={showReferral}
-                                showThesis={showThesis}
-                                customThesis={customThesis}
-                                showReview={showReview}
-                                customReview={customReview}
-                                showFullText={showFullText}
+                                activeLogoUrl={activeLogoUrl}
+                                avatarUrl={avatarUrl}
+                                isCustomBgActive={isCustomBgActive}
                             />
                         </div>
                     )}
@@ -2982,466 +2032,3 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     )
 }
 
-// ---------------------------------------------------------------------------
-// Komponen PnlCard — HTML Live Preview
-// ---------------------------------------------------------------------------
-
-interface PnlCardProps {
-    trade: TradeDetail
-    bg: BgTemplate
-    accent: string
-    roiPercent: number
-    duration: string
-    leverage: number
-    selectedExchange: ExchangeName
-    traderHandle: string
-    brandTitle: string
-    brandSubtitle: string
-    activeLogoUrl: string | null
-    activeReferral: string
-    avatarUrl: string | null
-    isCustomBgActive: boolean
-    customBgUrl: string | null
-    customBgMediaType?: 'image' | 'video'
-    bgDimming: number
-    bgDimmingDirection?: BgDimmingDirection
-    bgPosX?: number
-    bgPosY?: number
-    videoRef?: React.RefObject<HTMLVideoElement | null>
-    showSide: boolean
-    showPnl: boolean
-    showRoi: boolean
-    showTradeTimes: boolean
-    showProfile: boolean
-    showWatermark: boolean
-    showDuration: boolean
-    showPlan: boolean
-    plannedStop: number | null
-    plannedTarget: number | null
-    plannedRr: number | null
-    setupTag: string | null
-    executionGrade: ExecutionGrade | null
-    emotionTag: string | null
-    showSetup: boolean
-    showGrade: boolean
-    showEmotion: boolean
-    showReferral: boolean
-    showThesis: boolean
-    customThesis: string
-    showReview: boolean
-    customReview: string
-    showFullText: boolean
-}
-
-function PnlCard({
-    trade, bg, accent, roiPercent, duration, leverage, selectedExchange,
-    traderHandle, brandTitle, brandSubtitle, activeLogoUrl, activeReferral,
-    avatarUrl, isCustomBgActive, customBgUrl, customBgMediaType = 'image',
-    bgDimming, bgDimmingDirection = 'uniform', bgPosX = 50, bgPosY = 50, videoRef,
-    showSide, showPnl, showRoi, showTradeTimes, showProfile, showWatermark, showDuration,
-    showPlan, plannedStop, plannedTarget, plannedRr,
-    setupTag, executionGrade, emotionTag, showSetup, showGrade, showEmotion,
-    showReferral, showThesis, customThesis, showReview, customReview, showFullText
-}: PnlCardProps) {
-    const { hidePnl } = useHidePnl()
-    const isTransparentMode = !isCustomBgActive && bg.isTransparent
-    const hasReferralDisplay = showReferral && !!activeReferral.trim()
-
-    const playableBgUrl = useMemo(() => {
-        return getPlayableMediaUrl(customBgUrl, customBgMediaType) || customBgUrl
-    }, [customBgUrl, customBgMediaType])
-
-    // Jaga pemutaran video DOM agar selalu berputar secara looping dan muted
-    const localVideoRef = useRef<HTMLVideoElement | null>(null)
-    useEffect(() => {
-        const vid = localVideoRef.current
-        if (!vid || customBgMediaType !== 'video') return
-        vid.muted = true
-        vid.defaultMuted = true
-        vid.playsInline = true
-        vid.loop = true
-
-        const tryPlay = () => {
-            if (vid.paused) {
-                void vid.play().catch((err) => {
-                    console.log('[PnlCard] Autoplay dicegah browser, menunggu interaksi pengguna:', err)
-                })
-            }
-        }
-
-        vid.addEventListener('canplay', tryPlay)
-        vid.addEventListener('loadeddata', tryPlay)
-        vid.addEventListener('loadedmetadata', tryPlay)
-        tryPlay()
-
-        return () => {
-            vid.removeEventListener('canplay', tryPlay)
-            vid.removeEventListener('loadeddata', tryPlay)
-            vid.removeEventListener('loadedmetadata', tryPlay)
-        }
-    }, [playableBgUrl, customBgMediaType])
-
-    return (
-        <div
-            className="relative overflow-hidden transition-all duration-200 select-none"
-            style={{
-                borderRadius: 24,
-                padding: '24px 28px 20px',
-                background: isCustomBgActive
-                    ? 'transparent'
-                    : isTransparentMode
-                        ? 'linear-gradient(135deg, rgba(15, 23, 42, 0.88) 0%, rgba(10, 15, 30, 0.92) 100%)'
-                        : bg.bg,
-                border: isTransparentMode ? `1.5px solid ${accent}66` : `1px solid ${bg.border}`,
-                boxShadow: isTransparentMode ? `0 8px 32px rgba(0, 0, 0, 0.5), 0 0 24px ${accent}22` : '0 12px 36px rgba(0, 0, 0, 0.35)',
-            }}
-        >
-            {/* Custom Image or Video Background */}
-            {isCustomBgActive && customBgUrl && (
-                <>
-                    {customBgMediaType === 'video' ? (
-                        <video
-                            ref={(el) => {
-                                localVideoRef.current = el
-                                if (videoRef && 'current' in videoRef) {
-                                    ;(videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el
-                                }
-                            }}
-                            src={playableBgUrl || ''}
-                            className="pointer-events-none absolute inset-0 w-full h-full object-cover"
-                            muted
-                            loop
-                            autoPlay
-                            playsInline
-                            style={{
-                                objectPosition: `${bgPosX}% ${bgPosY}%`,
-                            }}
-                        />
-                    ) : (
-                        <div
-                            className="pointer-events-none absolute inset-0 bg-cover"
-                            style={{
-                                backgroundImage: `url(${customBgUrl})`,
-                                backgroundPosition: `${bgPosX}% ${bgPosY}%`,
-                            }}
-                        />
-                    )}
-                    <div
-                        className="pointer-events-none absolute inset-0"
-                        style={getGradientDimmingStyle(bgDimming, bgDimmingDirection)}
-                    />
-                </>
-            )}
-
-            {/* Grid Pattern Overlay */}
-            <div
-                className="pointer-events-none absolute inset-0"
-                style={{
-                    backgroundImage: 'linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)',
-                    backgroundSize: '48px 48px',
-                }}
-            />
-
-            {/* Ambient Radial Glow */}
-            <div
-                className="pointer-events-none absolute inset-0"
-                style={{
-                    background: `radial-gradient(ellipse at 50% 25%, ${accent}20 0%, transparent 65%)`,
-                }}
-            />
-
-            {/* Konten Utama */}
-            <div className="relative z-10">
-                {/* ── Header: Logo/Brand + Logo Exchange & Kode Referral ── */}
-                <div className="flex items-start justify-between mb-5">
-                    <div className="flex items-center gap-2">
-                        <span className="font-bold text-white text-base tracking-widest uppercase">
-                            {brandTitle}
-                        </span>
-                        <span
-                            className="text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide"
-                            style={{ background: `${accent}25`, color: accent, border: `1px solid ${accent}44` }}
-                        >
-                            {brandSubtitle}
-                        </span>
-                    </div>
-
-                    {/* Sisi Kanan: Logo Exchange + Kode Referral di Bawahnya */}
-                    <div className="flex flex-col items-end gap-1">
-                        {activeLogoUrl ? (
-                            <img src={activeLogoUrl} alt={selectedExchange} className="h-6 max-w-[110px] object-contain" />
-                        ) : (
-                            <span
-                                className="text-[11px] font-bold uppercase px-2.5 py-1 rounded-md tracking-wider"
-                                style={{
-                                    background: 'rgba(255,255,255,0.08)',
-                                    border: '1px solid rgba(255,255,255,0.14)',
-                                    color: '#cbd5e1'
-                                }}
-                            >
-                                {selectedExchange}
-                            </span>
-                        )}
-
-                        {hasReferralDisplay && (
-                            <span
-                                className="text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded"
-                                style={{
-                                    background: 'rgba(56, 189, 248, 0.15)',
-                                    border: '1px solid rgba(56, 189, 248, 0.35)',
-                                    color: '#38bdf8'
-                                }}
-                            >
-                                Ref: {activeReferral}
-                            </span>
-                        )}
-                    </div>
-                </div>
-
-                {/* ── Symbol + Direction ── */}
-                <div className="flex items-center gap-3 mb-2">
-                    <span className="text-2xl font-bold text-white leading-none tracking-tight">
-                        {trade.trade.symbol}
-                    </span>
-                    {showSide && (
-                        <>
-                            <div className="w-px h-4 opacity-30" style={{ background: '#d9d9d9' }} />
-                            <div className="flex items-center gap-1.5 text-sm font-semibold">
-                                <span style={{ color: accent }}>
-                                    {trade.trade.direction.toUpperCase()}
-                                </span>
-                                <span className="text-white">{leverage}X</span>
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                {/* ── Journal Badges: Setup, Grade, Emosi ── */}
-                {((showSetup && setupTag) || (showGrade && executionGrade) || (showEmotion && emotionTag)) && (
-                    <div className="flex flex-wrap items-center gap-2 mb-2.5">
-                        {showSetup && setupTag && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 shadow-xs">
-                                <span>🎯</span>
-                                <span>{setupTag}</span>
-                            </span>
-                        )}
-                        {showGrade && executionGrade && (
-                            <span
-                                className={cn(
-                                    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border shadow-xs',
-                                    executionGrade === 'A'
-                                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                                        : executionGrade === 'B'
-                                            ? 'bg-sky-500/15 text-sky-400 border-sky-500/30'
-                                            : executionGrade === 'C'
-                                                ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                                                : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
-                                )}
-                            >
-                                <span>⭐</span>
-                                <span>Grade {executionGrade}</span>
-                            </span>
-                        )}
-                        {showEmotion && emotionTag && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30 shadow-xs">
-                                <span>
-                                    {emotionTag.toLowerCase() === 'calm' ? '😌' :
-                                     emotionTag.toLowerCase() === 'fomo' ? '⚡' :
-                                     emotionTag.toLowerCase() === 'revenge' ? '😤' :
-                                     emotionTag.toLowerCase() === 'anxious' ? '😰' :
-                                     emotionTag.toLowerCase() === 'overconfident' ? '😎' : '🧠'}
-                                </span>
-                                <span className="capitalize">{emotionTag}</span>
-                            </span>
-                        )}
-                    </div>
-                )}
-
-                {/* ── ROI Hero ── */}
-                {showRoi && (
-                    <div
-                        className="text-5xl font-extrabold leading-none my-3 tracking-tight"
-                        style={{ color: accent, fontVariantNumeric: 'tabular-nums' }}
-                    >
-                        {formatPercent(roiPercent)}
-                    </div>
-                )}
-
-                {/* ── PnL Amount ── */}
-                {showPnl && (
-                    <div className="flex items-center gap-2 mb-4">
-                        <span className="text-xl font-bold" style={{ color: accent, fontVariantNumeric: 'tabular-nums' }}>
-                            {hidePnl ? '••••' : `${formatPnl(trade.trade.realizedPnl)} USDT`}
-                        </span>
-                        {trade.rMultiple !== null && trade.rMultiple !== undefined && (
-                            <span className="text-sm font-semibold" style={{ color: '#38bdf8' }}>
-                                · {formatR(trade.rMultiple)}
-                            </span>
-                        )}
-                    </div>
-                )}
-
-                {/* ── Key Metrics Grid (Entry, Exit, Duration, Aktual R:R) ── */}
-                <div
-                    className="grid grid-cols-4 gap-2 p-3 rounded-xl mb-3"
-                    style={{
-                        background: 'rgba(255, 255, 255, 0.04)',
-                        border: '1px solid rgba(255, 255, 255, 0.08)'
-                    }}
-                >
-                    <div>
-                        <div className="text-[10px] leading-tight mb-1" style={{ color: bg.textSub }}>Entry Price</div>
-                        <div className="text-xs font-bold text-white truncate">{formatPrice(trade.trade.entryPrice)}</div>
-                        {showTradeTimes && trade.trade.entryTime && (
-                            <div className="text-[9px] leading-tight mt-1 truncate font-medium" style={{ color: bg.textSub }}>
-                                {formatDateTime(trade.trade.entryTime)}
-                            </div>
-                        )}
-                    </div>
-                    <div>
-                        <div className="text-[10px] leading-tight mb-1" style={{ color: bg.textSub }}>Exit Price</div>
-                        <div className="text-xs font-bold text-white truncate">{formatPrice(trade.trade.exitPrice)}</div>
-                        {showTradeTimes && (
-                            <div className="text-[9px] leading-tight mt-1 truncate font-medium" style={{ color: bg.textSub }}>
-                                {trade.trade.exitTime ? formatDateTime(trade.trade.exitTime) : 'Posisi Terbuka'}
-                            </div>
-                        )}
-                    </div>
-                    <div>
-                        <div className="text-[10px] leading-tight mb-1" style={{ color: bg.textSub }}>Duration</div>
-                        <div className="text-xs font-bold text-white truncate">{showDuration ? duration : '—'}</div>
-                    </div>
-                    <div>
-                        <div className="text-[10px] leading-tight mb-1" style={{ color: bg.textSub }}>R-Multiple</div>
-                        <div
-                            className="text-xs font-bold truncate"
-                            style={{
-                                color: trade.rMultiple !== null && trade.rMultiple !== undefined
-                                    ? (trade.rMultiple > 0 ? '#10b981' : trade.rMultiple < 0 ? '#ef4444' : '#ffffff')
-                                    : '#94a3b8'
-                            }}
-                        >
-                            {trade.rMultiple !== null && trade.rMultiple !== undefined ? formatR(trade.rMultiple) : '—'}
-                        </div>
-                    </div>
-                </div>
-
-                {/* ── Planned Risk Grid (Plan SL, Plan TP, Plan R:R) ── */}
-                {showPlan && (
-                    <div
-                        className="grid grid-cols-3 gap-2 p-3 rounded-xl mb-3"
-                        style={{
-                            background: 'rgba(255, 255, 255, 0.03)',
-                            border: '1px solid rgba(255, 255, 255, 0.06)'
-                        }}
-                    >
-                        <div>
-                            <div className="text-[10px] leading-tight mb-1" style={{ color: bg.textSub }}>Plan SL</div>
-                            <div className="text-xs font-bold text-rose-400 truncate">
-                                {plannedStop !== null && plannedStop !== undefined ? formatPrice(plannedStop) : '—'}
-                            </div>
-                        </div>
-                        <div>
-                            <div className="text-[10px] leading-tight mb-1" style={{ color: bg.textSub }}>Plan TP</div>
-                            <div className="text-xs font-bold text-emerald-400 truncate">
-                                {plannedTarget !== null && plannedTarget !== undefined ? formatPrice(plannedTarget) : '—'}
-                            </div>
-                        </div>
-                        <div>
-                            <div className="text-[10px] leading-tight mb-1" style={{ color: bg.textSub }}>Plan R:R</div>
-                            <div className="text-xs font-bold text-sky-400 truncate">
-                                {plannedRr !== null && plannedRr !== undefined ? `1:${plannedRr.toFixed(2)}` : '—'}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* ── Trade Thesis (Dinamis: Penuh / Compact) ── */}
-                {showThesis && customThesis.trim() && (
-                    <div
-                        className="mt-2.5 rounded-xl px-3.5 py-2.5"
-                        style={{
-                            background: 'rgba(15, 23, 42, 0.7)',
-                            border: `1px solid ${accent}33`,
-                        }}
-                    >
-                        <div className="text-[11px] font-bold mb-1" style={{ color: accent }}>
-                            💡 Trade Thesis
-                        </div>
-                        <p className={`text-xs italic leading-relaxed text-white/90 ${showFullText ? 'whitespace-pre-wrap' : 'line-clamp-3'}`}>
-                            "{customThesis}"
-                        </p>
-                    </div>
-                )}
-
-                {/* ── Post-Trade Review (Dinamis: Penuh / Compact) ── */}
-                {showReview && customReview.trim() && (
-                    <div
-                        className="mt-2 rounded-xl px-3.5 py-2.5"
-                        style={{
-                            background: 'rgba(15, 23, 42, 0.55)',
-                            border: '1px solid rgba(148, 163, 184, 0.2)',
-                        }}
-                    >
-                        <div className="text-[11px] font-bold mb-1 text-sky-400">
-                            📝 Post-Trade Review
-                        </div>
-                        <p className={`text-xs leading-relaxed text-white/80 ${showFullText ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>
-                            {customReview}
-                        </p>
-                    </div>
-                )}
-
-                {/* ── Footer: Profile + Watermark ── */}
-                {(showProfile || showWatermark) && (
-                    <div
-                        className="flex items-center justify-between mt-4 pt-3"
-                        style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}
-                    >
-                        {showProfile && (
-                            <div className="flex items-center gap-2.5">
-                                {avatarUrl ? (
-                                    <img
-                                        src={avatarUrl}
-                                        alt="Avatar"
-                                        className="w-9 h-9 rounded-full object-cover flex-shrink-0"
-                                        style={{ border: `1.5px solid ${accent}` }}
-                                    />
-                                ) : (
-                                    <div
-                                        className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
-                                        style={{ background: `${accent}33`, border: `1.5px solid ${accent}` }}
-                                    >
-                                        {traderHandle.replace('@', '').slice(0, 2).toUpperCase() || 'TR'}
-                                    </div>
-                                )}
-                                <div>
-                                    <div className="text-xs font-bold text-white leading-tight">
-                                        {traderHandle}
-                                    </div>
-                                    <div className="text-[10px]" style={{ color: bg.textSub }}>
-                                        {formatDate(trade.trade.exitTime)}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {showWatermark && (
-                            <div className="flex items-center gap-2.5 ml-auto">
-                                <img
-                                    src={nitireksoLogo}
-                                    alt="nitirekso logo"
-                                    className="w-8 h-8 rounded-lg object-contain shadow-xs bg-black/20 p-0.5 border border-white/10"
-                                />
-                                <div className="text-[11px] text-left leading-tight" style={{ color: bg.textSub }}>
-                                    <div className="font-bold text-white/90">nitirekso</div>
-                                    <div>Trading Journal</div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-        </div>
-    )
-}

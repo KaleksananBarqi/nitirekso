@@ -28,7 +28,7 @@ import {
     type BgTemplate
 } from '../lib/shareSettings'
 import { getExchangeDefaultLogo, getExchangeDisplayName } from '../lib/exchangeAssets'
-import { getGradientDimmingStyle } from './SharePnlModal'
+import { getGradientDimmingStyle } from '../lib/share'
 import { useHidePnl } from '../hooks/useHidePnl'
 
 export function ShareBrandingSettings(): React.JSX.Element {
