@@ -88,6 +88,7 @@ export class InMemoryMockAdapter implements IpcClient {
     }
     private logsState: LogEntry[] = []
     private screenshotsState: Map<string, Uint8Array> = new Map()
+    private savedVideosState: Map<string, Uint8Array> = new Map()
     private syncProgressListeners: Set<(progress: SyncProgressPayload) => void> = new Set()
     private nextTradeId = 1
 
@@ -153,8 +154,14 @@ export class InMemoryMockAdapter implements IpcClient {
         }
         this.logsState = []
         this.screenshotsState.clear()
+        this.savedVideosState.clear()
         this.syncProgressListeners.clear()
         this.nextTradeId = 1
+    }
+
+    /** Mengambil berkas video tersimpan di memori mock (untuk kebutuhan asersi tes). */
+    public getSavedVideo(fileName: string): Uint8Array | undefined {
+        return this.savedVideosState.get(fileName)
     }
 
     /** Emulasi penyiaran event progres sinkronisasi ke semua pendengar. */
@@ -572,8 +579,9 @@ export class InMemoryMockAdapter implements IpcClient {
 
         saveVideoFile: async (
             defaultName: string,
-            _data: Uint8Array
+            data: Uint8Array
         ): Promise<AppResult<string | null>> => {
+            this.savedVideosState.set(defaultName, data)
             return ok(`/mock/videos/${defaultName}`)
         },
     }
