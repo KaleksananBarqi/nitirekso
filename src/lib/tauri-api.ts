@@ -19,7 +19,7 @@ import {
 /**
  * Membuka AppResult<T> menjadi nilai T murni, melempar Error jika ok: false.
  */
-function toDirect<T>(res: AppResult<T>): T {
+function unwrapAppResult<T>(res: AppResult<T>): T {
     if (!res.ok) {
         throw new Error(res.error.message)
     }
@@ -46,34 +46,34 @@ export function createTauriApi(customClient?: IpcClient): PreloadApi {
 
     return {
         // --- Domain System / Health ---
-        getAppHealth: async () => toDirect(await client.system.getAppHealth()),
-        getAppVersion: async () => toDirect(await client.system.getAppVersion()),
+        getAppHealth: async () => unwrapAppResult(await client.system.getAppHealth()),
+        getAppVersion: async () => unwrapAppResult(await client.system.getAppVersion()),
         checkForUpdates: async () => toMutation(await client.system.checkForUpdates()),
         openExternalUrl: async (url) => toMutation(await client.system.openExternalUrl(url)),
         getBtcKlines: async (payload) => toMutation(await client.system.getBtcKlines(payload)),
 
         // --- Domain Trades ---
-        listTrades: async (filter) => toDirect(await client.trades.list(filter)),
-        getTrade: async (id) => toDirect(await client.trades.get(id)),
+        listTrades: async (filter) => unwrapAppResult(await client.trades.list(filter)),
+        getTrade: async (id) => unwrapAppResult(await client.trades.get(id)),
         createTrade: async (payload) => toMutation(await client.trades.create(payload)),
         updateTrade: async (id, payload) => toMutation(await client.trades.update(id, payload)),
         deleteTrade: async (id) => toMutation(await client.trades.delete(id)),
-        getTradeMeta: async () => toDirect(await client.trades.getMeta()),
+        getTradeMeta: async () => unwrapAppResult(await client.trades.getMeta()),
         exportJournal: async (format, filter) =>
             toMutation(await client.trades.exportJournal(format, filter)),
 
         // --- Domain Settings ---
-        getSettings: async () => toDirect(await client.settings.getAll()),
+        getSettings: async () => unwrapAppResult(await client.settings.getAll()),
         setSettings: async (payload) => toMutation(await client.settings.set(payload)),
 
         // --- Domain Sync & Credentials ---
-        getBalances: async () => toDirect(await client.sync.getBalances()),
+        getBalances: async () => unwrapAppResult(await client.sync.getBalances()),
         syncBalances: async () => toMutation(await client.sync.syncBalances()),
-        getCredentialStatuses: async () => toDirect(await client.sync.getCredentialStatuses()),
+        getCredentialStatuses: async () => unwrapAppResult(await client.sync.getCredentialStatuses()),
         saveCredentials: async (payload) => toMutation(await client.sync.saveCredentials(payload)),
         deleteCredentials: async (exchange) =>
             toMutation(await client.sync.deleteCredentials(exchange)),
-        getSyncStates: async () => toDirect(await client.sync.getStates()),
+        getSyncStates: async () => unwrapAppResult(await client.sync.getStates()),
         runSync: async () => toMutation(await client.sync.run()),
         onSyncProgress: (callback) => client.sync.onProgress(callback),
 
@@ -88,7 +88,7 @@ export function createTauriApi(customClient?: IpcClient): PreloadApi {
             toMutation(await client.media.saveVideoFile(defaultName, data)),
 
         // --- Domain Backup ---
-        getBackupStatus: async () => toDirect(await client.backup.getStatus()),
+        getBackupStatus: async () => unwrapAppResult(await client.backup.getStatus()),
         runBackup: async () => toMutation(await client.backup.run()),
         restoreBackup: async (folderPath) => toMutation(await client.backup.restore(folderPath)),
         disconnectBackup: async () => toMutation(await client.backup.disconnect()),
@@ -96,7 +96,7 @@ export function createTauriApi(customClient?: IpcClient): PreloadApi {
         selectBackupFolder: async () => toMutation(await client.backup.selectFolder()),
 
         // --- Domain AI ---
-        getAiConfig: async () => toDirect(await client.ai.getConfig()),
+        getAiConfig: async () => unwrapAppResult(await client.ai.getConfig()),
         saveAiConfig: async (payload) => toMutation(await client.ai.saveConfig(payload)),
         deleteAiConfig: async () => toMutation(await client.ai.deleteConfig()),
         analyzeJournal: async (filter) => toMutation(await client.ai.analyzeJournal(filter)),

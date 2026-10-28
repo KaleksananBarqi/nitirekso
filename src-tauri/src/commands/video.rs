@@ -55,47 +55,68 @@ pub fn remux_video_mp4(request: Request<'_>) -> Result<Response, String> {
 /// Nama berkas bawaan dikirimkan melalui header `x-file-name` (URL-encoded).
 #[tauri::command]
 pub fn save_video_file(request: Request<'_>) -> MutationResult<Option<String>> {
-    let default_name = extract_file_name_from_headers(&request);
+    let mut default_name = extract_file_name_from_headers(&request);
 
-    let raw_bytes: Option<Vec<u8>> = match request.body() {
-        InvokeBody::Raw(bytes) => Some(bytes.clone()),
-        InvokeBody::Json(val) => {
-            // Fallback untuk pemanggil payload JSON lama
-            if let Some(arr) = val.get("data") {
-                serde_json::from_value::<Vec<u8>>(arr.clone()).ok()
-            } else {
-                None
+    match request.body() {
+        InvokeBody::Raw(bytes) => {
+            if bytes.is_empty() {
+                return MutationResult::fail("Data berkas video kosong atau tidak valid".to_string());
             }
+            save_video_to_disk(&default_name, bytes.as_slice())
         }
-    };
+        InvokeBody::Json(val) => {
+            // Jalur kompatibilitas mundur untuk pemanggil payload JSON lama
+            if let Some(name) = val.get("defaultName").and_then(|v| v.as_str()) {
+                if !name.trim().is_empty() {
+                    default_name = name.to_string();
+                }
+            }
+            let bytes: Vec<u8> = match val.get("data") {
+                Some(arr) => match serde_json::from_value::<Vec<u8>>(arr.clone()) {
+                    Ok(b) => b,
+                    Err(e) => return MutationResult::fail(format!("Gagal mem-parse parameter 'data': {}", e)),
+                },
+                None => return MutationResult::fail("Data berkas video kosong atau tidak valid".to_string()),
+            };
+            if bytes.is_empty() {
+                return MutationResult::fail("Data berkas video kosong atau tidak valid".to_string());
+            }
+            save_video_to_disk(&default_name, bytes.as_slice())
+        }
+    }
+}
 
-    let bytes = match raw_bytes {
-        Some(b) => b,
-        None => return MutationResult::fail("Data berkas video kosong atau tidak valid".to_string()),
-    };
-
-    save_video_to_disk(&default_name, &bytes)
+/// Menuliskan byte video ke path target spesifik.
+pub fn write_video_to_path(target_path: &std::path::Path, data: &[u8]) -> MutationResult<Option<String>> {
+    match std::fs::write(target_path, data) {
+        Ok(_) => {
+            let path_str = target_path.to_string_lossy().to_string();
+            log::info!("[video] Berkas video berhasil disimpan ke: {}", path_str);
+            MutationResult::success(Some(path_str))
+        }
+        Err(e) => {
+            log::error!("[video] Gagal menyimpan video ke {:?}: {}", target_path, e);
+            MutationResult::fail(format!("Gagal menulis berkas video: {}", e))
+        }
+    }
 }
 
 /// Membuka prompt dialog native pemilih lokasi berkas dan menuliskan byte video secara deterministik.
-fn save_video_to_disk(default_name: &str, data: &[u8]) -> MutationResult<Option<String>> {
+/// Jika `destination_or_name` berupa absolute path (misalnya pada pengujian otomatis),
+/// berkas langsung ditulis ke path tersebut tanpa membuka modal UI dialog.
+pub fn save_video_to_disk(destination_or_name: &str, data: &[u8]) -> MutationResult<Option<String>> {
+    let dest_path = std::path::Path::new(destination_or_name);
+    if dest_path.is_absolute() {
+        return write_video_to_path(dest_path, data);
+    }
+
     let dialog = rfd::FileDialog::new()
         .set_title("Simpan Video Hasil Ekspor (MP4)")
-        .set_file_name(default_name)
+        .set_file_name(destination_or_name)
         .add_filter("Video MP4 (*.mp4)", &["mp4"]);
 
     if let Some(target_path) = dialog.save_file() {
-        match std::fs::write(&target_path, data) {
-            Ok(_) => {
-                let path_str = target_path.to_string_lossy().to_string();
-                log::info!("[video] Berkas video berhasil disimpan ke: {}", path_str);
-                MutationResult::success(Some(path_str))
-            }
-            Err(e) => {
-                log::error!("[video] Gagal menyimpan video ke {:?}: {}", target_path, e);
-                MutationResult::fail(format!("Gagal menulis berkas video: {}", e))
-            }
-        }
+        write_video_to_path(&target_path, data)
     } else {
         log::info!("[video] Dialog pemilihan folder video dibatalkan pengguna");
         MutationResult::success(None)
@@ -104,6 +125,8 @@ fn save_video_to_disk(default_name: &str, data: &[u8]) -> MutationResult<Option<
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn test_file_name_url_decode() {
         let raw_name = "nitirekso%20pnl%202026-10-28.mp4";
@@ -114,8 +137,34 @@ mod tests {
     }
 
     #[test]
-    fn test_save_video_to_disk_empty_check() {
-        let empty_bytes = Vec::<u8>::new();
-        assert!(empty_bytes.is_empty());
+    fn test_save_video_to_disk_writes_to_temp_file_and_handles_error() {
+        let temp_dir = std::env::temp_dir().join("nitirekso-video-save-test");
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let target_file = temp_dir.join("saved-test-video.mp4");
+        let test_bytes = b"mp4-video-authentic-test-bytes";
+
+        // 1. Uji kasus sukses: simpan byte ke temp file melalui save_video_to_disk
+        let res = save_video_to_disk(target_file.to_str().unwrap(), test_bytes);
+        assert!(res.ok, "Penyimpanan video ke temp file harus berhasil: {:?}", res.error);
+        assert_eq!(res.data, Some(Some(target_file.to_string_lossy().to_string())));
+
+        // Verifikasi konten file di disk
+        let saved_content = std::fs::read(&target_file).expect("File hasil simpan harus dapat dibaca");
+        assert_eq!(saved_content, test_bytes, "Konten berkas harus persis dengan byte masukan");
+
+        // 2. Uji penanganan error: simpan ke path yang mustahil/tidak dapat ditulis
+        let invalid_target = if cfg!(windows) {
+            "Z:\\forbidden-nonexistent-drive-path\\video.mp4"
+        } else {
+            "/proc/nonexistent-directory-forbidden/video.mp4"
+        };
+        let err_res = save_video_to_disk(invalid_target, test_bytes);
+        assert!(!err_res.ok, "Penyimpanan ke path tidak valid harus gagal");
+        assert!(err_res.error.is_some(), "Pesan error harus tersedia pada hasil kegagalan");
+
+        // Bersihkan file sementara
+        let _ = std::fs::remove_file(&target_file);
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

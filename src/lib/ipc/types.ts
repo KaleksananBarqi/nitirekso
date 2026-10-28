@@ -159,7 +159,7 @@ export interface TradesClient {
  */
 export interface SettingsClient {
     /** Mengambil seluruh pasangan konfigurasi dan preferensi aplikasi. */
-    getAll(): Promise<AppResult<Record<string, unknown>>>
+    getAll(): Promise<AppResult<SettingsPayload>>
     /** Menyimpan preferensi aplikasi. */
     set(payload: SettingsPayload): Promise<AppResult<void>>
 }

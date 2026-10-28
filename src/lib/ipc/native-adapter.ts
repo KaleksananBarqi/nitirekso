@@ -135,8 +135,8 @@ export class NativeTauriAdapter implements IpcClient {
     // -----------------------------------------------------------------------
 
     public readonly settings: SettingsClient = {
-        getAll: async (): Promise<AppResult<Record<string, unknown>>> => {
-            return await invokeDirect<Record<string, unknown>>(
+        getAll: async (): Promise<AppResult<SettingsPayload>> => {
+            return await invokeDirect<SettingsPayload>(
                 'get_settings',
                 undefined,
                 'SETTINGS_GET_ERROR'

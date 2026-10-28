@@ -51,17 +51,21 @@ pub fn parse_binary_envelope(bytes: &[u8]) -> Result<(&[u8], Option<&[u8]>), Str
     }
 
     let audio_len = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
-    if bytes.len() < 4 + audio_len {
+    let required_len = 4usize
+        .checked_add(audio_len)
+        .ok_or_else(|| "Payload biner video cacat: panjang audio melebihi batas aman memori".to_string())?;
+
+    if bytes.len() < required_len {
         return Err("Payload biner video cacat: panjang audio melebihi ukuran payload".to_string());
     }
 
     let audio_data = if audio_len > 0 {
-        Some(&bytes[4..4 + audio_len])
+        Some(&bytes[4..required_len])
     } else {
         None
     };
 
-    let video_data = &bytes[4 + audio_len..];
+    let video_data = &bytes[required_len..];
     Ok((video_data, audio_data))
 }
 
@@ -300,6 +304,12 @@ mod tests {
     }
 
     #[test]
+    fn test_temp_file_guard_default() {
+        let guard = TempFileGuard::default();
+        assert!(guard.tracked_paths().is_empty());
+    }
+
+    #[test]
     fn test_parse_binary_envelope_corrupted_length() {
         let mut payload = Vec::new();
         // audio_len = 500, tetapi payload hanya memiliki 5 byte
@@ -309,5 +319,16 @@ mod tests {
         let parsed = parse_binary_envelope(&payload);
         assert!(parsed.is_err());
         assert!(parsed.unwrap_err().contains("melebihi ukuran payload"));
+    }
+
+    #[test]
+    fn test_parse_binary_envelope_integer_overflow_or_excessive() {
+        let mut payload = Vec::new();
+        // audio_len maksimal (u32::MAX)
+        payload.extend_from_slice(&u32::MAX.to_be_bytes());
+        payload.extend_from_slice(b"small-data");
+
+        let parsed = parse_binary_envelope(&payload);
+        assert!(parsed.is_err());
     }
 }

@@ -55,7 +55,7 @@ import {
 
 export interface InMemoryMockState {
     trades?: TradeDetail[]
-    settings?: Record<string, unknown>
+    settings?: SettingsPayload
     credentialStatuses?: CredentialStatusPayload[]
     syncStates?: SyncStatePayload[]
     balances?: AccountBalance[]
@@ -66,7 +66,7 @@ export interface InMemoryMockState {
 
 export class InMemoryMockAdapter implements IpcClient {
     private tradesState: TradeDetail[] = []
-    private settingsState: Record<string, unknown> = {}
+    private settingsState: SettingsPayload = {}
     private credentialStatusesState: Map<SyncableExchange, CredentialStatusPayload> = new Map()
     private syncStatesState: Map<SyncableExchange, SyncStatePayload> = new Map()
     private balancesState: AccountBalance[] = []
@@ -299,12 +299,7 @@ export class InMemoryMockAdapter implements IpcClient {
                 )
             }
 
-            const existing = this.tradesState[idx]
-            if (!existing) {
-                return err(
-                    createAppError('TRADE_NOT_FOUND', `Transaksi dengan ID ${id} tidak ditemukan`)
-                )
-            }
+            const existing = this.tradesState[idx]!
             const now = Date.now()
 
             const updatedTrade: Trade = {
@@ -472,14 +467,14 @@ export class InMemoryMockAdapter implements IpcClient {
     // -----------------------------------------------------------------------
 
     public readonly settings: SettingsClient = {
-        getAll: async (): Promise<AppResult<Record<string, unknown>>> => {
+        getAll: async (): Promise<AppResult<SettingsPayload>> => {
             return ok({ ...this.settingsState })
         },
 
         set: async (payload: SettingsPayload): Promise<AppResult<void>> => {
             this.settingsState = {
                 ...this.settingsState,
-                ...(payload as Record<string, unknown>),
+                ...payload,
             }
             return ok(undefined)
         },
