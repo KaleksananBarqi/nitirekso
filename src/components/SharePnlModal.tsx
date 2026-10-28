@@ -32,8 +32,6 @@ import {
     VIDEO_DURATION_OPTIONS
 } from '../lib/shareSettings'
 import { nitireksoLogo, getExchangeDefaultLogo } from '../lib/exchangeAssets'
-import { captureAndExportGif } from '../lib/gif-export'
-import { captureAndExportVideo, mediaUrlToBytes } from '../lib/video-export'
 import { composeAspectFrame } from '../lib/share-frame'
 import { SharePnlErrorCode, logSharePnlError, getSharePnlUserMessage } from '../lib/shareErrorCodes'
 import { BackgroundAdjustBar } from './share/BackgroundAdjustBar'
@@ -46,7 +44,9 @@ import {
     CardCanvasEngine,
     buildPnlCardSpec,
     getGradientDimmingStyle,
-    applyCanvasDimming
+    applyCanvasDimming,
+    exportCardMedia,
+    MediaExportService
 } from '../lib/share'
 
 // ---------------------------------------------------------------------------
@@ -841,18 +841,23 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         drawToCanvas()
     }, [drawToCanvas])
 
+    // Mengambil elemen media latar belakang aktif (video atau gambar)
+    const getActiveWallpaperMedia = useCallback(() => {
+        return activeCustomBgMediaType === 'video'
+            ? ((offscreenBgVideoRef.current && (offscreenBgVideoRef.current.videoWidth > 0 || offscreenBgVideoRef.current.readyState >= 1))
+                ? offscreenBgVideoRef.current
+                : (domBgVideoRef.current && (domBgVideoRef.current.videoWidth > 0 || domBgVideoRef.current.readyState >= 1))
+                    ? domBgVideoRef.current
+                    : (lastValidBgCanvasRef.current || null))
+            : (customBgImgRef.current || null)
+    }, [activeCustomBgMediaType])
+
     // Mendapatkan canvas final yang telah dikomposisikan dengan rasio aspek yang dipilih (misal TikTok 9:16)
     const getFinalRenderCanvas = useCallback((): HTMLCanvasElement => {
         const rawCardCanvas = drawToCanvas()
         if (exportAspect === '9:16') {
             const targetCanvas = document.createElement('canvas')
-            const activeWp = activeCustomBgMediaType === 'video'
-                ? ((offscreenBgVideoRef.current && (offscreenBgVideoRef.current.videoWidth > 0 || offscreenBgVideoRef.current.readyState >= 1))
-                    ? offscreenBgVideoRef.current
-                    : (domBgVideoRef.current && (domBgVideoRef.current.videoWidth > 0 || domBgVideoRef.current.readyState >= 1))
-                        ? domBgVideoRef.current
-                        : (lastValidBgCanvasRef.current || null))
-                : (customBgImgRef.current || null)
+            const activeWp = getActiveWallpaperMedia()
 
             try {
                 composeAspectFrame(rawCardCanvas, targetCanvas, {
@@ -874,18 +879,22 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             return targetCanvas
         }
         return rawCardCanvas
-    }, [drawToCanvas, exportAspect, activeCustomBgMediaType, frameBgSource, frameBlur, frameDim, isCustomBgActive])
+    }, [drawToCanvas, exportAspect, getActiveWallpaperMedia, frameBgSource, frameBlur, frameDim, isCustomBgActive])
 
-    const handleDownload = () => {
+    const handleDownload = async () => {
         setDownloading(true)
         try {
-            const canvas = getFinalRenderCanvas()
-            const link = document.createElement('a')
-            const dateStr = new Date().toISOString().slice(0, 10)
-            const aspectSuffix = exportAspect === '9:16' ? '-9x16' : ''
-            link.download = `${brandTitle}-${trade.trade.symbol}-${dateStr}${aspectSuffix}.png`
-            link.href = canvas.toDataURL('image/png')
-            link.click()
+            const spec = buildCurrentSpec()
+            const activeWp = getActiveWallpaperMedia()
+            await exportCardMedia({
+                spec,
+                format: 'png',
+                aspect: exportAspect,
+                frameBgSource,
+                frameBlur,
+                frameDim,
+                wallpaperMediaElement: isCustomBgActive ? activeWp : null,
+            })
         } catch (err) {
             logSharePnlError(
                 SharePnlErrorCode.FILE_SAVE_FAILED,
@@ -923,21 +932,11 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const handleExportVideo = async () => {
         setExportingVideo(true)
         setVideoProgress(0)
-        const activeVideoEl = offscreenBgVideoRef.current || domBgVideoRef.current
         try {
-            // Hitung durasi rekaman berdasarkan opsi terpilih
+            const spec = buildCurrentSpec()
+            const activeWp = getActiveWallpaperMedia()
             const effectiveSec = getEffectiveDurationSec()
             const durationMs = effectiveSec * 1000
-
-            // Jika wallpaper video aktif, pause dan setel ke awal agar frame dapat dikendalikan per frame
-            if (activeCustomBgMediaType === 'video' && activeVideoEl) {
-                try {
-                    activeVideoEl.pause()
-                    activeVideoEl.currentTime = 0
-                } catch {
-                    // Abaikan jika kontrol video dicegah oleh browser
-                }
-            }
 
             let fps = 30
             let videoBitsPerSecond = 8_000_000
@@ -949,165 +948,27 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 videoBitsPerSecond = 16_000_000
             }
 
-            let rawCardCanvas: HTMLCanvasElement | null = null
-
-            const result = await captureAndExportVideo(async (targetCanvas, context) => {
-                // Selaraskan waktu video latar belakang secara deterministik per frame
-                if (isCustomBgActive && activeCustomBgMediaType === 'video' && activeVideoEl) {
-                    const vid = activeVideoEl
-                    if (!vid.paused) {
-                        vid.pause()
-                    }
-                    if (vid.duration && isFinite(vid.duration) && vid.duration > 0) {
-                        const targetTime = context ? (context.currentTimeSec % vid.duration) : 0
-                        if (Math.abs(vid.currentTime - targetTime) > 0.001) {
-                            vid.currentTime = targetTime
-                            await new Promise<void>((resolve) => {
-                                let resolved = false
-                                const onDone = () => {
-                                    if (resolved) return
-                                    resolved = true
-                                    vid.removeEventListener('seeked', onDone)
-                                    resolve()
-                                }
-                                vid.addEventListener('seeked', onDone, { once: true })
-                                // Safety timeout 250ms jika seek event terhambat browser
-                                setTimeout(onDone, 250)
-                            })
-                            // Pastikan frame video ter-commit ke rendering context
-                            if ('requestVideoFrameCallback' in vid && typeof (vid as any).requestVideoFrameCallback === 'function') {
-                                await new Promise<void>((r) => {
-                                    ;(vid as any).requestVideoFrameCallback(() => r())
-                                    setTimeout(r, 40)
-                                })
-                            } else {
-                                await new Promise((r) => setTimeout(r, 8))
-                            }
-                        }
-                    }
-                }
-
-                if (exportAspect === '9:16') {
-                    if (!rawCardCanvas) {
-                        rawCardCanvas = document.createElement('canvas')
-                    }
-                    drawToCanvas(rawCardCanvas)
-                    const activeWp = activeCustomBgMediaType === 'video'
-                        ? ((activeVideoEl && (activeVideoEl.videoWidth > 0 || activeVideoEl.readyState >= 1))
-                            ? activeVideoEl
-                            : (lastValidBgCanvasRef.current || activeVideoEl || null))
-                        : (customBgImgRef.current || null)
-
-                    composeAspectFrame(rawCardCanvas, targetCanvas, {
-                        aspect: '9:16',
-                        bgSource: frameBgSource,
-                        blurPx: frameBlur,
-                        dimPercent: frameDim,
-                        wallpaperSource: isCustomBgActive ? activeWp : null,
-                    })
-                } else {
-                    drawToCanvas(targetCanvas)
-                }
-            }, {
+            const result = await exportCardMedia({
+                spec,
+                format: 'mp4',
+                aspect: exportAspect,
                 durationMs,
                 fps,
                 videoBitsPerSecond,
+                frameBgSource,
+                frameBlur,
+                frameDim,
+                wallpaperMediaElement: isCustomBgActive ? activeWp : null,
+                wallpaperAudioUrl: (isCustomBgActive && activeCustomBgMediaType === 'video' && activeCustomBgUrl) ? activeCustomBgUrl : undefined,
                 onProgress: (pct) => setVideoProgress(pct),
-                audioSourceVideo: activeCustomBgMediaType === 'video' ? (activeVideoEl || undefined) : undefined
             })
 
-            let finalBlob = result.blob
-
-            // Otomatis remux fMP4 Chromium menjadi Standard Linear MP4 (+faststart) agar terbaca utuh di TikTok & medsos
-            if (result.extension === 'mp4' && typeof window !== 'undefined' && window.api?.remuxVideoMp4) {
-                try {
-                    const arrayBuffer = await result.blob.arrayBuffer()
-                    
-                    let bgAudioData: Uint8Array | undefined = undefined
-                    if (isCustomBgActive && activeCustomBgMediaType === 'video' && activeCustomBgUrl) {
-                        try {
-                            bgAudioData = await mediaUrlToBytes(activeCustomBgUrl)
-                            console.log(`[video-export] File video latar berhasil dimuat (${bgAudioData.length} bytes) untuk muxing audio via ffmpeg.`)
-                        } catch (bgErr) {
-                            console.warn('Gagal memuat file audio background untuk remux:', bgErr)
-                        }
-                    }
-
-                    const remuxRes = await window.api.remuxVideoMp4(new Uint8Array(arrayBuffer), bgAudioData)
-                    if (remuxRes?.ok && remuxRes.data && remuxRes.data.length > 0) {
-                        finalBlob = new Blob([remuxRes.data as unknown as BlobPart], { type: 'video/mp4' })
-                    } else if (remuxRes && !remuxRes.ok) {
-                        logSharePnlError(
-                            SharePnlErrorCode.BACKEND_REMUX_FAILED,
-                            `Remuxing backend FFmpeg gagal: ${remuxRes.error || 'Unknown error'}`,
-                            remuxRes,
-                            'WARN'
-                        )
-                    }
-                } catch (remuxErr) {
-                    logSharePnlError(
-                        SharePnlErrorCode.BACKEND_REMUX_FAILED,
-                        'Remuxing video gagal di backend, beralih menggunakan rekaman asli',
-                        remuxErr,
-                        'WARN'
-                    )
-                }
-            }
-
-            const dateStr = new Date().toISOString().slice(0, 10)
-            const aspectSuffix = exportAspect === '9:16' ? '-9x16' : ''
-            const defaultFilename = `${brandTitle}-${trade.trade.symbol}-${dateStr}${aspectSuffix}.${result.extension}`
-            const arrayBuffer = await finalBlob.arrayBuffer()
-            let savedFilePath: string | null = null
-
-            // Prioritaskan dialog native Save File jika berjalan di lingkungan Tauri
-            if (typeof window !== 'undefined' && window.api?.saveVideoFile) {
-                try {
-                    const saveRes = await window.api.saveVideoFile(defaultFilename, new Uint8Array(arrayBuffer))
-                    if (saveRes?.ok && saveRes.data) {
-                        savedFilePath = saveRes.data
-                        console.log('[SharePnlModal] Berkas video berhasil disimpan ke:', savedFilePath)
-                    } else if (saveRes?.ok && saveRes.data === null) {
-                        console.log('[SharePnlModal] Pemilihan folder penyimpanan dibatalkan pengguna')
-                    } else if (saveRes && !saveRes.ok) {
-                        logSharePnlError(
-                            SharePnlErrorCode.FILE_SAVE_FAILED,
-                            `Gagal menyimpan berkas via native save: ${saveRes.error || 'Unknown'}`,
-                            saveRes,
-                            'WARN'
-                        )
-                    }
-                } catch (saveErr) {
-                    logSharePnlError(
-                        SharePnlErrorCode.FILE_SAVE_FAILED,
-                        'Gagal memanggil native save file dialog, fallback ke unduhan browser',
-                        saveErr,
-                        'WARN'
-                    )
-                    const url = URL.createObjectURL(finalBlob)
-                    const link = document.createElement('a')
-                    link.download = defaultFilename
-                    link.href = url
-                    link.click()
-                    URL.revokeObjectURL(url)
-                }
-            } else {
-                // Fallback untuk browser web reguler
-                const url = URL.createObjectURL(finalBlob)
-                const link = document.createElement('a')
-                link.download = defaultFilename
-                link.href = url
-                link.click()
-                URL.revokeObjectURL(url)
-            }
-
-            // Tampilkan pemutar hasil ekspor di dalam modal
-            const previewUrl = URL.createObjectURL(finalBlob)
+            const previewUrl = URL.createObjectURL(result.blob)
             setExportedVideoResult({
                 url: previewUrl,
-                blob: finalBlob,
-                filename: defaultFilename,
-                savedPath: savedFilePath
+                blob: result.blob,
+                filename: result.filename,
+                savedPath: result.savedFilePath ?? null
             })
         } catch (err) {
             logSharePnlError(
@@ -1117,13 +978,6 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 'ERROR'
             )
         } finally {
-            if (activeCustomBgMediaType === 'video' && activeVideoEl) {
-                try {
-                    void activeVideoEl.play().catch(() => {})
-                } catch {
-                    // Abaikan jika pemutaran preview dicegah
-                }
-            }
             setExportingVideo(false)
             setVideoProgress(0)
         }
@@ -1134,17 +988,12 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         if (!exportedVideoResult) return
         setIsSavingExportedAgain(true)
         try {
-            const arrayBuffer = await exportedVideoResult.blob.arrayBuffer()
-            if (typeof window !== 'undefined' && window.api?.saveVideoFile) {
-                const saveRes = await window.api.saveVideoFile(exportedVideoResult.filename, new Uint8Array(arrayBuffer))
-                if (saveRes?.ok && saveRes.data) {
-                    setExportedVideoResult((prev) => prev ? { ...prev, savedPath: saveRes.data ?? null } : null)
-                }
-            } else {
-                const link = document.createElement('a')
-                link.download = exportedVideoResult.filename
-                link.href = exportedVideoResult.url
-                link.click()
+            const savedPath = await MediaExportService.saveMedia(
+                exportedVideoResult.filename,
+                exportedVideoResult.blob
+            )
+            if (savedPath) {
+                setExportedVideoResult((prev) => prev ? { ...prev, savedPath } : null)
             }
         } catch (e) {
             logSharePnlError(
@@ -1162,21 +1011,20 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         setExportingGif(true)
         setGifProgress(0)
         try {
-            const blob = await captureAndExportGif((targetCanvas) => {
-                drawToCanvas(targetCanvas)
-            }, {
-                frameCount: 16,
+            const spec = buildCurrentSpec()
+            const activeWp = getActiveWallpaperMedia()
+            await exportCardMedia({
+                spec,
+                format: 'gif',
+                aspect: exportAspect,
+                durationMs: 2000,
                 fps: 8,
-                onProgress: (pct) => setGifProgress(pct)
+                frameBgSource,
+                frameBlur,
+                frameDim,
+                wallpaperMediaElement: isCustomBgActive ? activeWp : null,
+                onProgress: (pct) => setGifProgress(pct),
             })
-
-            const url = URL.createObjectURL(blob)
-            const link = document.createElement('a')
-            const dateStr = new Date().toISOString().slice(0, 10)
-            link.download = `${brandTitle}-${trade.trade.symbol}-${dateStr}.gif`
-            link.href = url
-            link.click()
-            URL.revokeObjectURL(url)
         } catch (err) {
             logSharePnlError(
                 SharePnlErrorCode.VIDEO_ENCODE_FRAME_FAILED,

@@ -5,7 +5,9 @@
  * logika visual kanvas murni dari siklus hidup komponen React.
  */
 
-import type { BgDimmingDirection } from '../shareSettings'
+import type { BgDimmingDirection, ExportAspect, FrameBgSource } from '../shareSettings'
+
+export type { ExportAspect, FrameBgSource }
 
 export type CardVariant = 'pnl-single' | 'portfolio-summary'
 
@@ -127,4 +129,28 @@ export interface CardLayoutResult {
     reviewBoxH: number
     roiFontSize: number
     isProfit: boolean
+}
+
+export interface MediaExportOptions {
+    spec: CardRenderSpec
+    format: 'png' | 'mp4' | 'gif'
+    filename?: string
+    aspect?: ExportAspect
+    durationMs?: number
+    fps?: number
+    videoBitsPerSecond?: number
+    frameBgSource?: FrameBgSource
+    frameBlur?: number
+    frameDim?: number
+    wallpaperMediaElement?: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement | null
+    wallpaperAudioData?: Uint8Array
+    wallpaperAudioUrl?: string
+    onProgress?: (percent: number) => void
+}
+
+export interface MediaExportResult {
+    blob: Blob
+    filename: string
+    savedFilePath?: string | null
+    extension: 'png' | 'mp4' | 'gif'
 }

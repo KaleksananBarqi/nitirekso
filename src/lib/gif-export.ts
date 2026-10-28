@@ -270,26 +270,34 @@ export function createGif(frames: GifFrame[]): Uint8Array {
     return new Uint8Array(out)
 }
 
+import type { FrameRenderContext } from './video-export'
+
 /**
  * Capture animasi dari fungsi render canvas dalam rentang waktu tertentu
  * dan simpan sebagai file .gif animasi.
  */
 export async function captureAndExportGif(
-    renderFrameToCanvas: (canvas: HTMLCanvasElement) => void,
+    renderFrameToCanvas: (canvas: HTMLCanvasElement, context?: FrameRenderContext) => void | Promise<void>,
     options: {
         width?: number
         height?: number
         frameCount?: number
         fps?: number
+        durationMs?: number
         onProgress?: (percent: number) => void
     } = {}
 ): Promise<Blob> {
-    const frameCount = options.frameCount ?? 18
     const fps = options.fps ?? 10
+    const frameCount = options.frameCount ?? (options.durationMs ? Math.max(1, Math.round((options.durationMs / 1000) * fps)) : 18)
     const delayMs = Math.round(1000 / fps)
 
     const sampleCanvas = document.createElement('canvas')
-    renderFrameToCanvas(sampleCanvas)
+    await renderFrameToCanvas(sampleCanvas, {
+        frameIndex: 0,
+        totalFrames: frameCount,
+        currentTimeSec: 0,
+        fps
+    })
     const exportW = options.width ?? (sampleCanvas.width > 640 ? 640 : sampleCanvas.width)
     const exportH = options.height ?? Math.round((exportW / sampleCanvas.width) * sampleCanvas.height)
 
@@ -302,7 +310,13 @@ export async function captureAndExportGif(
         const ctx = frameCanvas.getContext('2d')!
 
         const fullCanvas = document.createElement('canvas')
-        renderFrameToCanvas(fullCanvas)
+        const currentTimeSec = i / fps
+        await renderFrameToCanvas(fullCanvas, {
+            frameIndex: i,
+            totalFrames: frameCount,
+            currentTimeSec,
+            fps
+        })
 
         // Downscale untuk menjaga ukuran GIF ringan dan cepat
         ctx.drawImage(fullCanvas, 0, 0, exportW, exportH)
