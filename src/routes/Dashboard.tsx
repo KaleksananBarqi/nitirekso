@@ -7,11 +7,7 @@ import { PnlValue } from '../components/PnlValue'
 import { AccountBalanceWidget } from '../components/AccountBalanceWidget'
 import { ShareAnalyticsModal } from '../components/ShareAnalyticsModal'
 import { SharePnlModal } from '../components/SharePnlModal'
-import {
-    buildEquityCurve,
-    computeDrawdown,
-    summarize
-} from '../lib/analytics/metrics'
+import { compilePerformanceReport } from '../lib/analytics'
 import { formatDateTime, formatDuration, formatPnl, formatRatio, formatR, pnlColorClass, rColorClass } from '../lib/format'
 import { cn } from '../lib/utils'
 
@@ -23,7 +19,7 @@ import { cn } from '../lib/utils'
  */
 
 /** Equity curve ringkas sebagai sparkline SVG. Tanpa dependency chart. */
-function EquitySparkline({ points }: { points: { time: number; equity: number }[] }): React.JSX.Element {
+function EquitySparkline({ points }: { points: ReadonlyArray<{ time: number; equity: number }> }): React.JSX.Element {
     if (points.length < 2) {
         return (
             <p className="text-xs text-muted-foreground">
@@ -95,9 +91,7 @@ export function Dashboard({ trades, hidePnl }: DashboardProps): React.JSX.Elemen
     const [shareAnalyticsOpen, setShareAnalyticsOpen] = useState(false)
     const [sharePnlDetail, setSharePnlDetail] = useState<TradeDetail | null>(null)
 
-    const summary = useMemo(() => summarize(trades), [trades])
-    const curve = useMemo(() => buildEquityCurve(trades), [trades])
-    const drawdown = useMemo(() => computeDrawdown(curve), [curve])
+    const report = useMemo(() => compilePerformanceReport(trades), [trades])
 
     const recent = useMemo(
         () => [...trades].sort((a, b) => b.trade.exitTime - a.trade.exitTime).slice(0, 5),
@@ -123,7 +117,7 @@ export function Dashboard({ trades, hidePnl }: DashboardProps): React.JSX.Elemen
         <div className="flex h-full flex-col overflow-hidden">
             <PageHeader
                 title="Dashboard"
-                description={`Berdasarkan ${summary.totalTrades} trade · P&L bersih setelah fee & funding`}
+                description={`Berdasarkan ${report.summary.totalTrades} trade · P&L bersih setelah fee & funding`}
                 actions={
                     <Button
                         size="sm"
@@ -145,75 +139,75 @@ export function Dashboard({ trades, hidePnl }: DashboardProps): React.JSX.Elemen
                 <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                     <MetricCard
                         label="Win Rate"
-                        value={summary.winRate === null ? '—' : `${(summary.winRate * 100).toFixed(1)}%`}
+                        value={report.summary.winRate === null ? '—' : `${(report.summary.winRate * 100).toFixed(1)}%`}
                         hint={
-                            summary.breakEven > 0
-                                ? `${summary.wins}W / ${summary.losses}L · ${summary.breakEven} flat dikecualikan`
-                                : `${summary.wins}W / ${summary.losses}L`
+                            report.summary.breakEven > 0
+                                ? `${report.summary.wins}W / ${report.summary.losses}L · ${report.summary.breakEven} flat dikecualikan`
+                                : `${report.summary.wins}W / ${report.summary.losses}L`
                         }
                     />
                     <MetricCard
                         label="Profit Factor"
                         value={
                             <PnlValue
-                                value={formatRatio(summary.profitFactor)}
+                                value={formatRatio(report.summary.profitFactor)}
                                 hide={hidePnl}
                                 className={
-                                    !Number.isFinite(summary.profitFactor) || summary.profitFactor >= 1
+                                    !Number.isFinite(report.summary.profitFactor) || report.summary.profitFactor >= 1
                                         ? 'text-profit'
                                         : 'text-loss'
                                 }
                             />
                         }
                         hint={
-                            !Number.isFinite(summary.profitFactor)
+                            !Number.isFinite(report.summary.profitFactor)
                                 ? 'Tanpa loss — tidak terhingga'
                                 : 'Profit kotor / loss kotor'
                         }
                     />
                     <MetricCard
                         label="Expectancy"
-                        value={summary.expectancy === null ? '—' : formatPnl(summary.expectancy)}
+                        value={report.summary.expectancy === null ? '—' : formatPnl(report.summary.expectancy)}
                         hint="Rata-rata hasil per trade"
-                        valueClassName={summary.expectancy === null ? undefined : pnlColorClass(summary.expectancy)}
+                        valueClassName={report.summary.expectancy === null ? undefined : pnlColorClass(report.summary.expectancy)}
                     />
                     <MetricCard
                         label="P&L Bersih"
-                        value={<PnlValue value={formatPnl(summary.netPnlTotal)} hide={hidePnl} className={pnlColorClass(summary.netPnlTotal)} />}
-                        hint={`Kotor ${formatPnl(summary.grossPnlTotal)} · fee ${formatPnl(-summary.feeTotal)}`}
+                        value={<PnlValue value={formatPnl(report.summary.netPnlTotal)} hide={hidePnl} className={pnlColorClass(report.summary.netPnlTotal)} />}
+                        hint={`Kotor ${formatPnl(report.summary.grossPnlTotal)} · fee ${formatPnl(-report.summary.feeTotal)}`}
                     />
                 </div>
 
                 <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
                     <MetricCard
                         label="Max Drawdown"
-                        value={<PnlValue value={formatPnl(drawdown.maxDrawdown)} hide={hidePnl} className={drawdown.maxDrawdown < 0 ? 'text-loss' : undefined} />}
+                        value={<PnlValue value={formatPnl(report.drawdownStats.maxDrawdown)} hide={hidePnl} className={report.drawdownStats.maxDrawdown < 0 ? 'text-loss' : undefined} />}
                         hint={
-                            drawdown.maxDrawdownTime
-                                ? `Terburuk ${formatDateTime(drawdown.maxDrawdownTime)}`
+                            report.drawdownStats.maxDrawdownTime
+                                ? `Terburuk ${formatDateTime(report.drawdownStats.maxDrawdownTime)}`
                                 : 'Belum ada drawdown'
                         }
                     />
                     <MetricCard
                         label="Durasi Drawdown"
                         value={
-                            drawdown.maxDrawdownDurationMs === null
+                            report.drawdownStats.maxDrawdownDurationMs === null
                                 ? 'Belum pulih'
-                                : formatDuration(0, drawdown.maxDrawdownDurationMs)
+                                : formatDuration(0, report.drawdownStats.maxDrawdownDurationMs)
                         }
                         hint="Dari puncak sampai pulih"
                     />
                     <MetricCard
                         label="Funding Fee"
-                        value={<PnlValue value={formatPnl(-summary.fundingFeeTotal)} hide={hidePnl} className={summary.fundingFeeTotal > 0 ? 'text-loss' : undefined} />}
+                        value={<PnlValue value={formatPnl(-report.summary.fundingFeeTotal)} hide={hidePnl} className={report.summary.fundingFeeTotal > 0 ? 'text-loss' : undefined} />}
                         hint="Biaya berkelanjutan perpetual futures"
                     />
                     <MetricCard
                         label="R Valid"
-                        value={`${summary.tradesWithR} / ${summary.totalTrades}`}
+                        value={`${report.summary.tradesWithR} / ${report.summary.totalTrades}`}
                         hint="Trade dengan stop loss terisi"
                         badge={
-                            summary.tradesWithR < summary.totalTrades ? (
+                            report.summary.tradesWithR < report.summary.totalTrades ? (
                                 <Badge tone="warning">sebagian</Badge>
                             ) : undefined
                         }
@@ -224,48 +218,48 @@ export function Dashboard({ trades, hidePnl }: DashboardProps): React.JSX.Elemen
                 <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
                     <MetricCard
                         label="Total R"
-                        value={formatR(summary.totalR)}
+                        value={formatR(report.summary.totalR)}
                         hint={
-                            summary.avgR !== null
-                                ? `Rata-rata ${formatR(summary.avgR)}/trade`
+                            report.summary.avgR !== null
+                                ? `Rata-rata ${formatR(report.summary.avgR)}/trade`
                                 : 'Belum ada trade R valid'
                         }
-                        valueClassName={rColorClass(summary.totalR)}
+                        valueClassName={rColorClass(report.summary.totalR)}
                     />
                     <MetricCard
                         label="Expectancy (R)"
-                        value={formatR(summary.expectancyR)}
+                        value={formatR(report.summary.expectancyR)}
                         hint="Ekspektasi hasil dlm unit risiko"
-                        valueClassName={rColorClass(summary.expectancyR)}
+                        valueClassName={rColorClass(report.summary.expectancyR)}
                     />
                     <MetricCard
                         label="Recovery Factor"
                         value={
-                            summary.recoveryFactor !== null
-                                ? (!Number.isFinite(summary.recoveryFactor) ? '∞' : summary.recoveryFactor.toFixed(2))
+                            report.summary.recoveryFactor !== null
+                                ? (!Number.isFinite(report.summary.recoveryFactor) ? '∞' : report.summary.recoveryFactor.toFixed(2))
                                 : '—'
                         }
                         hint="Net profit ÷ Max drawdown"
                         valueClassName={
-                            summary.recoveryFactor !== null && summary.recoveryFactor >= 1
+                            report.summary.recoveryFactor !== null && report.summary.recoveryFactor >= 1
                                 ? 'text-profit'
-                                : summary.recoveryFactor !== null && summary.recoveryFactor < 0
+                                : report.summary.recoveryFactor !== null && report.summary.recoveryFactor < 0
                                     ? 'text-loss'
                                     : undefined
                         }
                         badge={
-                            summary.recoveryFactor !== null && summary.recoveryFactor >= 1 ? (
+                            report.summary.recoveryFactor !== null && report.summary.recoveryFactor >= 1 ? (
                                 <Badge tone="profit">Tangguh</Badge>
                             ) : undefined
                         }
                     />
                     <MetricCard
                         label="Streak Maksimal"
-                        value={`${summary.maxConsecutiveWins}W / ${summary.maxConsecutiveLosses}L`}
+                        value={`${report.summary.maxConsecutiveWins}W / ${report.summary.maxConsecutiveLosses}L`}
                         hint="Kemenangan / kekalahan beruntun"
                         badge={
-                            summary.maxConsecutiveWins >= 3 ? (
-                                <Badge tone="profit">{summary.maxConsecutiveWins} Win Streak</Badge>
+                            report.summary.maxConsecutiveWins >= 3 ? (
+                                <Badge tone="profit">{report.summary.maxConsecutiveWins} Win Streak</Badge>
                             ) : undefined
                         }
                     />
@@ -281,13 +275,13 @@ export function Dashboard({ trades, hidePnl }: DashboardProps): React.JSX.Elemen
                             </p>
                         </div>
                         <PnlValue
-                            value={formatPnl(curve[curve.length - 1]?.equity ?? 0)}
+                            value={formatPnl(report.equityCurve[report.equityCurve.length - 1]?.equity ?? 0)}
                             hide={hidePnl}
-                            className={cn('text-sm font-semibold', pnlColorClass(curve[curve.length - 1]?.equity ?? 0))}
+                            className={cn('text-sm font-semibold', pnlColorClass(report.equityCurve[report.equityCurve.length - 1]?.equity ?? 0))}
                         />
                     </div>
                     <div className="px-2 py-3">
-                        <EquitySparkline points={curve} />
+                        <EquitySparkline points={report.equityCurve} />
                     </div>
                 </section>
 
@@ -357,6 +351,7 @@ export function Dashboard({ trades, hidePnl }: DashboardProps): React.JSX.Elemen
                 isOpen={shareAnalyticsOpen}
                 onClose={() => setShareAnalyticsOpen(false)}
                 trades={trades}
+                report={report}
             />
 
             {/* Modal Pamer PnL Per Trade */}

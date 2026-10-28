@@ -1,5 +1,6 @@
 // Import relatif — lihat catatan di metrics.ts.
 import type { TradeDetail } from '../../../shared/domain'
+import { compilePerformanceReport } from './performance-report'
 
 /**
  * Pengelompokan (breakdown) per dimensi untuk halaman Analytics.
@@ -63,22 +64,24 @@ export function weekdayLabelOf(entryTime: number): string {
 }
 
 /** Dimensi yang bisa dipakai untuk breakdown. */
-export type Dimension = 'symbol' | 'setupTag' | 'session' | 'weekday' | 'grade' | 'direction' | 'exchange'
+export type Dimension = 'symbol' | 'setupTag' | 'session' | 'weekday' | 'grade' | 'direction' | 'exchange' | 'emotion'
 
 export interface DimensionOption {
     id: Dimension
+    value: Dimension
     label: string
     hint: string
 }
 
 export const DIMENSION_OPTIONS: DimensionOption[] = [
-    { id: 'setupTag', label: 'Per Setup', hint: 'Strategi mana yang benar-benar bekerja' },
-    { id: 'symbol', label: 'Per Symbol', hint: 'Instrumen mana yang paling produktif' },
-    { id: 'session', label: 'Per Sesi', hint: 'Jam berapa performa terbaik (basis UTC)' },
-    { id: 'weekday', label: 'Per Hari', hint: 'Hari apa yang sebaiknya dihindari' },
-    { id: 'grade', label: 'Per Grade', hint: 'Apakah proses bagus sejalan dengan hasil' },
-    { id: 'direction', label: 'Per Arah', hint: 'Long vs short' },
-    { id: 'exchange', label: 'Per Exchange', hint: 'MEXC vs Bitunix vs manual' }
+    { id: 'setupTag', value: 'setupTag', label: 'Per Setup', hint: 'Strategi mana yang benar-benar bekerja' },
+    { id: 'symbol', value: 'symbol', label: 'Per Symbol', hint: 'Instrumen mana yang paling produktif' },
+    { id: 'session', value: 'session', label: 'Per Sesi', hint: 'Jam berapa performa terbaik (basis UTC)' },
+    { id: 'weekday', value: 'weekday', label: 'Per Hari', hint: 'Hari apa yang sebaiknya dihindari' },
+    { id: 'grade', value: 'grade', label: 'Per Grade', hint: 'Apakah proses bagus sejalan dengan hasil' },
+    { id: 'emotion', value: 'emotion', label: 'Emosi', hint: 'Pengaruh psikologi dan kondisi emosional terhadap hasil' },
+    { id: 'direction', value: 'direction', label: 'Per Arah', hint: 'Long vs short' },
+    { id: 'exchange', value: 'exchange', label: 'Per Exchange', hint: 'MEXC vs Bitunix vs manual' }
 ]
 
 /** Kunci pengelompokan untuk satu trade pada dimensi tertentu. */
@@ -100,6 +103,8 @@ export function groupKeyOf(detail: TradeDetail, dimension: Dimension): string {
             return detail.trade.direction === 'long' ? 'Long' : 'Short'
         case 'exchange':
             return detail.trade.exchange.toUpperCase()
+        case 'emotion':
+            return detail.journal?.emotionTag ?? '(tanpa emosi)'
     }
 }
 
@@ -126,59 +131,15 @@ export function netPnlOf(detail: TradeDetail): number {
 /**
  * Kelompokkan trade per dimensi, urut berdasarkan P&L menurun.
  *
- * Trade dengan P&L persis nol dihitung `breakEven` dan dikecualikan dari
- * penyebut win rate — konsisten dengan definisi di `metrics.ts`.
+ * Meneruskan delegasi ke mesin analitik terpadu `compilePerformanceReport` (#28)
+ * untuk mengeliminasi duplikasi perhitungan matematis finansial.
  */
 export function buildBreakdown(
     trades: TradeDetail[],
     dimension: Dimension
 ): BreakdownBucket[] {
-    const groups = new Map<string, TradeDetail[]>()
-
-    for (const detail of trades) {
-        const key = groupKeyOf(detail, dimension)
-        const existing = groups.get(key)
-        if (existing) existing.push(detail)
-        else groups.set(key, [detail])
-    }
-
-    const buckets: BreakdownBucket[] = []
-
-    for (const [label, group] of groups) {
-        let wins = 0
-        let losses = 0
-        let breakEven = 0
-        let netPnl = 0
-        let rSum = 0
-        let rCount = 0
-
-        for (const detail of group) {
-            const pnl = netPnlOf(detail)
-            netPnl += pnl
-            if (pnl > 0) wins += 1
-            else if (pnl < 0) losses += 1
-            else breakEven += 1
-
-            if (detail.rMultiple !== null) {
-                rSum += detail.rMultiple
-                rCount += 1
-            }
-        }
-
-        const directional = wins + losses
-        buckets.push({
-            label,
-            trades: group,
-            netPnl,
-            wins,
-            losses,
-            breakEven,
-            winRate: directional > 0 ? wins / directional : null,
-            avgR: rCount > 0 ? rSum / rCount : null
-        })
-    }
-
-    return buckets.sort((a, b) => b.netPnl - a.netPnl)
+    const report = compilePerformanceReport(trades)
+    return report.getBreakdown(dimension)
 }
 
 /** Daftar nilai unik untuk opsi filter. */

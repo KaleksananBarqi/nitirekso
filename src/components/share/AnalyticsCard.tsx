@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import type { summarize, buildEquityCurve, computeDrawdown } from '../../lib/analytics/metrics'
+import type { PerformanceSummary, DrawdownStats } from '../../lib/analytics/metrics'
+import type { DrawdownResult, SanitizedPoint } from '../../lib/analytics/types'
 import { formatDate, formatPnl, formatRatio } from '../../lib/format'
 import { cn } from '../../lib/utils'
 import { useHidePnl } from '../../hooks/useHidePnl'
@@ -7,9 +8,9 @@ import type { BgTemplate } from '../../lib/shareSettings'
 import type { CardAspectRatio } from '../ShareAnalyticsModal'
 
 export interface AnalyticsCardProps {
-    summary: ReturnType<typeof summarize>
-    curve: ReturnType<typeof buildEquityCurve>
-    drawdown: ReturnType<typeof computeDrawdown>
+    summary: PerformanceSummary
+    curve: ReadonlyArray<SanitizedPoint> | ReadonlyArray<{ equity: number }>
+    drawdown: DrawdownResult | DrawdownStats
     bg: BgTemplate
     accent: string
     isProfit: boolean

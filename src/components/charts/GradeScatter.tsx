@@ -39,7 +39,7 @@ import { formatPnl, formatR } from '../../lib/format'
 const GRADES: ExecutionGrade[] = ['A', 'B', 'C', 'D']
 
 interface GradeScatterProps {
-    trades: TradeDetail[]
+    trades: ReadonlyArray<TradeDetail> | TradeDetail[]
     height?: number
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TradeDetail } from '@shared/domain'
+import type { PerformanceReport } from '../analytics'
 import { CardCanvasEngine } from './card-canvas-engine'
 import { buildPnlCardSpec, buildPortfolioSummaryCardSpec } from './card-spec-builder'
 import type { BgTemplate } from '../shareSettings'
@@ -341,5 +342,73 @@ describe('buildPortfolioSummaryCardSpec', () => {
         expect(layout.width).toBe(1280)
         expect(layout.height).toBe(720)
         expect(layout.isProfit).toBe(true)
+    })
+
+    it('menerima objek PerformanceReport secara langsung sebagai alternatif field terpisah (#30)', () => {
+        const mockReport: PerformanceReport = {
+            summary: {
+                totalTrades: 25,
+                wins: 18,
+                losses: 7,
+                breakEven: 0,
+                winRate: 0.72,
+                profitFactor: 2.8,
+                expectancy: 120.5,
+                avgWin: 200,
+                avgLoss: -85,
+                netPnlTotal: 2500,
+                grossPnlTotal: 2600,
+                feeTotal: 100,
+                fundingFeeTotal: 0,
+                tradesWithR: 20,
+                totalR: 15.5,
+                avgR: 0.775,
+                expectancyR: 0.65,
+                maxConsecutiveWins: 5,
+                maxConsecutiveLosses: 2,
+                recoveryFactor: 4.1
+            },
+            equityCurve: [
+                { time: 1000, equity: 100, peak: 100, drawdown: 0, tradeId: 1 },
+                { time: 2000, equity: 2500, peak: 2500, drawdown: 0, tradeId: 2 }
+            ],
+            drawdownStats: {
+                maxDrawdown: -600,
+                maxDrawdownTime: 1500,
+                maxDrawdownDurationMs: 500,
+                maxDrawdownPercent: 12.5
+            },
+            rDistribution: { buckets: [], withR: 20, total: 25 },
+            trades: [],
+            getBreakdown: () => [],
+            compareWithBenchmark: () => ({ points: [], summary: null })
+        }
+
+        const spec = buildPortfolioSummaryCardSpec({
+            report: mockReport,
+            bg: mockBg,
+            periodLabel: 'Custom Report Period'
+        })
+
+        expect(spec.variant).toBe('portfolio-summary')
+        const data = spec.data as any
+        expect(data.netPnlTotal).toBe(2500)
+        expect(data.winRate).toBe(72)
+        expect(data.totalTrades).toBe(25)
+        expect(data.winCount).toBe(18)
+        expect(data.lossCount).toBe(7)
+        expect(data.profitFactor).toBe(2.8)
+        expect(data.maxDrawdown).toBe(-600)
+        expect(data.maxDrawdownPercent).toBe(12.5)
+        expect(data.recoveryFactor).toBe(4.1)
+        expect(data.equityCurve?.length).toBe(2)
+    })
+
+    it('melempar error jika parameter summary maupun report tidak disediakan', () => {
+        expect(() => {
+            buildPortfolioSummaryCardSpec({
+                bg: mockBg
+            } as any)
+        }).toThrow('buildPortfolioSummaryCardSpec: summary atau report wajib disediakan.')
     })
 })

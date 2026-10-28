@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { TradeDetail } from '../../../shared/domain'
 import { buildRDistribution } from '../../lib/analytics/metrics'
+import type { RDistributionStats } from '../../lib/analytics/types'
 import { cn } from '../../lib/utils'
 
 /**
@@ -22,12 +23,17 @@ import { cn } from '../../lib/utils'
  */
 
 interface RHistogramProps {
-    trades: TradeDetail[]
+    trades?: TradeDetail[]
+    distribution?: RDistributionStats
     height?: number
 }
 
-export function RHistogram({ trades, height = 200 }: RHistogramProps): React.JSX.Element {
-    const dist = useMemo(() => buildRDistribution(trades), [trades])
+export function RHistogram({ trades, distribution, height = 200 }: RHistogramProps): React.JSX.Element {
+    const dist = useMemo(() => {
+        if (distribution) return distribution
+        if (trades) return buildRDistribution(trades)
+        return { buckets: [], withR: 0, total: 0 }
+    }, [distribution, trades])
 
     if (dist.withR === 0) {
         return (
