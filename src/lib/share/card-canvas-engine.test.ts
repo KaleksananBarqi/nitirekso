@@ -537,4 +537,34 @@ describe('CardCanvasEngine', () => {
             expect(record.textDrawn.some(t => t.includes('★★★★★') || t.includes('••••'))).toBe(true)
         })
     })
+
+    describe('render - Static & Overload Signature', () => {
+        it('mendukung panggilan statis CardCanvasEngine.render(spec, canvas)', () => {
+            const { canvas, record } = createMockCanvas(1080, 1080)
+            const spec: CardRenderSpec = {
+                variant: 'pnl-single',
+                data: winningTradeFixture,
+                theme: defaultTheme
+            }
+
+            const result = CardCanvasEngine.render(spec, canvas)
+            expect(result.width).toBe(1080)
+            expect(result.isProfit).toBe(true)
+            expect(record.textDrawn).toContain('BTCUSDT')
+        })
+
+        it('mendukung panggilan statis CardCanvasEngine.render(canvas, spec)', () => {
+            const { canvas, record } = createMockCanvas(1080, 1080)
+            const spec: CardRenderSpec = {
+                variant: 'pnl-single',
+                data: winningTradeFixture,
+                theme: defaultTheme
+            }
+
+            const result = CardCanvasEngine.render(canvas, spec)
+            expect(result.width).toBe(1080)
+            expect(result.isProfit).toBe(true)
+            expect(record.textDrawn).toContain('BTCUSDT')
+        })
+    })
 })

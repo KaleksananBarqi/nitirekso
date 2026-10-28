@@ -342,9 +342,40 @@ export class CardCanvasEngine {
     }
 
     /**
-     * Merender spesifikasi kartu lengkap ke elemen HTMLCanvasElement.
+     * Helper statis untuk merender spesifikasi kartu langsung ke canvas.
+     * Menerima baik (spec, canvas) maupun (canvas, spec).
      */
-    render(canvas: HTMLCanvasElement, spec: CardRenderSpec): CardLayoutResult {
+    static render(spec: CardRenderSpec, canvas: HTMLCanvasElement): CardLayoutResult
+    static render(canvas: HTMLCanvasElement, spec: CardRenderSpec): CardLayoutResult
+    static render(
+        arg1: CardRenderSpec | HTMLCanvasElement,
+        arg2: CardRenderSpec | HTMLCanvasElement
+    ): CardLayoutResult {
+        const engine = new CardCanvasEngine()
+        return (engine.render as any)(arg1, arg2)
+    }
+
+    /**
+     * Merender spesifikasi kartu lengkap ke elemen HTMLCanvasElement.
+     * Menerima baik (spec, canvas) maupun (canvas, spec).
+     */
+    render(spec: CardRenderSpec, canvas: HTMLCanvasElement): CardLayoutResult
+    render(canvas: HTMLCanvasElement, spec: CardRenderSpec): CardLayoutResult
+    render(
+        arg1: CardRenderSpec | HTMLCanvasElement,
+        arg2: CardRenderSpec | HTMLCanvasElement
+    ): CardLayoutResult {
+        let canvas: HTMLCanvasElement
+        let spec: CardRenderSpec
+
+        if (arg1 && typeof (arg1 as HTMLCanvasElement).getContext === 'function') {
+            canvas = arg1 as HTMLCanvasElement
+            spec = arg2 as CardRenderSpec
+        } else {
+            spec = arg1 as CardRenderSpec
+            canvas = arg2 as HTMLCanvasElement
+        }
+
         const initialCtx = canvas.getContext('2d')
         const layout = this.measureLayout(spec, initialCtx || undefined)
 
@@ -529,7 +560,9 @@ export class CardCanvasEngine {
 
         if (activeLogoImg) {
             const maxLogoH = 34
-            const logoAspect = 2.5
+            const imgW = (activeLogoImg as any).width || (activeLogoImg as any).naturalWidth
+            const imgH = (activeLogoImg as any).height || (activeLogoImg as any).naturalHeight
+            const logoAspect = (imgW && imgH) ? (imgW / imgH) : 2.5
             const logoW = Math.min(140, maxLogoH * logoAspect)
             const logoX = rightEdgeX - logoW
             ctx.drawImage(activeLogoImg, logoX, curY + 2, logoW, maxLogoH)
@@ -744,7 +777,7 @@ export class CardCanvasEngine {
         const exitMs = normalizeTimestamp(data.exitTime)
         const entryTimeText = data.showTradeTimes && entryMs ? formatDateTime(entryMs) : undefined
         const exitTimeText = data.showTradeTimes ? (exitMs ? formatDateTime(exitMs) : 'Posisi Terbuka') : undefined
-        const durationStr = (entryMs && exitMs) ? formatDuration(entryMs, exitMs) : '—'
+        const durationStr = data.duration || ((entryMs && exitMs) ? formatDuration(entryMs, exitMs) : '—')
 
         drawStatCol('Entry Price', formatPrice(data.entryPrice), 0, '#ffffff', entryTimeText)
         drawStatCol('Exit Price', formatPrice(data.exitPrice), 1, '#ffffff', exitTimeText)

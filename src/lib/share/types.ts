@@ -60,6 +60,7 @@ export interface SingleTradeData {
     roiPercent?: number
     size?: number
     rMultiple?: number | null
+    duration?: string | null
     plannedStop?: number | null
     plannedTarget?: number | null
     plannedRr?: number | null
