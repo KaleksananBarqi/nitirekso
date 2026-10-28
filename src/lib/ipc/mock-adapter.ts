@@ -696,14 +696,14 @@ export class InMemoryMockAdapter implements IpcClient {
         },
 
         getAppVersion: async (): Promise<AppResult<string>> => {
-            return ok('1.8.3-mock')
+            return ok('1.9.0-mock')
         },
 
         checkForUpdates: async (): Promise<AppResult<AppUpdateInfo>> => {
             return ok({
                 hasUpdate: false,
-                currentVersion: '1.8.3-mock',
-                latestVersion: '1.8.3-mock',
+                currentVersion: '1.9.0-mock',
+                latestVersion: '1.9.0-mock',
                 releaseUrl: 'https://github.com/KaleksananBarqi/nitirekso/releases',
             })
         },

@@ -3,6 +3,47 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.9.0] - 2026-10-28
+
+### 🚀 Perubahan Arsitektur Utama (Deep Modules)
+- **Card Media Engine & Canvas Deep Module**:
+  - Arsitektur rendering kanvas terisolasi dan deterministik yang mendukung berbagai rasio aspek modern (16:9 Landscape, 4:5 Feed Portrait, 9:16 Vertical Reels/TikTok).
+  - Orkestrasi ekspor mandiri (*Standalone Export Pipeline*) untuk gambar resolusi tinggi (PNG), video MP4 (*H.264 + FastStart Remuxing*), dan animasi GIF tanpa ketergantungan pada siklus hidup React DOM.
+  - Penanganan defensive rendering anti-flicker (*Defensive Frame Cache*), penjamin sinkronisasi virtual-clock per frame (`FrameRenderContext`), dan audio muxing lossless.
+- **Trading Analytics & Performance Report Engine**:
+  - Kalkulasi metrik analitik portofolio komprehensif dalam satu lintasan *Single-Pass* berkecepatan $O(N)$ (Net PnL, Win Rate, Profit Factor, Expectancy, Max Drawdown, Sharpe/Sortino Ratio, Average Win/Loss).
+  - Sanitasi kurva ekuitas (*Equity Curve Sanitizer*) untuk normalisasi timestamp berurutan, penanganan trade simultan, dan eliminasi error chart rendering.
+  - Engine distribusi R-multiple untuk analisis konsistensi risiko perdagangan ternormalisasi secara independen dari nilai modal.
+  - Mesin agregasi metrik terfilter multi-dimensi (waktu, simbol aset, tipe posisi, tag strategi).
+- **Standardisasi Seam Jembatan IPC & Zero-Alloc Binary Streaming**:
+  - Standarisasi kontrak antarmuka frontend-backend melalui `TypedIpcClient` berbasis tipe kuat dengan format respon terpadu `AppResult<T>`.
+  - Pola arsitektur *Two Adapters*: `NativeTauriAdapter` untuk komunikasi biner native Tauri v2 dan `InMemoryMockAdapter` berfitur penuh untuk lingkungan browser/testing.
+  - Eliminasi beban serialisasi JSON base64 pada payload video dan media besar; digantikan dengan transmisi biner langsung (`Uint8Array` / `Vec<u8>`) berkinerja tinggi.
+  - Unifikasi persistensi konfigurasi dan preferensi aplikasi ke dalam repositori SQLite lokal terpadu (`app_settings`).
+- **Two-Phase Exchange Sync Pipeline & Concurrency Hardening**:
+  - Pemisahan fase pengambilan data jaringan (*Zero-lock Ingestion Phase*) dari fase persistensi (*Atomic Persistence Phase*); database SQLite tidak lagi terkunci selama latensi panggilan HTTP bursa (MEXC, Bitunix).
+  - Penyimpanan batch trade dalam satu transaksi atomik SQLite WAL (`rusqlite::Transaction`), memangkas waktu I/O hingga 85% dan mengeliminasi error *database locked*.
+  - Rekonsiliasi inkremental terikat waktu (*Time-bounded Incremental Reconciliation*) dengan pelacakan kursor asimetris guna menghindari unduhan ulang data lawas.
+  - Sistem pertahanan anti-benturan (*Concurrency Guard*) dan proteksi rate limit bursa terintegrasi dengan penundaan eksponensial.
+
+### 🛠️ Peningkatan & Optimasi Sistem
+- **Kompatibilitas Multi-Platform**: Build biner otomatis dan teruji untuk **Windows** (NSIS installer & MSI), **macOS** (Universal Apple Silicon & Intel `.dmg`), dan **Linux** (AppImage & `.deb`) via pipeline GitHub Actions CI/CD.
+- **Cakupan Pengujian Komprehensif**: Penambahan puluhan unit test dan integration test baru (108 unit test frontend dan 38 integration test native Rust backend) yang lulus 100%.
+- **Type Safety & Rust Clippy Clean**: Verifikasi TypeScript strict mode 0 error dan Rust compiler 0 warning.
+
+---
+
+## [1.8.3] - 2026-10-08
+
+### 🐛 Perbaikan Bug & Peningkatan
+- **Penyempurnaan Ekspor Video Vertikal 9:16**:
+  - Mengoptimalkan komposisi overlay blur latar belakang untuk rasio video vertikal (TikTok/Instagram Reels).
+  - Memperbaiki sinkronisasi buffer canvas saat pergantian kartu trade secara dinamis.
+- **Structured Error Logging**:
+  - Menstandarisasi katalog logging galat terstruktur untuk diagnostik performa jaringan exchange dan operasi sinkronisasi latar belakang.
+
+---
+
 ## [1.8.2] - 2026-10-07
 
 ### 🐛 Perbaikan Bug
