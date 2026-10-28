@@ -163,6 +163,8 @@ describe('buildPnlCardSpec', () => {
                 clip: () => {},
                 drawImage: () => {},
                 setLineDash: () => {},
+                scale: () => {},
+                translate: () => {},
             }),
         } as unknown as HTMLCanvasElement
 
@@ -330,6 +332,8 @@ describe('buildPortfolioSummaryCardSpec', () => {
                 clip: () => {},
                 drawImage: () => {},
                 setLineDash: () => {},
+                scale: () => {},
+                translate: () => {},
             }),
         } as unknown as HTMLCanvasElement
 

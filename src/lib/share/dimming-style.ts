@@ -1,6 +1,23 @@
 import type { CSSProperties } from 'react'
 import type { BgDimmingDirection } from '../shareSettings'
 
+export interface DimmingOpacities {
+    baseOpacity: number
+    darkOpacity: number
+    lightOpacity: number
+}
+
+/**
+ * Menghitung nilai opacity relatif (base, dark, light) dari persentase bgDimming (0-100).
+ * Digunakan bersama oleh perenderan DOM CSS dan kanvas 2D untuk konsistensi visual.
+ */
+export function computeDimmingOpacities(bgDimming: number): DimmingOpacities {
+    const baseOpacity = Math.max(0, Math.min(1, bgDimming / 100))
+    const darkOpacity = Math.min(0.96, baseOpacity * 1.15)
+    const lightOpacity = Math.max(0.12, baseOpacity * 0.28)
+    return { baseOpacity, darkOpacity, lightOpacity }
+}
+
 /**
  * Menghasilkan objek CSSProperties untuk perenderan gradien dimming DOM.
  */
@@ -8,9 +25,7 @@ export function getGradientDimmingStyle(
     bgDimming: number,
     direction: BgDimmingDirection = 'uniform'
 ): CSSProperties {
-    const baseOpacity = bgDimming / 100
-    const darkOpacity = Math.min(0.96, baseOpacity * 1.15)
-    const lightOpacity = Math.max(0.12, baseOpacity * 0.28)
+    const { baseOpacity, darkOpacity, lightOpacity } = computeDimmingOpacities(bgDimming)
 
     switch (direction) {
         case 'top-right':

@@ -159,6 +159,11 @@ export interface MediaExportOptions {
     onProgress?: (percent: number) => void
 }
 
+/**
+ * Alias kompatibilitas penuh untuk opsi tugas ekspor media (Ticket 3 & spesifikasi #19).
+ */
+export type ExportJobOptions = MediaExportOptions
+
 export interface MediaExportResult {
     blob: Blob
     filename: string

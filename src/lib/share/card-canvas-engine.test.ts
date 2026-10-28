@@ -28,13 +28,27 @@ export interface MockCanvasContextRecord {
     calls: Array<{ method: string; args: unknown[] }>
     textDrawn: string[]
     colorsUsed: Set<string>
+    maxEffectiveY: number
 }
 
 export function createMockCanvas(width = 1080, height = 1080) {
+    let currentScale = 1
+    let currentTranslateY = 0
+    let currentTranslateX = 0
+    const transformStack: Array<{ scale: number; tx: number; ty: number }> = []
+
     const record: MockCanvasContextRecord = {
         calls: [],
         textDrawn: [],
-        colorsUsed: new Set<string>()
+        colorsUsed: new Set<string>(),
+        maxEffectiveY: 0
+    }
+
+    const updateMaxY = (y: number, h = 0) => {
+        const effectiveY = currentTranslateY + (y + h) * currentScale
+        if (effectiveY > record.maxEffectiveY) {
+            record.maxEffectiveY = effectiveY
+        }
     }
 
     const state = {
@@ -69,11 +83,22 @@ export function createMockCanvas(width = 1080, height = 1080) {
         get globalAlpha() { return state.globalAlpha },
         set globalAlpha(val: number) { state.globalAlpha = val },
 
+        scale: vi.fn((sx: number, sy: number) => {
+            record.calls.push({ method: 'scale', args: [sx, sy] })
+            currentScale *= sy
+        }),
+        translate: vi.fn((tx: number, ty: number) => {
+            record.calls.push({ method: 'translate', args: [tx, ty] })
+            currentTranslateX += tx * currentScale
+            currentTranslateY += ty * currentScale
+        }),
         fillRect: vi.fn((x, y, w, h) => {
             record.calls.push({ method: 'fillRect', args: [x, y, w, h] })
+            updateMaxY(y, h)
         }),
         strokeRect: vi.fn((x, y, w, h) => {
             record.calls.push({ method: 'strokeRect', args: [x, y, w, h] })
+            updateMaxY(y, h)
         }),
         clearRect: vi.fn((x, y, w, h) => {
             record.calls.push({ method: 'clearRect', args: [x, y, w, h] })
@@ -81,9 +106,11 @@ export function createMockCanvas(width = 1080, height = 1080) {
         fillText: vi.fn((text: string, x: number, y: number) => {
             record.calls.push({ method: 'fillText', args: [text, x, y] })
             record.textDrawn.push(String(text))
+            updateMaxY(y)
         }),
         strokeText: vi.fn((text: string, x: number, y: number) => {
             record.calls.push({ method: 'strokeText', args: [text, x, y] })
+            updateMaxY(y)
         }),
         measureText: vi.fn((text: string) => {
             // Estimasi lebar: parse ukuran font atau fallback 12px per karakter
@@ -110,9 +137,11 @@ export function createMockCanvas(width = 1080, height = 1080) {
         }),
         arc: vi.fn((x, y, r, sa, ea) => {
             record.calls.push({ method: 'arc', args: [x, y, r, sa, ea] })
+            updateMaxY(y, r)
         }),
         roundRect: vi.fn((x, y, w, h, r) => {
             record.calls.push({ method: 'roundRect', args: [x, y, w, h, r] })
+            updateMaxY(y, h)
         }),
         fill: vi.fn(() => {
             record.calls.push({ method: 'fill', args: [] })
@@ -122,15 +151,25 @@ export function createMockCanvas(width = 1080, height = 1080) {
         }),
         save: vi.fn(() => {
             record.calls.push({ method: 'save', args: [] })
+            transformStack.push({ scale: currentScale, tx: currentTranslateX, ty: currentTranslateY })
         }),
         restore: vi.fn(() => {
             record.calls.push({ method: 'restore', args: [] })
+            const prev = transformStack.pop()
+            if (prev) {
+                currentScale = prev.scale
+                currentTranslateX = prev.tx
+                currentTranslateY = prev.ty
+            }
         }),
         clip: vi.fn(() => {
             record.calls.push({ method: 'clip', args: [] })
         }),
         drawImage: vi.fn((...args: unknown[]) => {
             record.calls.push({ method: 'drawImage', args })
+            const y = typeof args[2] === 'number' ? args[2] : 0
+            const h = typeof args[4] === 'number' ? args[4] : 0
+            updateMaxY(y, h)
         }),
         createLinearGradient: vi.fn((x0, y0, x1, y1) => {
             const grad = {
@@ -394,7 +433,7 @@ describe('CardCanvasEngine', () => {
                 }
             }
 
-            const result = engine.render(canvas, spec)
+            const result = engine.render(spec, canvas)
             expect(result.isProfit).toBe(true)
 
             // Memverifikasi teks simbol, ROI, arah, dan branding digambar
@@ -428,7 +467,7 @@ describe('CardCanvasEngine', () => {
                 }
             }
 
-            const result = engine.render(canvas, spec)
+            const result = engine.render(spec, canvas)
             expect(result.isProfit).toBe(false)
 
             expect(record.textDrawn).toContain('ETHUSDT')
@@ -447,7 +486,7 @@ describe('CardCanvasEngine', () => {
                 theme: defaultTheme
             }
 
-            const result = engine.render(canvas, spec)
+            const result = engine.render(spec, canvas)
             expect(result.isProfit).toBe(true) // >= 0 dianggap non-negatif
             expect(record.textDrawn).toContain('SOLUSDT')
             expect(record.textDrawn.some(t => t.includes('0.00%'))).toBe(true)
@@ -464,7 +503,7 @@ describe('CardCanvasEngine', () => {
                 privacy: { hideNominal: true }
             }
 
-            engine.render(canvas, spec)
+            engine.render(spec, canvas)
             // Nominal asli 1,450.80 tidak boleh muncul di teks kanvas
             expect(record.textDrawn.some(t => t.includes('1,450.80'))).toBe(false)
             // Masking berupa '••••' harus muncul
@@ -485,7 +524,7 @@ describe('CardCanvasEngine', () => {
                 theme: defaultTheme
             }
 
-            engine.render(canvas, spec)
+            engine.render(spec, canvas)
             // Harus ada teks dengan elipsis (…) di akhir baris ringkasan
             expect(record.textDrawn.some(t => t.includes('…'))).toBe(true)
         })
@@ -509,7 +548,7 @@ describe('CardCanvasEngine', () => {
                 }
             }
 
-            const result = engine.render(canvas, spec)
+            const result = engine.render(spec, canvas)
             expect(result.isProfit).toBe(true)
 
             expect(record.textDrawn).toContain('NITIREKSO')
@@ -532,7 +571,7 @@ describe('CardCanvasEngine', () => {
                 privacy: { hideNominal: true }
             }
 
-            engine.render(canvas, spec)
+            engine.render(spec, canvas)
             expect(record.textDrawn.some(t => t.includes('4,850.25'))).toBe(false)
             expect(record.textDrawn.some(t => t.includes('★★★★★') || t.includes('••••'))).toBe(true)
         })
@@ -584,7 +623,7 @@ describe('CardCanvasEngine', () => {
                 }
             }
 
-            const layout = engine.render(canvas, spec)
+            const layout = engine.render(spec, canvas)
             expect(layout.width).toBe(1080)
             expect(layout.height).toBe(1350)
             expect(layout.isProfit).toBe(true)
@@ -606,7 +645,67 @@ describe('CardCanvasEngine', () => {
         })
     })
 
-    describe('render - Static & Overload Signature', () => {
+    describe('render - Penskalaan Vertikal Rasio 16:9 (Aspect Scaling)', () => {
+        it('merender trade lengkap dalam rasio 16:9 dengan penskalaan dinamis tanpa melewati batas tinggi 720px', () => {
+            const engine = new CardCanvasEngine()
+            const { canvas, ctx, record } = createMockCanvas(1280, 720)
+
+            const fullTradeSpec: CardRenderSpec = {
+                variant: 'pnl-single',
+                aspect: '16:9',
+                data: {
+                    ...winningTradeFixture,
+                    showSide: true,
+                    showTradeTimes: true,
+                    showPlan: true,
+                    showSetup: true,
+                    showGrade: true,
+                    showEmotion: true,
+                    showThesis: true,
+                    showReview: true,
+                    showFullText: true,
+                },
+                theme: defaultTheme,
+                branding: {
+                    brandTitle: 'NITIREKSO',
+                    brandSubtitle: 'PRO JOURNAL',
+                    traderHandle: '@trader_champion',
+                    exchange: 'binance',
+                    referralCode: 'TOP169',
+                    showWatermark: true,
+                    showProfile: true,
+                    showReferral: true
+                }
+            }
+
+            const layout = engine.render(fullTradeSpec, canvas)
+            expect(layout.width).toBe(1280)
+            expect(layout.height).toBe(720)
+
+            // Memverifikasi bahwa ctx.scale dipanggil untuk menyesuaikan tata letak vertikal
+            expect(ctx.scale).toHaveBeenCalled()
+            const scaleCalls = (ctx.scale as any).mock.calls
+            const [scaleX, scaleY] = scaleCalls[0]
+            expect(scaleX).toBeLessThan(1)
+            expect(scaleX).toBeGreaterThan(0.4)
+            expect(scaleY).toBe(scaleX)
+
+            // Memverifikasi seluruh teks penting terender
+            expect(record.textDrawn).toContain('BTCUSDT')
+            expect(record.textDrawn).toContain('NITIREKSO')
+            expect(record.textDrawn).toContain('Ref: TOP169')
+            expect(record.textDrawn).toContain('Entry Price')
+            expect(record.textDrawn).toContain('Plan SL')
+            expect(record.textDrawn.some(t => t.includes('Trade Thesis'))).toBe(true)
+            expect(record.textDrawn.some(t => t.includes('Post-Trade Review'))).toBe(true)
+
+            // Memverifikasi bahwa tidak ada elemen yang digambar melebihi batas kanvas (720px)
+            expect(record.maxEffectiveY).toBeGreaterThan(0)
+            expect(record.maxEffectiveY).toBeLessThanOrEqual(720)
+        })
+    })
+
+    describe('render - Standardized Signature', () => {
         it('mendukung panggilan statis CardCanvasEngine.render(spec, canvas)', () => {
             const { canvas, record } = createMockCanvas(1080, 1080)
             const spec: CardRenderSpec = {
@@ -616,20 +715,6 @@ describe('CardCanvasEngine', () => {
             }
 
             const result = CardCanvasEngine.render(spec, canvas)
-            expect(result.width).toBe(1080)
-            expect(result.isProfit).toBe(true)
-            expect(record.textDrawn).toContain('BTCUSDT')
-        })
-
-        it('mendukung panggilan statis CardCanvasEngine.render(canvas, spec)', () => {
-            const { canvas, record } = createMockCanvas(1080, 1080)
-            const spec: CardRenderSpec = {
-                variant: 'pnl-single',
-                data: winningTradeFixture,
-                theme: defaultTheme
-            }
-
-            const result = CardCanvasEngine.render(canvas, spec)
             expect(result.width).toBe(1080)
             expect(result.isProfit).toBe(true)
             expect(record.textDrawn).toContain('BTCUSDT')

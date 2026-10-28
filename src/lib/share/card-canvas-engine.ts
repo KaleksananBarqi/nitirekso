@@ -16,6 +16,7 @@ import {
     formatR
 } from '../format'
 import type { BgDimmingDirection } from '../shareSettings'
+import { computeDimmingOpacities } from './dimming-style'
 import type {
     CardLayoutResult,
     CardRenderSpec,
@@ -100,9 +101,7 @@ export function applyCanvasDimming(
     bgDimming: number,
     direction: BgDimmingDirection = 'uniform'
 ): void {
-    const baseOpacity = bgDimming / 100
-    const darkOpacity = Math.min(0.96, baseOpacity * 1.15)
-    const lightOpacity = Math.max(0.12, baseOpacity * 0.28)
+    const { baseOpacity, darkOpacity, lightOpacity } = computeDimmingOpacities(bgDimming)
 
     switch (direction) {
         case 'top-right': {
@@ -343,39 +342,16 @@ export class CardCanvasEngine {
 
     /**
      * Helper statis untuk merender spesifikasi kartu langsung ke canvas.
-     * Menerima baik (spec, canvas) maupun (canvas, spec).
      */
-    static render(spec: CardRenderSpec, canvas: HTMLCanvasElement): CardLayoutResult
-    static render(canvas: HTMLCanvasElement, spec: CardRenderSpec): CardLayoutResult
-    static render(
-        arg1: CardRenderSpec | HTMLCanvasElement,
-        arg2: CardRenderSpec | HTMLCanvasElement
-    ): CardLayoutResult {
+    static render(spec: CardRenderSpec, canvas: HTMLCanvasElement): CardLayoutResult {
         const engine = new CardCanvasEngine()
-        return (engine.render as any)(arg1, arg2)
+        return engine.render(spec, canvas)
     }
 
     /**
      * Merender spesifikasi kartu lengkap ke elemen HTMLCanvasElement.
-     * Menerima baik (spec, canvas) maupun (canvas, spec).
      */
-    render(spec: CardRenderSpec, canvas: HTMLCanvasElement): CardLayoutResult
-    render(canvas: HTMLCanvasElement, spec: CardRenderSpec): CardLayoutResult
-    render(
-        arg1: CardRenderSpec | HTMLCanvasElement,
-        arg2: CardRenderSpec | HTMLCanvasElement
-    ): CardLayoutResult {
-        let canvas: HTMLCanvasElement
-        let spec: CardRenderSpec
-
-        if (arg1 && typeof (arg1 as HTMLCanvasElement).getContext === 'function') {
-            canvas = arg1 as HTMLCanvasElement
-            spec = arg2 as CardRenderSpec
-        } else {
-            spec = arg1 as CardRenderSpec
-            canvas = arg2 as HTMLCanvasElement
-        }
-
+    render(spec: CardRenderSpec, canvas: HTMLCanvasElement): CardLayoutResult {
         const initialCtx = canvas.getContext('2d')
         const layout = this.measureLayout(spec, initialCtx || undefined)
 
@@ -484,10 +460,10 @@ export class CardCanvasEngine {
         ctx.fillRect(0, 0, W, H)
 
         // 4. Wadah Kartu Glassmorphism (Container)
-        const cr = 32
+        const cornerRadius = 32
         ctx.save()
         ctx.beginPath()
-        ctx.roundRect(layout.cardX, layout.cardY, layout.cardWidth, layout.cardHeight, cr)
+        ctx.roundRect(layout.cardX, layout.cardY, layout.cardWidth, layout.cardHeight, cornerRadius)
         if (isTransparentMode) {
             ctx.fillStyle = 'rgba(11, 15, 25, 0.88)'
             ctx.strokeStyle = `${accent}66`
@@ -525,6 +501,33 @@ export class CardCanvasEngine {
         const { cardX, cardY, cardWidth, contentWidth, roiFontSize, thesisLines, thesisBoxH, reviewLines, reviewBoxH } = layout
         const cx = cardX + 52
         const contentW = contentWidth
+
+        const totalContentH = layout.contentHeight
+        const cardH = layout.cardHeight
+        const padTop = 52
+        const padBottom = 48
+        const isAspect16x9 = layout.width === 1280 && layout.height === 720
+        const isOverflow = isAspect16x9 || totalContentH > (cardH - padTop - padBottom)
+
+        let scale = 1
+        if (isOverflow && totalContentH > 0) {
+            // Berikan batas atas target tinggi dengan margin pengaman vertikal
+            const targetMaxH = cardH - 40
+            if (totalContentH > targetMaxH) {
+                scale = Math.min(1, targetMaxH / totalContentH)
+            }
+        }
+
+        const canTransform = typeof ctx.translate === 'function' && typeof ctx.scale === 'function'
+        const shouldScale = scale < 0.999 && canTransform
+        if (shouldScale) {
+            ctx.save()
+            // Translasi dan penskalaan terpusat secara proporsional di dalam batas kartu
+            const tx = (cardX + cardWidth / 2) * (1 - scale)
+            const ty = cardY * (1 - scale) + (cardH - totalContentH * scale) / 2
+            ctx.translate(tx, ty)
+            ctx.scale(scale, scale)
+        }
 
         const brandTitle = branding?.brandTitle?.trim() || 'NITIREKSO'
         const brandSubtitle = branding?.brandSubtitle?.trim() || 'Trading Journal'
@@ -689,8 +692,8 @@ export class CardCanvasEngine {
                     D: { text: '#f87171', bg: 'rgba(248, 113, 113, 0.16)', border: 'rgba(248, 113, 113, 0.36)' }
                 }
                 const defaultGradeColor = { text: '#38bdf8', bg: 'rgba(56, 189, 248, 0.16)', border: 'rgba(56, 189, 248, 0.36)' }
-                const gc = gradeColors[data.executionGrade] || defaultGradeColor
-                drawBadge(`Grade ${data.executionGrade}`, '⭐', gc.text, gc.bg, gc.border)
+                const gradeColor = gradeColors[data.executionGrade] || defaultGradeColor
+                drawBadge(`Grade ${data.executionGrade}`, '⭐', gradeColor.text, gradeColor.bg, gradeColor.border)
             }
             if (data.showEmotion !== false && data.emotionTag) {
                 const emotionIcons: Record<string, string> = {
@@ -985,6 +988,10 @@ export class CardCanvasEngine {
                 ctx.fillText(wm2, textStartX, curY + 50)
                 ctx.restore()
             }
+        }
+
+        if (shouldScale) {
+            ctx.restore()
         }
     }
 
@@ -1338,12 +1345,12 @@ export class CardCanvasEngine {
 
             const winLoss = `${data.winCount ?? 0}W / ${data.lossCount ?? 0}L`
             const pf = data.profitFactor !== undefined ? data.profitFactor.toFixed(2) : '—'
-            const dd = data.maxDrawdownPercent !== undefined ? `${data.maxDrawdownPercent.toFixed(1)}%` : '—'
+            const drawdownText = data.maxDrawdownPercent !== undefined ? `${data.maxDrawdownPercent.toFixed(1)}%` : '—'
 
             drawCol('TOTAL TRADES', `${data.totalTrades}`, 0)
             drawCol('WIN / LOSS', winLoss, 1, '#38bdf8')
             drawCol('PROFIT FACTOR', pf, 2, '#34d399')
-            drawCol('MAX DRAWDOWN', dd, 3, '#f87171')
+            drawCol('MAX DRAWDOWN', drawdownText, 3, '#f87171')
 
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
             ctx.beginPath()

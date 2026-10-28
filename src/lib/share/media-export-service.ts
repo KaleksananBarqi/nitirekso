@@ -415,28 +415,22 @@ export async function exportCardMedia(options: MediaExportOptions): Promise<Medi
 }
 
 /**
- * Deep Module MediaExportService yang menyediakan antarmuka berorientasi objek
- * untuk seluruh operasi ekspor media Nitirekso.
+ * Antarmuka terpadu MediaExportService untuk seluruh operasi ekspor media Nitirekso.
+ * Mengarahkan seluruh pemanggilan secara langsung ke fungsi utama `exportCardMedia` dan `saveMediaFile`.
  */
 export class MediaExportService {
     /**
      * Eksekusi ekspor media (PNG, MP4, atau GIF).
      */
-    static async export(options: MediaExportOptions): Promise<MediaExportResult> {
-        return exportCardMedia(options)
-    }
+    static export = exportCardMedia
 
     /**
      * Simpan ulang data media biner menggunakan dialog native atau browser download.
      */
-    static async saveMedia(filename: string, blob: Blob): Promise<string | null> {
-        return saveMediaFile(filename, blob)
-    }
+    static saveMedia = saveMediaFile
 
     /**
      * Susun nama berkas deterministik sesuai opsi ekspor.
      */
-    static resolveFilename(options: MediaExportOptions): string {
-        return resolveFilename(options)
-    }
+    static resolveFilename = resolveFilename
 }

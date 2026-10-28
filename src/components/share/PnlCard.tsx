@@ -9,66 +9,153 @@ import {
 } from '../../lib/shareSettings'
 import { nitireksoLogo } from '../../lib/exchangeAssets'
 import { useHidePnl } from '../../hooks/useHidePnl'
-import { getGradientDimmingStyle } from '../../lib/share'
+import { getGradientDimmingStyle, type CardRenderSpec, type SingleTradeData } from '../../lib/share'
 
 export interface PnlCardProps {
-    trade: TradeDetail
-    bg: BgTemplate
-    accent: string
-    roiPercent: number
-    duration: string
-    leverage: number
-    selectedExchange: ExchangeName
-    traderHandle: string
-    brandTitle: string
-    brandSubtitle: string
-    activeLogoUrl: string | null
-    activeReferral: string
-    avatarUrl: string | null
-    isCustomBgActive: boolean
-    customBgUrl: string | null
+    /**
+     * Spesifikasi render kanvas independen (opsional).
+     * Jika disediakan, properti visual kartu diekstrak langsung dari spec ini
+     * untuk mencegah terjadinya data clumping.
+     */
+    spec?: CardRenderSpec
+
+    // Props granular / backwards-compatible
+    trade?: TradeDetail
+    bg?: BgTemplate
+    accent?: string
+    roiPercent?: number
+    duration?: string
+    leverage?: number
+    selectedExchange?: ExchangeName
+    traderHandle?: string
+    brandTitle?: string
+    brandSubtitle?: string
+    activeLogoUrl?: string | null
+    activeReferral?: string
+    avatarUrl?: string | null
+    isCustomBgActive?: boolean
+    customBgUrl?: string | null
     customBgMediaType?: 'image' | 'video'
-    bgDimming: number
+    bgDimming?: number
     bgDimmingDirection?: BgDimmingDirection
     bgPosX?: number
     bgPosY?: number
     videoRef?: React.RefObject<HTMLVideoElement | null>
-    showSide: boolean
-    showPnl: boolean
-    showRoi: boolean
-    showTradeTimes: boolean
-    showProfile: boolean
-    showWatermark: boolean
-    showDuration: boolean
-    showPlan: boolean
-    plannedStop: number | null
-    plannedTarget: number | null
-    plannedRr: number | null
-    setupTag: string | null
-    executionGrade: ExecutionGrade | null
-    emotionTag: string | null
-    showSetup: boolean
-    showGrade: boolean
-    showEmotion: boolean
-    showReferral: boolean
-    showThesis: boolean
-    customThesis: string
-    showReview: boolean
-    customReview: string
-    showFullText: boolean
+    showSide?: boolean
+    showPnl?: boolean
+    showRoi?: boolean
+    showTradeTimes?: boolean
+    showProfile?: boolean
+    showWatermark?: boolean
+    showDuration?: boolean
+    showPlan?: boolean
+    plannedStop?: number | null
+    plannedTarget?: number | null
+    plannedRr?: number | null
+    setupTag?: string | null
+    executionGrade?: ExecutionGrade | null
+    emotionTag?: string | null
+    showSetup?: boolean
+    showGrade?: boolean
+    showEmotion?: boolean
+    showReferral?: boolean
+    showThesis?: boolean
+    customThesis?: string
+    showReview?: boolean
+    customReview?: string
+    showFullText?: boolean
 }
 
-export function PnlCard({
-    trade, bg, accent, roiPercent, duration, leverage, selectedExchange,
-    traderHandle, brandTitle, brandSubtitle, activeLogoUrl, activeReferral,
-    avatarUrl, isCustomBgActive, customBgUrl, customBgMediaType = 'image',
-    bgDimming, bgDimmingDirection = 'uniform', bgPosX = 50, bgPosY = 50, videoRef,
-    showSide, showPnl, showRoi, showTradeTimes, showProfile, showWatermark, showDuration,
-    showPlan, plannedStop, plannedTarget, plannedRr,
-    setupTag, executionGrade, emotionTag, showSetup, showGrade, showEmotion,
-    showReferral, showThesis, customThesis, showReview, customReview, showFullText
-}: PnlCardProps) {
-    const { hidePnl } = useHidePnl()
+export function PnlCard(props: PnlCardProps) {
+    const { spec } = props
+    const singleData = spec && spec.variant === 'pnl-single' ? (spec.data as SingleTradeData) : null
+    const theme = spec?.theme
+    const branding = spec?.branding
+    const privacy = spec?.privacy
+
+    const tradeSymbol = props.trade?.trade?.symbol ?? singleData?.symbol ?? 'UNKNOWN'
+    const tradeDirection = (props.trade?.trade?.direction ?? singleData?.direction ?? 'LONG').toUpperCase()
+    const tradeLeverage = props.leverage ?? singleData?.leverage ?? props.trade?.trade?.leverage ?? 1
+    const tradeRealizedPnl = props.trade?.trade?.realizedPnl ?? singleData?.realizedPnl ?? 0
+    const tradeEntryPrice = props.trade?.trade?.entryPrice ?? singleData?.entryPrice ?? 0
+    const tradeExitPrice = props.trade?.trade?.exitPrice ?? singleData?.exitPrice ?? 0
+    const tradeEntryTime = props.trade?.trade?.entryTime ?? singleData?.entryTime ?? null
+    const tradeExitTime = props.trade?.trade?.exitTime ?? singleData?.exitTime ?? null
+    const tradeRMultiple = props.trade?.rMultiple !== undefined ? props.trade.rMultiple : (singleData?.rMultiple ?? null)
+
+    const brandTitle = props.brandTitle ?? branding?.brandTitle ?? 'NITIREKSO'
+    const brandSubtitle = props.brandSubtitle ?? branding?.brandSubtitle ?? 'Trading Journal'
+    const traderHandle = props.traderHandle ?? branding?.traderHandle ?? '@trader'
+    const selectedExchange = props.selectedExchange ?? (branding?.exchange as ExchangeName) ?? 'MEXC'
+    const activeReferral = props.activeReferral ?? branding?.referralCode ?? ''
+    const activeLogoUrl = props.activeLogoUrl ?? null
+    const avatarUrl = props.avatarUrl ?? null
+
+    const isProfit = tradeRealizedPnl >= 0
+    const accent = props.accent ?? (isProfit ? (theme?.accentProfit || '#38bdf8') : (theme?.accentLoss || '#f43f5e'))
+    const roiPercent = props.roiPercent ?? singleData?.roiPercent ?? 0
+    const duration = props.duration ?? singleData?.duration ?? '—'
+
+    const isCustomBgActive = props.isCustomBgActive ?? Boolean(theme?.isCustom || theme?.customMedia)
+    const customBgUrl = props.customBgUrl ?? null
+    const customBgMediaType = props.customBgMediaType ?? 'image'
+    const bgDimming = props.bgDimming ?? theme?.dimming ?? 0
+    const bgDimmingDirection = props.bgDimmingDirection ?? theme?.dimmingDirection ?? 'uniform'
+    const bgPosX = props.bgPosX ?? theme?.mediaPosX ?? 50
+    const bgPosY = props.bgPosY ?? theme?.mediaPosY ?? 50
+    const videoRef = props.videoRef
+
+    const showSide = props.showSide ?? singleData?.showSide ?? true
+    const showPnl = props.showPnl ?? singleData?.showPnl ?? true
+    const showRoi = props.showRoi ?? singleData?.showRoi ?? true
+    const showTradeTimes = props.showTradeTimes ?? singleData?.showTradeTimes ?? true
+    const showProfile = props.showProfile ?? branding?.showProfile ?? true
+    const showWatermark = props.showWatermark ?? branding?.showWatermark ?? true
+    const showDuration = props.showDuration ?? singleData?.showDuration ?? true
+    const showPlan = props.showPlan ?? singleData?.showPlan ?? false
+    const plannedStop = props.plannedStop !== undefined ? props.plannedStop : (singleData?.plannedStop ?? null)
+    const plannedTarget = props.plannedTarget !== undefined ? props.plannedTarget : (singleData?.plannedTarget ?? null)
+    const plannedRr = props.plannedRr !== undefined ? props.plannedRr : (singleData?.plannedRr ?? null)
+    const setupTag = props.setupTag !== undefined ? props.setupTag : (singleData?.setupTag ?? null)
+    const executionGrade = props.executionGrade !== undefined ? props.executionGrade : ((singleData?.executionGrade as ExecutionGrade) ?? null)
+    const emotionTag = props.emotionTag !== undefined ? props.emotionTag : (singleData?.emotionTag ?? null)
+    const showSetup = props.showSetup ?? singleData?.showSetup ?? true
+    const showGrade = props.showGrade ?? singleData?.showGrade ?? true
+    const showEmotion = props.showEmotion ?? singleData?.showEmotion ?? true
+    const showReferral = props.showReferral ?? branding?.showReferral ?? true
+    const showThesis = props.showThesis ?? singleData?.showThesis ?? true
+    const customThesis = props.customThesis ?? singleData?.thesis ?? ''
+    const showReview = props.showReview ?? singleData?.showReview ?? true
+    const customReview = props.customReview ?? singleData?.review ?? ''
+    const showFullText = props.showFullText ?? singleData?.showFullText ?? false
+
+    const toMs = (val: unknown): number => {
+        if (typeof val === 'number') return val
+        if (val instanceof Date) return val.getTime()
+        if (typeof val === 'string') {
+            const parsed = Date.parse(val)
+            if (!isNaN(parsed)) return parsed
+        }
+        return 0
+    }
+
+    const entryTimeMs = toMs(tradeEntryTime)
+    const exitTimeMs = toMs(tradeExitTime)
+
+    const bg: BgTemplate = props.bg ?? {
+        id: theme?.id || 'dark',
+        label: theme?.label || 'Dark',
+        bg: theme?.bg || 'linear-gradient(135deg, #0d1117 0%, #0a0e1a 50%, #060912 100%)',
+        border: theme?.border || 'rgba(255, 255, 255, 0.08)',
+        accentProfit: theme?.accentProfit || '#38bdf8',
+        accentLoss: theme?.accentLoss || '#f43f5e',
+        textSub: theme?.textSub || 'rgba(255, 255, 255, 0.55)',
+        isTransparent: Boolean(theme?.isTransparent),
+        isCustom: theme?.isCustom,
+    }
+
+    const { hidePnl: hookHidePnl } = useHidePnl()
+    const hidePnl = privacy?.hideNominal ?? hookHidePnl
     const isTransparentMode = !isCustomBgActive && bg.isTransparent
     const hasReferralDisplay = showReferral && !!activeReferral.trim()
 
@@ -230,7 +317,7 @@ export function PnlCard({
                 {/* Info Trade: Pair + Direction + Leverage */}
                 <div className="flex items-center gap-3">
                     <span className="text-2xl font-black text-white tracking-wide">
-                        {trade.trade.symbol}
+                        {tradeSymbol}
                     </span>
                     {showSide && (
                         <>
@@ -239,10 +326,10 @@ export function PnlCard({
                                 className="text-sm font-black px-2.5 py-0.5 rounded-md tracking-wider uppercase shadow-xs"
                                 style={{ backgroundColor: `${accent}25`, color: accent }}
                             >
-                                {trade.trade.direction.toUpperCase()}
+                                {tradeDirection}
                             </span>
                             <span className="text-sm font-bold text-white/90 bg-white/10 px-2 py-0.5 rounded-md">
-                                {leverage}X
+                                {tradeLeverage}X
                             </span>
                         </>
                     )}
@@ -308,20 +395,20 @@ export function PnlCard({
                 {showPnl && (
                     <div className="-mt-1 flex items-baseline gap-2.5">
                         <span className="text-xl font-bold tracking-tight text-white/95">
-                            {hidePnl ? '••••' : `${formatPnl(trade.trade.realizedPnl)} USDT`}
+                            {hidePnl ? '••••' : `${formatPnl(tradeRealizedPnl)} USDT`}
                         </span>
-                        {trade.rMultiple !== null && trade.rMultiple !== undefined && (
+                        {tradeRMultiple !== null && tradeRMultiple !== undefined && (
                             <span
                                 className="text-base font-extrabold tracking-wide"
                                 style={{
-                                    color: trade.rMultiple > 0
+                                    color: tradeRMultiple > 0
                                         ? bg.accentProfit
-                                        : trade.rMultiple < 0
+                                        : tradeRMultiple < 0
                                             ? bg.accentLoss
                                             : '#94a3b8'
                                 }}
                             >
-                                · {formatR(trade.rMultiple)}
+                                · {formatR(tradeRMultiple)}
                             </span>
                         )}
                     </div>
@@ -337,11 +424,11 @@ export function PnlCard({
                             Entry Price
                         </div>
                         <div className="text-xs font-bold text-white truncate">
-                            {formatPrice(trade.trade.entryPrice)}
+                            {formatPrice(tradeEntryPrice)}
                         </div>
-                        {showTradeTimes && trade.trade.entryTime && (
+                        {showTradeTimes && entryTimeMs > 0 && (
                             <div className="text-[9px] mt-0.5 leading-tight truncate" style={{ color: bg.textSub }}>
-                                {formatDateTime(trade.trade.entryTime)}
+                                {formatDateTime(entryTimeMs)}
                             </div>
                         )}
                     </div>
@@ -350,11 +437,11 @@ export function PnlCard({
                             Exit Price
                         </div>
                         <div className="text-xs font-bold text-white truncate">
-                            {formatPrice(trade.trade.exitPrice)}
+                            {formatPrice(tradeExitPrice)}
                         </div>
                         {showTradeTimes && (
                             <div className="text-[9px] mt-0.5 leading-tight truncate" style={{ color: bg.textSub }}>
-                                {trade.trade.exitTime ? formatDateTime(trade.trade.exitTime) : 'Posisi Terbuka'}
+                                {exitTimeMs > 0 ? formatDateTime(exitTimeMs) : 'Posisi Terbuka'}
                             </div>
                         )}
                     </div>
@@ -371,12 +458,12 @@ export function PnlCard({
                         <div
                             className="text-xs font-bold truncate"
                             style={{
-                                color: trade.rMultiple !== null && trade.rMultiple !== undefined
-                                    ? (trade.rMultiple > 0 ? bg.accentProfit : trade.rMultiple < 0 ? bg.accentLoss : '#ffffff')
+                                color: tradeRMultiple !== null && tradeRMultiple !== undefined
+                                    ? (tradeRMultiple > 0 ? bg.accentProfit : tradeRMultiple < 0 ? bg.accentLoss : '#ffffff')
                                     : '#ffffff',
                             }}
                         >
-                            {trade.rMultiple !== null && trade.rMultiple !== undefined ? formatR(trade.rMultiple) : '—'}
+                            {tradeRMultiple !== null && tradeRMultiple !== undefined ? formatR(tradeRMultiple) : '—'}
                         </div>
                     </div>
                 </div>
@@ -498,7 +585,7 @@ export function PnlCard({
                                         {traderHandle}
                                     </div>
                                     <div className="text-[10px]" style={{ color: bg.textSub }}>
-                                        {formatDate(trade.trade.exitTime)}
+                                        {formatDate(exitTimeMs || Date.now())}
                                     </div>
                                 </div>
                             </div>

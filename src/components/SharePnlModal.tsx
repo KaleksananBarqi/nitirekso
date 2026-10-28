@@ -43,17 +43,9 @@ import { useHidePnl } from '../hooks/useHidePnl'
 import {
     CardCanvasEngine,
     buildPnlCardSpec,
-    getGradientDimmingStyle,
-    applyCanvasDimming,
     exportCardMedia,
-    MediaExportService
+    saveMediaFile
 } from '../lib/share'
-
-// ---------------------------------------------------------------------------
-// Re-export Helper Dimming Gradient & Canvas (Kompatibilitas Antarmuka Modul)
-// ---------------------------------------------------------------------------
-
-export { getGradientDimmingStyle, applyCanvasDimming }
 
 // ---------------------------------------------------------------------------
 // Tipe Props
@@ -988,7 +980,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         if (!exportedVideoResult) return
         setIsSavingExportedAgain(true)
         try {
-            const savedPath = await MediaExportService.saveMedia(
+            const savedPath = await saveMediaFile(
                 exportedVideoResult.filename,
                 exportedVideoResult.blob
             )
@@ -1180,50 +1172,13 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                 }}
                             >
                                 <PnlCard
-                                    trade={trade}
-                                    bg={bg}
-                                    accent={accent}
-                                    roiPercent={roiPercent}
-                                    duration={duration}
-                                    leverage={leverage}
-                                    selectedExchange={selectedExchange}
-                                    traderHandle={traderHandle}
-                                    brandTitle={brandTitle}
-                                    brandSubtitle={brandSubtitle}
-                                    activeLogoUrl={activeLogoUrl}
-                                    activeReferral={activeReferral}
-                                    avatarUrl={avatarUrl}
-                                    isCustomBgActive={isCustomBgActive}
+                                    spec={buildCurrentSpec()}
+                                    videoRef={domBgVideoRef}
                                     customBgUrl={activeCustomBgPlayableUrl || activeCustomBgUrl}
                                     customBgMediaType={activeCustomBgMediaType}
-                                    bgDimming={bgDimming}
-                                    bgDimmingDirection={bgDimmingDirection}
-                                    bgPosX={bgPosX}
-                                    bgPosY={bgPosY}
-                                    videoRef={domBgVideoRef}
-                                    showSide={showSide}
-                                    showPnl={showPnl}
-                                    showRoi={showRoi}
-                                    showTradeTimes={showTradeTimes}
-                                    showProfile={showProfile}
-                                    showWatermark={showWatermark}
-                                    showDuration={showDuration}
-                                    showPlan={showPlan}
-                                    plannedStop={plannedStop}
-                                    plannedTarget={plannedTarget}
-                                    plannedRr={plannedRr}
-                                    setupTag={setupTag}
-                                    executionGrade={executionGrade}
-                                    emotionTag={emotionTag}
-                                    showSetup={showSetup}
-                                    showGrade={showGrade}
-                                    showEmotion={showEmotion}
-                                    showReferral={showReferral}
-                                    showThesis={showThesis}
-                                    customThesis={customThesis}
-                                    showReview={showReview}
-                                    customReview={customReview}
-                                    showFullText={showFullText}
+                                    activeLogoUrl={activeLogoUrl}
+                                    avatarUrl={avatarUrl}
+                                    isCustomBgActive={isCustomBgActive}
                                 />
                             </div>
                         </div>
@@ -1244,50 +1199,13 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                             )}
                         >
                             <PnlCard
-                                trade={trade}
-                                bg={bg}
-                                accent={accent}
-                                roiPercent={roiPercent}
-                                duration={duration}
-                                leverage={leverage}
-                                selectedExchange={selectedExchange}
-                                traderHandle={traderHandle}
-                                brandTitle={brandTitle}
-                                brandSubtitle={brandSubtitle}
-                                activeLogoUrl={activeLogoUrl}
-                                activeReferral={activeReferral}
-                                avatarUrl={avatarUrl}
-                                isCustomBgActive={isCustomBgActive}
+                                spec={buildCurrentSpec()}
+                                videoRef={domBgVideoRef}
                                 customBgUrl={activeCustomBgPlayableUrl || activeCustomBgUrl}
                                 customBgMediaType={activeCustomBgMediaType}
-                                bgDimming={bgDimming}
-                                bgDimmingDirection={bgDimmingDirection}
-                                bgPosX={bgPosX}
-                                bgPosY={bgPosY}
-                                videoRef={domBgVideoRef}
-                                showSide={showSide}
-                                showPnl={showPnl}
-                                showRoi={showRoi}
-                                showTradeTimes={showTradeTimes}
-                                showProfile={showProfile}
-                                showWatermark={showWatermark}
-                                showDuration={showDuration}
-                                showPlan={showPlan}
-                                plannedStop={plannedStop}
-                                plannedTarget={plannedTarget}
-                                plannedRr={plannedRr}
-                                setupTag={setupTag}
-                                executionGrade={executionGrade}
-                                emotionTag={emotionTag}
-                                showSetup={showSetup}
-                                showGrade={showGrade}
-                                showEmotion={showEmotion}
-                                showReferral={showReferral}
-                                showThesis={showThesis}
-                                customThesis={customThesis}
-                                showReview={showReview}
-                                customReview={customReview}
-                                showFullText={showFullText}
+                                activeLogoUrl={activeLogoUrl}
+                                avatarUrl={avatarUrl}
+                                isCustomBgActive={isCustomBgActive}
                             />
                         </div>
                     )}
