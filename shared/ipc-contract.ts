@@ -269,6 +269,7 @@ export interface SettingsPayload {
     gdriveLocalFolder?: string
     /** Mode sinkronisasi Google Drive: 'folder' | 'oauth' */
     gdriveSyncMode?: 'folder' | 'oauth'
+    [key: string]: unknown
 }
 
 /** Payload upload screenshot (fitur 1). */
@@ -324,7 +325,7 @@ export interface PreloadApi {
     updateTrade(id: number, payload: TradeSavePayload): Promise<MutationResult<void>>
     deleteTrade(id: number): Promise<MutationResult<void>>
     getTradeMeta(): Promise<TradeMeta>
-    getSettings(): Promise<Record<string, unknown>>
+    getSettings(): Promise<SettingsPayload>
     setSettings(payload: SettingsPayload): Promise<MutationResult<void>>
 
     // --- Saldo Exchange ---

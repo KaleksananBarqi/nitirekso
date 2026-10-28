@@ -42,15 +42,55 @@ export function useTheme(): {
     setColorblindSafe: (value: boolean) => void
 } {
     const [theme, setThemeState] = useState<Theme>(() => {
-        const stored = window.localStorage.getItem(THEME_KEY)
-        return stored === 'dark' || stored === 'light' || stored === 'system' ? stored : 'dark'
+        try {
+            const stored = typeof window !== 'undefined' ? window.localStorage.getItem(THEME_KEY) : null
+            return stored === 'dark' || stored === 'light' || stored === 'system' ? stored : 'dark'
+        } catch {
+            return 'dark'
+        }
     })
 
-    const [colorblindSafe, setColorblindState] = useState<boolean>(
-        () => window.localStorage.getItem(COLORBLIND_KEY) === 'true'
-    )
+    const [colorblindSafe, setColorblindState] = useState<boolean>(() => {
+        try {
+            return typeof window !== 'undefined' && window.localStorage.getItem(COLORBLIND_KEY) === 'true'
+        } catch {
+            return false
+        }
+    })
 
     const [isDark, setIsDark] = useState<boolean>(() => resolveIsDark(theme))
+
+    // Sinkronisasi pengaturan tema dari SQLite via IPC
+    useEffect(() => {
+        if (typeof window !== 'undefined' && window.api?.getSettings) {
+            window.api
+                .getSettings()
+                .then((settings) => {
+                    const storedTheme = (settings.theme ?? settings[THEME_KEY]) as Theme | undefined
+                    if (storedTheme === 'dark' || storedTheme === 'light' || storedTheme === 'system') {
+                        setThemeState(storedTheme)
+                        try {
+                            window.localStorage.setItem(THEME_KEY, storedTheme)
+                        } catch {
+                            // Abaikan galat localStorage
+                        }
+                    }
+
+                    const storedCb = (settings.colorblindSafe ?? settings[COLORBLIND_KEY]) as boolean | undefined
+                    if (typeof storedCb === 'boolean') {
+                        setColorblindState(storedCb)
+                        try {
+                            window.localStorage.setItem(COLORBLIND_KEY, String(storedCb))
+                        } catch {
+                            // Abaikan galat localStorage
+                        }
+                    }
+                })
+                .catch(() => {
+                    // Abaikan galat jika API belum siap
+                })
+        }
+    }, [])
 
     useEffect(() => {
         applyTheme(theme, colorblindSafe)
@@ -75,13 +115,31 @@ export function useTheme(): {
     }, [theme, colorblindSafe])
 
     const setTheme = useCallback((next: Theme) => {
-        window.localStorage.setItem(THEME_KEY, next)
+        try {
+            window.localStorage.setItem(THEME_KEY, next)
+        } catch {
+            // Abaikan galat localStorage
+        }
         setThemeState(next)
+        if (typeof window !== 'undefined' && window.api?.setSettings) {
+            window.api.setSettings({ theme: next }).catch(() => {
+                // Abaikan galat IPC
+            })
+        }
     }, [])
 
     const setColorblindSafe = useCallback((value: boolean) => {
-        window.localStorage.setItem(COLORBLIND_KEY, String(value))
+        try {
+            window.localStorage.setItem(COLORBLIND_KEY, String(value))
+        } catch {
+            // Abaikan galat localStorage
+        }
         setColorblindState(value)
+        if (typeof window !== 'undefined' && window.api?.setSettings) {
+            window.api.setSettings({ colorblindSafe: value }).catch(() => {
+                // Abaikan galat IPC
+            })
+        }
     }, [])
 
     return { theme, colorblindSafe, isDark, setTheme, setColorblindSafe }

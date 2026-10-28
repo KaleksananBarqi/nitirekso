@@ -5,46 +5,18 @@ import './styles/globals.css'
 
 import { createTauriApi } from './lib/tauri-api'
 
+/**
+ * Bootstrap inisialisasi aplikasi Nitirekso.
+ *
+ * Menginisialisasi typed IPC API bridge (window.api) secara bersih tanpa
+ * melakukan manipulasi runtime atau monkey-patching pada window.localStorage.
+ * Seluruh persistensi pengaturan aplikasi dikonsolidasikan langsung ke backend
+ * SQLite via IPC client.
+ */
 async function bootstrap() {
-    // Inject Tauri API jika berjalan di environment Tauri
-    if ('__TAURI_INTERNALS__' in window) {
-        (window as any).api = createTauriApi() as any
-        
-        try {
-            // Setup persistent settings store
-            const { Store } = await import('@tauri-apps/plugin-store')
-            // autoSave will save the store on every set() automatically (debounced)
-            const store = await Store.load('settings.json', { autoSave: true })
-            
-            // 1. Initial Load: Populate localStorage from physical Store
-            const keys = await store.keys()
-            for (const key of keys) {
-                const val = await store.get<string>(key)
-                // store.get returns exactly what was stored. If we stored string, it returns string.
-                if (val !== undefined && val !== null) {
-                    window.localStorage.setItem(key, typeof val === 'string' ? val : JSON.stringify(val))
-                }
-            }
-
-            // 2. Patch localStorage.setItem to also mirror to Tauri Store
-            const originalSetItem = window.localStorage.setItem
-            window.localStorage.setItem = function(key, value) {
-                originalSetItem.apply(this, [key, value])
-                // Fire and forget: Mirror to physical store
-                store.set(key, value).catch(console.error)
-            }
-            
-            // 3. Patch localStorage.removeItem
-            const originalRemoveItem = window.localStorage.removeItem
-            window.localStorage.removeItem = function(key) {
-                originalRemoveItem.apply(this, [key])
-                store.delete(key).catch(console.error)
-            }
-            
-            console.log("[Tauri Store] LocalStorage successfully mirrored to settings.json")
-        } catch (err) {
-            console.error("[Tauri Store] Failed to initialize Tauri Store:", err)
-        }
+    // Inisialisasi API bridge (window.api) jika belum terpasang
+    if (typeof window !== 'undefined' && !window.api) {
+        window.api = createTauriApi()
     }
 
     const container = document.getElementById('root')
