@@ -40,10 +40,10 @@ export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Ele
                 window.api.getSettings()
             ])
             setStatus(s)
-            const mode = (settings['gdrive_sync_mode'] as 'folder' | 'oauth') || 'folder'
+            const mode = ((settings['gdriveSyncMode'] ?? settings['gdrive_sync_mode']) as 'folder' | 'oauth') || 'folder'
             setSyncMode(mode)
-            setLocalFolder((settings['gdrive_local_folder'] as string) || '')
-            setClientId((settings['gdrive_client_id'] as string) || '')
+            setLocalFolder(((settings['gdriveLocalFolder'] ?? settings['gdrive_local_folder']) as string) || '')
+            setClientId(((settings['gdriveClientId'] ?? settings['gdrive_client_id']) as string) || '')
         } catch {
             // Status gagal dimuat — tidak fatal.
         }

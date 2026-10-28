@@ -52,7 +52,7 @@ export function Settings({
         window.api
             .getSettings()
             .then((settings) => {
-                const stored = settings['checklist_template']
+                const stored = settings['checklistTemplate'] ?? settings['checklist_template']
                 if (Array.isArray(stored)) {
                     setTemplate((stored as string[]).join('\n'))
                 }
