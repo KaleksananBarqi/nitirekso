@@ -25,34 +25,44 @@ pub fn get_all_balances(conn: &Connection) -> Result<Vec<AccountBalance>> {
     Ok(result)
 }
 
+/// Operasi batch upsert data saldo akun pada koneksi atau transaksi SQLite aktif.
+pub fn upsert_balances_tx(conn: &Connection, balances: &[AccountBalance]) -> Result<()> {
+    if balances.is_empty() {
+        return Ok(());
+    }
+
+    let mut stmt = conn.prepare(
+        "INSERT INTO account_balances (exchange, asset, total, available, unrealized_pnl, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(exchange, asset) DO UPDATE SET
+             total          = excluded.total,
+             available      = excluded.available,
+             unrealized_pnl = excluded.unrealized_pnl,
+             updated_at     = excluded.updated_at",
+    )?;
+
+    for b in balances {
+        stmt.execute(params![
+            b.exchange,
+            b.asset,
+            b.total,
+            b.available,
+            b.unrealized_pnl,
+            b.updated_at
+        ])?;
+    }
+
+    Ok(())
+}
+
+/// Upsert saldo akun ke dalam database (membuka transaksi mandiri jika dipanggil tersendiri).
 pub fn upsert_balances(conn: &mut Connection, balances: &[AccountBalance]) -> Result<()> {
     if balances.is_empty() {
         return Ok(());
     }
 
     let tx = conn.transaction()?;
-    {
-        let mut stmt = tx.prepare(
-            "INSERT INTO account_balances (exchange, asset, total, available, unrealized_pnl, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?)
-             ON CONFLICT(exchange, asset) DO UPDATE SET
-                 total          = excluded.total,
-                 available      = excluded.available,
-                 unrealized_pnl = excluded.unrealized_pnl,
-                 updated_at     = excluded.updated_at",
-        )?;
-
-        for b in balances {
-            stmt.execute(params![
-                b.exchange,
-                b.asset,
-                b.total,
-                b.available,
-                b.unrealized_pnl,
-                b.updated_at
-            ])?;
-        }
-    }
+    upsert_balances_tx(&tx, balances)?;
     tx.commit()?;
     Ok(())
 }
