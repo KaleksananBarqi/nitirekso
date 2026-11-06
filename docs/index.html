@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>nitirekso — Aplikasi Trading Journal Otomatis &amp; Analitik Kripto Futures (Bybit, Binance, BingX, MEXC, Bitunix)</title>
+  <title>nitirekso: Aplikasi Trading Journal Otomatis &amp; Analitik Kripto Futures (Bybit, Binance, BingX, MEXC, Bitunix)</title>
 
   <!-- SEO Meta Tags -->
   <meta name="description"
@@ -18,7 +18,7 @@
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://kaleksananbarqi.github.io/nitirekso/" />
-  <meta property="og:title" content="nitirekso — Aplikasi Trading Journal Otomatis &amp; Analitik Kripto Futures (5 Exchange)" />
+  <meta property="og:title" content="nitirekso: Aplikasi Trading Journal Otomatis &amp; Analitik Kripto Futures (5 Exchange)" />
   <meta property="og:description"
     content="Pencatatan riwayat transaksi futures otomatis via Read-Only API (Bybit, Binance, BingX, MEXC &amp; Bitunix). 100% offline-first di SQLite lokal, unified sync trade &amp; saldo, bebas biaya langganan." />
   <meta property="og:image" content="https://kaleksananbarqi.github.io/nitirekso/assets/logo.png" />
@@ -28,7 +28,7 @@
   <!-- Twitter Cards -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:url" content="https://kaleksananbarqi.github.io/nitirekso/" />
-  <meta name="twitter:title" content="nitirekso — Jurnal Trading Otomatis &amp; Analitik Futures (Bybit, Binance, BingX, MEXC, Bitunix)" />
+  <meta name="twitter:title" content="nitirekso: Jurnal Trading Otomatis &amp; Analitik Futures (Bybit, Binance, BingX, MEXC, Bitunix)" />
   <meta name="twitter:description"
     content="Aplikasi desktop evaluasi trading kripto futures privat dan offline-first. Terhubung otomatis ke Bybit, Binance, BingX, MEXC &amp; Bitunix dengan Unified Sync 1-klik." />
   <meta name="twitter:image" content="https://kaleksananbarqi.github.io/nitirekso/assets/logo.png" />
@@ -206,15 +206,75 @@
       --border-subtle: #262338;
       --border-focus: #493F70;
       --primary: #9333EA;
+      --primary-hover: #7E22CE;
       --primary-light: #A855F7;
-      --primary-glow: rgba(147, 51, 234, 0.28);
+      --primary-glow: rgba(147, 51, 234, 0.22);
       --accent-amethyst: #C084FC;
       --accent-profit: #10B981;
-      --accent-profit-glow: rgba(16, 185, 129, 0.2);
+      --accent-profit-glow: rgba(16, 185, 129, 0.15);
       --accent-loss: #F43F5E;
       --text-main: #F8FAFC;
       --text-muted: #94A3B8;
       --text-dim: #64748B;
+      --header-bg: rgba(12, 11, 20, 0.88);
+
+      /* Skala Radius Desain Sistem Terpadu */
+      --radius-xs: 4px;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-xl: 24px;
+    }
+
+    :root[data-theme="light"] {
+      --bg-base: #F8F9FC;
+      --bg-surface: #FFFFFF;
+      --bg-surface-elevated: #F1F5F9;
+      --border-subtle: #E2E8F0;
+      --border-focus: #CBD5E1;
+      --primary: #7E22CE;
+      --primary-hover: #6B21A8;
+      --primary-light: #9333EA;
+      --primary-glow: rgba(126, 34, 206, 0.12);
+      --accent-amethyst: #6B21A8;
+      --accent-profit: #059669;
+      --accent-profit-glow: rgba(5, 150, 105, 0.12);
+      --accent-loss: #DC2626;
+      --text-main: #0F172A;
+      --text-muted: #475569;
+      --text-dim: #64748B;
+      --header-bg: rgba(248, 249, 252, 0.92);
+    }
+
+    /* Standard Interactive Semantics & Accessibility */
+    button,
+    [role="button"],
+    [role="tab"],
+    a[href],
+    summary,
+    select {
+      cursor: pointer;
+    }
+
+    button:disabled,
+    [aria-disabled="true"] {
+      cursor: not-allowed;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--primary-light);
+      outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
     }
 
     * {
@@ -261,9 +321,9 @@
       position: sticky;
       top: 0;
       z-index: 100;
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      background-color: rgba(12, 11, 20, 0.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      background-color: var(--header-bg);
       border-bottom: 1px solid var(--border-subtle);
       transition: background-color 0.3s ease, border-color 0.3s ease;
     }
@@ -478,7 +538,7 @@
       font-weight: 600;
       font-size: 0.925rem;
       padding: 0.75rem 1.4rem;
-      border-radius: 9999px;
+      border-radius: var(--radius-md);
       text-decoration: none;
       transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
       cursor: pointer;
@@ -544,7 +604,7 @@
       background: rgba(147, 51, 234, 0.12);
       border: 1px solid rgba(147, 51, 234, 0.3);
       padding: 0.35rem 1rem;
-      border-radius: 9999px;
+      border-radius: var(--radius-sm);
       font-size: 0.85rem;
       font-weight: 600;
       color: var(--accent-amethyst);
@@ -589,8 +649,7 @@
       line-height: 1.6;
       color: var(--text-muted);
       box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
-      backdrop-filter: blur(10px);
-      transition: all 0.3s ease;
+            transition: all 0.3s ease;
     }
 
     .hero-chip:hover {
@@ -674,16 +733,9 @@
       border-bottom: 1px solid var(--border-subtle);
     }
 
-    .mockup-dots {
-      display: flex;
-      gap: 0.45rem;
-    }
+    
 
-    .mockup-dot {
-      width: 11px;
-      height: 11px;
-      border-radius: 50%;
-    }
+    
 
     .dot-red {
       background-color: #EF4444;
@@ -714,7 +766,7 @@
       background: rgba(16, 185, 129, 0.12);
       border: 1px solid rgba(16, 185, 129, 0.3);
       padding: 0.2rem 0.65rem;
-      border-radius: 9999px;
+      border-radius: var(--radius-sm);
     }
 
     .live-dot {
@@ -994,7 +1046,7 @@
       background: var(--bg-surface);
       color: var(--text-muted);
       border: 1px solid var(--border-subtle);
-      border-radius: 9999px;
+      border-radius: var(--radius-md);
       padding: 0.65rem 1.35rem;
       font-size: 0.9rem;
       font-weight: 600;
@@ -1137,8 +1189,7 @@
       flex-direction: column;
       align-items: center;
       text-align: center;
-      backdrop-filter: blur(10px);
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       position: relative;
       overflow: hidden;
     }
@@ -1194,7 +1245,7 @@
       font-size: 0.725rem;
       font-weight: 600;
       padding: 0.25rem 0.65rem;
-      border-radius: 9999px;
+      border-radius: var(--radius-sm);
       margin-top: auto;
     }
 
@@ -1228,7 +1279,7 @@
       border: 1px solid var(--border-subtle);
       color: var(--text-muted);
       padding: 0.75rem 1.6rem;
-      border-radius: 9999px;
+      border-radius: var(--radius-md);
       font-size: 0.95rem;
       font-weight: 600;
       cursor: pointer;
@@ -1380,6 +1431,243 @@
         font-size: 1.2rem;
       }
     }
+
+    /* New Anti-Slop Rework Styles */
+    .hero-version-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      padding: 0.35rem 0.85rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .version-tag {
+      background: rgba(147, 51, 234, 0.15);
+      color: var(--accent-amethyst);
+      border: 1px solid rgba(147, 51, 234, 0.3);
+      padding: 0.15rem 0.5rem;
+      border-radius: var(--radius-xs);
+      font-weight: 700;
+      font-size: 0.75rem;
+      letter-spacing: 0.02em;
+    }
+
+    .version-text {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .theme-toggle-btn {
+      padding: 0.5rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-md);
+      transition: all 0.2s ease;
+    }
+
+    .mockup-header {
+      background: var(--bg-surface-elevated);
+      padding: 0.75rem 1.25rem;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .mockup-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      min-width: 0;
+    }
+
+    .mockup-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Keunggulan Flagship Layout */
+    .keunggulan-layout {
+      display: grid;
+      grid-template-columns: 1.25fr 1fr;
+      gap: 1.5rem;
+      margin-top: 2.5rem;
+    }
+
+    .keunggulan-flagship {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-focus);
+      border-radius: var(--radius-lg);
+      padding: 2.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 2rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    }
+
+    .keunggulan-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--accent-amethyst);
+      font-size: 0.85rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+    }
+
+    .flagship-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 0.85rem;
+      line-height: 1.35;
+    }
+
+    .flagship-desc {
+      color: var(--text-muted);
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+
+    .flagship-specs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .spec-item strong {
+      display: block;
+      color: var(--text-main);
+      font-size: 0.9rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .spec-item span {
+      display: block;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+
+    .keunggulan-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .keunggulan-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 1.25rem;
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .keunggulan-card:hover {
+      border-color: var(--border-focus);
+      transform: translateY(-2px);
+    }
+
+    .keunggulan-icon-box {
+      width: 44px;
+      height: 44px;
+      min-width: 44px;
+      background: rgba(147, 51, 234, 0.12);
+      color: var(--accent-amethyst);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .keunggulan-card h4 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 0.35rem;
+    }
+
+    .keunggulan-card p {
+      color: var(--text-muted);
+      font-size: 0.925rem;
+      line-height: 1.55;
+    }
+
+    /* Fitur Category Structure */
+    .fitur-category-blocks {
+      display: flex;
+      flex-direction: column;
+      gap: 2.5rem;
+      margin-top: 2.5rem;
+    }
+
+    .fitur-group {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .fitur-group-header {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .fitur-group-pill {
+      background: rgba(147, 51, 234, 0.15);
+      color: var(--accent-amethyst);
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.25rem 0.65rem;
+      border-radius: var(--radius-xs);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .fitur-group-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .fitur-grid-auto {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .feature-card-heading {
+      color: var(--accent-amethyst);
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    @media (max-width: 900px) {
+      .keunggulan-layout {
+        grid-template-columns: 1fr;
+      }
+      .flagship-specs {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 
@@ -1387,7 +1675,7 @@
   <!-- Global Header Navigation -->
   <header id="main-header">
     <div class="container nav-wrapper">
-      <a href="#" class="brand-logo" title="nitirekso — Beranda">
+      <a href="#hero" class="brand-logo" title="nitirekso: Beranda">
         <img src="assets/logo.svg" alt="Logo nitirekso" width="34" height="34" />
         <span>nitirekso</span>
       </a>
@@ -1405,6 +1693,22 @@
       </nav>
 
       <div class="nav-cta-group">
+        <button type="button" class="btn btn-secondary nav-btn theme-toggle-btn" id="themeToggleBtn" aria-label="Ganti Mode Gelap / Terang" title="Ganti Tema">
+          <svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="23" y1="12" x2="25" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <svg class="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display: none;">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
         <a href="https://github.com/KaleksananBarqi/nitirekso" target="_blank" rel="noopener noreferrer"
           class="btn btn-secondary nav-btn" title="Buka Kode Sumber di GitHub">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -1441,22 +1745,33 @@
     <div class="mobile-nav-overlay" id="mobileNavOverlay"></div>
     <div class="mobile-nav-menu" id="mobileNavMenu" aria-hidden="true">
       <ul class="mobile-nav-links">
-        <li><a href="#exchange" class="mobile-nav-link"><span>5 Exchange</span><span>&rarr;</span></a></li>
-        <li><a href="#showcase" class="mobile-nav-link"><span>Tangkapan Layar</span><span>&rarr;</span></a></li>
-        <li><a href="#keunggulan" class="mobile-nav-link"><span>Keunggulan</span><span>&rarr;</span></a></li>
-        <li><a href="#fitur" class="mobile-nav-link"><span>Fitur Lengkap</span><span>&rarr;</span></a></li>
-        <li><a href="#komparasi" class="mobile-nav-link"><span>Komparasi</span><span>&rarr;</span></a></li>
-        <li><a href="#faq" class="mobile-nav-link"><span>FAQ</span><span>&rarr;</span></a></li>
-        <li><a href="#filosofi" class="mobile-nav-link"><span>Filosofi</span><span>&rarr;</span></a></li>
+        <li><a href="#exchange" class="mobile-nav-link">5 Exchange</a></li>
+        <li><a href="#showcase" class="mobile-nav-link">Tangkapan Layar</a></li>
+        <li><a href="#keunggulan" class="mobile-nav-link">Keunggulan</a></li>
+        <li><a href="#fitur" class="mobile-nav-link">Fitur Lengkap</a></li>
+        <li><a href="#komparasi" class="mobile-nav-link">Komparasi</a></li>
+        <li><a href="#faq" class="mobile-nav-link">FAQ</a></li>
+        <li><a href="#filosofi" class="mobile-nav-link">Filosofi</a></li>
       </ul>
       <div class="mobile-nav-cta">
+        <button type="button" class="btn btn-secondary mobile-theme-btn" id="mobileThemeToggleBtn" style="width: 100%; margin-bottom: 0.75rem; justify-content: center;">
+          <svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+          </svg>
+          <svg class="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display: none;">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+          <span style="margin-left: 0.5rem;">Ganti Mode Gelap / Terang</span>
+        </button>
         <a href="#unduh" class="btn btn-primary mobile-nav-link">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
-          <span>Unduh nitirekso Desktop</span>
+          <span>Unduh nitirekso v1.8.1 (Gratis &amp; Bebas Admin)</span>
         </a>
         <a href="https://github.com/KaleksananBarqi/nitirekso" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -1473,8 +1788,9 @@
     <section class="hero" id="hero">
       <div class="hero-glow-bg"></div>
       <div class="container hero-content">
-        <div class="badge-pill">
-          <span>✨ Rilis Terbaru &bull; Analytics VS ROI BTC (Alpha) &bull; Video Wallpaper &amp; GIF Export &bull; Kustomisasi Tema Bebas &bull; 100% Offline-First</span>
+        <div class="hero-version-badge">
+          <span class="version-tag">Rilis v1.8.1</span>
+          <span class="version-text">Analytics VS ROI BTC &bull; Ekspor Video MP4 Faststart &bull; Offline-First SQLite</span>
         </div>
 
         <h1>
@@ -1508,12 +1824,12 @@
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            <span>Unduh nitirekso Desktop</span>
+            <span>Unduh nitirekso v1.8.1 (Gratis &amp; Bebas Admin)</span>
           </a>
 
           <a href="https://github.com/KaleksananBarqi/nitirekso" target="_blank" rel="noopener noreferrer"
             class="btn btn-secondary btn-lg" style="font-size: 1.05rem; padding: 0.9rem 1.8rem;">
-            <span>⭐ Star di GitHub</span>
+            <span>Lihat Repositori &amp; Kode Sumber GitHub</span>
           </a>
         </div>
 
@@ -1557,19 +1873,16 @@
         <!-- Antarmuka Nyata nitirekso Desktop (Real Screenshot) -->
         <div class="mockup-wrapper">
           <div class="mockup-header">
-            <div class="mockup-dots">
-              <div class="mockup-dot dot-red"></div>
-              <div class="mockup-dot dot-yellow"></div>
-              <div class="mockup-dot dot-green"></div>
+            <div class="mockup-brand">
+              <img src="assets/logo.svg" alt="" width="20" height="20" aria-hidden="true" />
+              <span class="mockup-title">nitirekso Desktop: Dasbor Portofolio &amp; Saldo Multi-Exchange Real-Time</span>
             </div>
-            <div class="mockup-title">nitirekso Desktop &mdash; Dasbor Portofolio &amp; Saldo Multi-Exchange Real-Time</div>
             <div class="mockup-status-live">
-              <span class="live-dot"></span> Tangkapan Layar Asli
+              <span class="live-dot" aria-hidden="true"></span> Tangkapan Layar Asli v1.8.1
             </div>
           </div>
-
           <div class="mockup-screen-container">
-            <img src="assets/screenshots/dasbor.png" alt="Tangkapan Layar Asli Desktop nitirekso — Dasbor Portofolio &amp; Saldo Multi-Exchange" class="mockup-real-img" loading="eager" />
+            <img src="assets/screenshots/dasbor.png" alt="Tangkapan Layar Asli Desktop nitirekso: Dasbor Portofolio &amp; Saldo Multi-Exchange" class="mockup-real-img" width="1442" height="932" fetchpriority="high" />
           </div>
         </div>
       </div>
@@ -1590,7 +1903,7 @@
           <!-- Bybit -->
           <div class="exchange-card">
             <div class="exchange-logo-container">
-              <img src="assets/bybit logo.png" alt="Logo Bybit" class="exchange-logo-img" />
+              <img src="assets/bybit logo.png" alt="Logo Bybit" class="exchange-logo-img" width="160" height="63" loading="lazy" />
             </div>
             <h3 class="exchange-name">Bybit</h3>
             <p class="exchange-market">Linear Futures (V5 API)<br />USDT Perpetual</p>
@@ -1605,7 +1918,7 @@
           <!-- Binance -->
           <div class="exchange-card">
             <div class="exchange-logo-container">
-              <img src="assets/binance logo.png" alt="Logo Binance" class="exchange-logo-img" />
+              <img src="assets/binance logo.png" alt="Logo Binance" class="exchange-logo-img" width="160" height="85" loading="lazy" />
             </div>
             <h3 class="exchange-name">Binance</h3>
             <p class="exchange-market">USDT-M Futures<br />Perpetual Contracts</p>
@@ -1620,7 +1933,7 @@
           <!-- BingX -->
           <div class="exchange-card">
             <div class="exchange-logo-container">
-              <img src="assets/BingX Logo.png" alt="Logo BingX" class="exchange-logo-img" />
+              <img src="assets/BingX Logo.png" alt="Logo BingX" class="exchange-logo-img" width="160" height="51" loading="lazy" />
             </div>
             <h3 class="exchange-name">BingX</h3>
             <p class="exchange-market">Swap Perpetual<br />Standard &amp; Pro</p>
@@ -1635,7 +1948,7 @@
           <!-- MEXC -->
           <div class="exchange-card">
             <div class="exchange-logo-container">
-              <img src="assets/Mexc Logo.png" alt="Logo MEXC" class="exchange-logo-img" />
+              <img src="assets/Mexc Logo.png" alt="Logo MEXC" class="exchange-logo-img" width="120" height="120" loading="lazy" />
             </div>
             <h3 class="exchange-name">MEXC</h3>
             <p class="exchange-market">USDT-M Futures<br />Contract Trading</p>
@@ -1650,7 +1963,7 @@
           <!-- Bitunix -->
           <div class="exchange-card">
             <div class="exchange-logo-container">
-              <img src="assets/bitunix logo.png" alt="Logo Bitunix" class="exchange-logo-img" />
+              <img src="assets/bitunix logo.png" alt="Logo Bitunix" class="exchange-logo-img" width="180" height="41" loading="lazy" />
             </div>
             <h3 class="exchange-name">Bitunix</h3>
             <p class="exchange-market">USDT Perpetual<br />Futures Trading</p>
@@ -1678,7 +1991,7 @@
 
         <!-- Tab Selector (6 Tab Interaktif Lengkap) -->
         <div class="showcase-tabs-nav" role="tablist">
-          <button class="showcase-tab-btn active" data-tab="dasbor" onclick="switchShowcaseTab('dasbor')" role="tab" aria-selected="true">
+          <button id="tab-btn-dasbor" class="showcase-tab-btn active" data-tab="dasbor" onclick="switchShowcaseTab('dasbor')" role="tab" aria-selected="true" aria-controls="panel-dasbor" tabindex="0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="3" width="7" height="9"></rect>
               <rect x="14" y="3" width="7" height="5"></rect>
@@ -1688,7 +2001,7 @@
             <span>Dasbor &amp; Saldo Live</span>
           </button>
 
-          <button class="showcase-tab-btn" data-tab="tradelog" onclick="switchShowcaseTab('tradelog')" role="tab" aria-selected="false">
+          <button id="tab-btn-tradelog" class="showcase-tab-btn" data-tab="tradelog" onclick="switchShowcaseTab('tradelog')" role="tab" aria-selected="false" aria-controls="panel-tradelog" tabindex="-1">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="3" width="18" height="18" rx="2"></rect>
               <line x1="3" y1="9" x2="21" y2="9"></line>
@@ -1697,7 +2010,7 @@
             <span>Trade Log &amp; Riwayat</span>
           </button>
 
-          <button class="showcase-tab-btn" data-tab="journal" onclick="switchShowcaseTab('journal')" role="tab" aria-selected="false">
+          <button id="tab-btn-journal" class="showcase-tab-btn" data-tab="journal" onclick="switchShowcaseTab('journal')" role="tab" aria-selected="false" aria-controls="panel-journal" tabindex="-1">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
               <polyline points="14 2 14 8 20 8"></polyline>
@@ -1707,7 +2020,7 @@
             <span>Jurnal Transaksi &amp; SOP</span>
           </button>
 
-          <button class="showcase-tab-btn" data-tab="analytics" onclick="switchShowcaseTab('analytics')" role="tab" aria-selected="false">
+          <button id="tab-btn-analytics" class="showcase-tab-btn" data-tab="analytics" onclick="switchShowcaseTab('analytics')" role="tab" aria-selected="false" aria-controls="panel-analytics" tabindex="-1">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="20" x2="18" y2="10"></line>
               <line x1="12" y1="20" x2="12" y2="4"></line>
@@ -1717,7 +2030,7 @@
             <span>Analitik &amp; Alpha ROI BTC</span>
           </button>
 
-          <button class="showcase-tab-btn" data-tab="share" onclick="switchShowcaseTab('share')" role="tab" aria-selected="false">
+          <button id="tab-btn-share" class="showcase-tab-btn" data-tab="share" onclick="switchShowcaseTab('share')" role="tab" aria-selected="false" aria-controls="panel-share" tabindex="-1">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="18" cy="5" r="3"></circle>
               <circle cx="6" cy="12" r="3"></circle>
@@ -1728,7 +2041,7 @@
             <span>Kartu PnL Flex (Viral Ready)</span>
           </button>
 
-          <button class="showcase-tab-btn" data-tab="customizer" onclick="switchShowcaseTab('customizer')" role="tab" aria-selected="false">
+          <button id="tab-btn-customizer" class="showcase-tab-btn" data-tab="customizer" onclick="switchShowcaseTab('customizer')" role="tab" aria-selected="false" aria-controls="panel-customizer" tabindex="-1">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"></circle>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -1738,19 +2051,19 @@
         </div>
 
         <!-- Panel 1: Dasbor & Saldo Multi-Exchange -->
-        <div id="panel-dasbor" class="showcase-view-panel active">
+        <div id="panel-dasbor" class="showcase-view-panel active" role="tabpanel" aria-labelledby="tab-btn-dasbor">
           <div class="showcase-window">
             <div class="mockup-header">
-              <div class="mockup-dots">
-                <div class="mockup-dot dot-red"></div>
-                <div class="mockup-dot dot-yellow"></div>
-                <div class="mockup-dot dot-green"></div>
+              <div class="mockup-brand">
+                <img src="assets/logo.svg" alt="" width="18" height="18" aria-hidden="true" />
+                <span class="mockup-title">nitirekso Desktop: Dasbor Portofolio &amp; Saldo Live 5 Exchange</span>
               </div>
-              <div class="mockup-title">nitirekso &mdash; Dasbor Portofolio &amp; Saldo Live 5 Exchange</div>
-              <div></div>
+              <div class="mockup-status-live">
+                <span class="live-dot" aria-hidden="true"></span> Tangkapan Layar Asli
+              </div>
             </div>
             <div class="showcase-img-wrap">
-              <img src="assets/screenshots/dasbor.png" alt="Tangkapan Layar Dasbor Portofolio nitirekso" class="showcase-img" loading="lazy" />
+              <img src="assets/screenshots/dasbor.png" alt="Tangkapan Layar Dasbor Portofolio nitirekso" class="showcase-img" width="1442" height="932" loading="lazy" />
             </div>
             <div class="showcase-info-bar">
               <div>
@@ -1769,19 +2082,19 @@
         </div>
 
         <!-- Panel 2: Trade Log & Riwayat -->
-        <div id="panel-tradelog" class="showcase-view-panel">
+        <div id="panel-tradelog" class="showcase-view-panel" role="tabpanel" aria-labelledby="tab-btn-tradelog">
           <div class="showcase-window">
             <div class="mockup-header">
-              <div class="mockup-dots">
-                <div class="mockup-dot dot-red"></div>
-                <div class="mockup-dot dot-yellow"></div>
-                <div class="mockup-dot dot-green"></div>
+              <div class="mockup-brand">
+                <img src="assets/logo.svg" alt="" width="18" height="18" aria-hidden="true" />
+                <span class="mockup-title">nitirekso Desktop: Trade Log &amp; Riwayat Transaksi 5 Exchange</span>
               </div>
-              <div class="mockup-title">nitirekso &mdash; Trade Log &amp; Unified Sync (5 Exchange)</div>
-              <div></div>
+              <div class="mockup-status-live">
+                <span class="live-dot" aria-hidden="true"></span> Tangkapan Layar Asli
+              </div>
             </div>
             <div class="showcase-img-wrap">
-              <img src="assets/screenshots/trade%20log.png" alt="Tangkapan Layar Trade Log nitirekso" class="showcase-img" loading="lazy" />
+              <img src="assets/screenshots/trade%20log.png" alt="Tangkapan Layar Trade Log nitirekso" class="showcase-img" width="1442" height="932" loading="lazy" />
             </div>
             <div class="showcase-info-bar">
               <div>
@@ -1791,7 +2104,7 @@
                 </p>
               </div>
               <div class="showcase-badges">
-                <span class="showcase-badge">⚡ Unified Sync 1-Klik</span>
+                <span class="showcase-badge">Unified Sync 1-Klik</span>
                 <span class="showcase-badge">🔍 Filter Multi-Dimensi</span>
                 <span class="showcase-badge">🔒 100% DB SQLite Lokal</span>
               </div>
@@ -1800,19 +2113,19 @@
         </div>
 
         <!-- Panel 3: Journal & SOP -->
-        <div id="panel-journal" class="showcase-view-panel">
+        <div id="panel-journal" class="showcase-view-panel" role="tabpanel" aria-labelledby="tab-btn-journal">
           <div class="showcase-window">
             <div class="mockup-header">
-              <div class="mockup-dots">
-                <div class="mockup-dot dot-red"></div>
-                <div class="mockup-dot dot-yellow"></div>
-                <div class="mockup-dot dot-green"></div>
+              <div class="mockup-brand">
+                <img src="assets/logo.svg" alt="" width="18" height="18" aria-hidden="true" />
+                <span class="mockup-title">nitirekso Desktop: Jurnal Analisis Tesis &amp; Evaluasi Disiplin SOP</span>
               </div>
-              <div class="mockup-title">nitirekso &mdash; Jurnal Analisis Tesis &amp; Evaluasi Emosi</div>
-              <div></div>
+              <div class="mockup-status-live">
+                <span class="live-dot" aria-hidden="true"></span> Tangkapan Layar Asli
+              </div>
             </div>
             <div class="showcase-img-wrap">
-              <img src="assets/screenshots/journal%20trade.png" alt="Tangkapan Layar Jurnal Transaksi nitirekso" class="showcase-img" loading="lazy" />
+              <img src="assets/screenshots/journal%20trade.png" alt="Tangkapan Layar Jurnal Trading nitirekso" class="showcase-img" width="1441" height="932" loading="lazy" />
             </div>
             <div class="showcase-info-bar">
               <div>
@@ -1831,19 +2144,19 @@
         </div>
 
         <!-- Panel 4: Analytics & ROI BTC -->
-        <div id="panel-analytics" class="showcase-view-panel">
+        <div id="panel-analytics" class="showcase-view-panel" role="tabpanel" aria-labelledby="tab-btn-analytics">
           <div class="showcase-window">
             <div class="mockup-header">
-              <div class="mockup-dots">
-                <div class="mockup-dot dot-red"></div>
-                <div class="mockup-dot dot-yellow"></div>
-                <div class="mockup-dot dot-green"></div>
+              <div class="mockup-brand">
+                <img src="assets/logo.svg" alt="" width="18" height="18" aria-hidden="true" />
+                <span class="mockup-title">nitirekso Desktop: Analitik Performa &amp; Benchmark ROI Bitcoin (Alpha)</span>
               </div>
-              <div class="mockup-title">nitirekso &mdash; Analitik Performa &amp; Benchmark Alpha ROI BTC</div>
-              <div></div>
+              <div class="mockup-status-live">
+                <span class="live-dot" aria-hidden="true"></span> Tangkapan Layar Asli
+              </div>
             </div>
             <div class="showcase-img-wrap">
-              <img src="assets/screenshots/analytics.png" alt="Tangkapan Layar Analitik Trading nitirekso" class="showcase-img" loading="lazy" />
+              <img src="assets/screenshots/analytics.png" alt="Tangkapan Layar Analitik Performa nitirekso" class="showcase-img" width="1442" height="932" loading="lazy" />
             </div>
             <div class="showcase-info-bar">
               <div>
@@ -1862,19 +2175,19 @@
         </div>
 
         <!-- Panel 5: Share Card -->
-        <div id="panel-share" class="showcase-view-panel">
+        <div id="panel-share" class="showcase-view-panel" role="tabpanel" aria-labelledby="tab-btn-share">
           <div class="showcase-window">
             <div class="mockup-header">
-              <div class="mockup-dots">
-                <div class="mockup-dot dot-red"></div>
-                <div class="mockup-dot dot-yellow"></div>
-                <div class="mockup-dot dot-green"></div>
+              <div class="mockup-brand">
+                <img src="assets/logo.svg" alt="" width="18" height="18" aria-hidden="true" />
+                <span class="mockup-title">nitirekso Desktop: Studio PnL Flex, Video Wallpaper MP4 &amp; GIF Animasi</span>
               </div>
-              <div class="mockup-title">nitirekso &mdash; Kartu Pamer PnL Flex, Video Wallpaper &amp; GIF Animasi</div>
-              <div></div>
+              <div class="mockup-status-live">
+                <span class="live-dot" aria-hidden="true"></span> Tangkapan Layar Asli
+              </div>
             </div>
             <div class="showcase-img-wrap">
-              <img src="assets/screenshots/pnl%20share.png" alt="Tangkapan Layar Kartu Pamer PnL Flex nitirekso" class="showcase-img" loading="lazy" />
+              <img src="assets/screenshots/pnl%20share.png" alt="Tangkapan Layar Studio PnL Share nitirekso" class="showcase-img" width="1442" height="932" loading="lazy" />
             </div>
             <div class="showcase-info-bar">
               <div>
@@ -1886,26 +2199,26 @@
               <div class="showcase-badges">
                 <span class="showcase-badge">🎬 Video MP4 Faststart (9:16)</span>
                 <span class="showcase-badge">📱 TikTok / Reels Ready</span>
-                <span class="showcase-badge">✨ GIF Animasi Offline</span>
+                <span class="showcase-badge">GIF Animasi Offline</span>
               </div>
             </div>
           </div>
         </div>
 
         <!-- Panel 6: Customizer -->
-        <div id="panel-customizer" class="showcase-view-panel">
+        <div id="panel-customizer" class="showcase-view-panel" role="tabpanel" aria-labelledby="tab-btn-customizer">
           <div class="showcase-window">
             <div class="mockup-header">
-              <div class="mockup-dots">
-                <div class="mockup-dot dot-red"></div>
-                <div class="mockup-dot dot-yellow"></div>
-                <div class="mockup-dot dot-green"></div>
+              <div class="mockup-brand">
+                <img src="assets/logo.svg" alt="" width="18" height="18" aria-hidden="true" />
+                <span class="mockup-title">nitirekso Desktop: Studio Kustomisasi Desain &amp; Branding Referral Exchange</span>
               </div>
-              <div class="mockup-title">nitirekso &mdash; Studio Kustomisasi Desain &amp; Tema Bebas</div>
-              <div></div>
+              <div class="mockup-status-live">
+                <span class="live-dot" aria-hidden="true"></span> Tangkapan Layar Asli
+              </div>
             </div>
             <div class="showcase-img-wrap">
-              <img src="assets/screenshots/pnl%20custom.png" alt="Tangkapan Layar Studio Kustomisasi Desain nitirekso" class="showcase-img" loading="lazy" />
+              <img src="assets/screenshots/pnl%20custom.png" alt="Tangkapan Layar Kustomisasi Desain nitirekso" class="showcase-img" width="1442" height="932" loading="lazy" />
             </div>
             <div class="showcase-info-bar">
               <div>
@@ -1929,134 +2242,172 @@
     <section id="keunggulan">
       <div class="container">
         <div class="section-header">
-          <div class="section-tag">Mengapa nitirekso Berbeda?</div>
+          <div class="section-tag">Arsitektur &amp; Keunggulan</div>
           <h2 class="section-title">Solusi Jurnal Trading Kripto untuk Disiplin Futures</h2>
           <p class="section-desc">
-            Banyak trader berhenti mengisi jurnal trading kripto karena lelah mengetik ulang data transaksi di spreadsheet.
-            nitirekso menghadirkan otomatisasi jujur dari exchange tanpa kompromi terhadap privasi data keuangan Anda.
+            Banyak trader berhenti mengisi jurnal trading kripto karena lelah menyalin data riwayat transaksi secara manual di spreadsheet.
+            nitirekso menghadirkan otomatisasi sinkronisasi jujur dari exchange tanpa kompromi terhadap privasi keuangan Anda.
           </p>
         </div>
 
-        <div class="features-grid">
-          <div class="feature-card">
-            <div class="feature-icon-box">⚡</div>
-            <h3>Unified Sync 1-Klik Otomatis</h3>
-            <p>
-              Tarik histori posisi tertutup, harga fills rata-rata, komisi, funding fee, dan saldo dompet futures dari 5 exchange
-              dalam 1 klik terpadu. Tanpa salah ketik manual.
-            </p>
+        <div class="keunggulan-layout">
+          <!-- Flagship Feature Card -->
+          <div class="keunggulan-flagship">
+            <div>
+              <div class="keunggulan-badge">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+                <span>Fitur Utama &bull; 1-Klik Unified Sync</span>
+              </div>
+              <h3 class="flagship-title">Otomasi Sinkronisasi 5 Exchange Tanpa Duplikasi</h3>
+              <p class="flagship-desc">
+                Tarik riwayat posisi tertutup, harga fills rata-rata, komisi, funding fee, dan saldo dompet futures dari <strong>Bybit</strong>, <strong>Binance</strong>, <strong>BingX</strong>, <strong>MEXC</strong>, dan <strong>Bitunix</strong> serentak dalam 1 kali klik.
+              </p>
+            </div>
+            <div class="flagship-specs">
+              <div class="spec-item">
+                <strong>Read-Only API</strong>
+                <span>Nol izin order/withdraw</span>
+              </div>
+              <div class="spec-item">
+                <strong>Idempotent DB</strong>
+                <span>Bebas risiko trade duplikat</span>
+              </div>
+              <div class="spec-item">
+                <strong>Event Bus Terpadu</strong>
+                <span>Widget saldo otomatis refresh</span>
+              </div>
+            </div>
           </div>
 
-          <div class="feature-card">
-            <div class="feature-icon-box">🛡️</div>
-            <h3>100% Offline-First &amp; Privat</h3>
-            <p>
-              Portofolio dan riwayat keuangan Anda adalah privasi mutlak. Tersimpan di database SQLite lokal di komputer Anda,
-              tanpa server perantara, dan tanpa pelacak analitik/telemetri.
-            </p>
-          </div>
+          <!-- Supporting 3 Cards -->
+          <div class="keunggulan-stack">
+            <div class="keunggulan-card">
+              <div class="keunggulan-icon-box">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+              </div>
+              <div>
+                <h4>100% Offline-First &amp; SQLite Lokal</h4>
+                <p>Seluruh riwayat trading tersimpan eksklusif di komputer Anda tanpa server perantara cloud dan tanpa pelacak analitik/telemetri.</p>
+              </div>
+            </div>
 
-          <div class="feature-card">
-            <div class="feature-icon-box">🎯</div>
-            <h3>Eksekusi vs Hasil (Grade A/B/C/D)</h3>
-            <p>
-              Latih kedisiplinan mental dengan memisahkan kualitas eksekusi dari sekadar PnL. Evaluasi *good loss* yang
-              disiplin dan singkirkan *bad win* hasil keberuntungan semu.
-            </p>
-          </div>
+            <div class="keunggulan-card">
+              <div class="keunggulan-icon-box">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <circle cx="12" cy="12" r="6"></circle>
+                  <circle cx="12" cy="12" r="2"></circle>
+                </svg>
+              </div>
+              <div>
+                <h4>Eksekusi vs Hasil (Grade A/B/C/D)</h4>
+                <p>Pisahkan kualitas eksekusi dari sekadar PnL. Evaluasi <em>good loss</em> yang taat SOP dan singkirkan <em>bad win</em> hasil pelanggaran rencana trading.</p>
+              </div>
+            </div>
 
-          <div class="feature-card">
-            <div class="feature-icon-box">📊</div>
-            <h3>Analitik Mendalam &amp; Preset Cepat</h3>
-            <p>
-              Filter instan Hari Ini, 7H, 30H, Bulan Ini, dan Bulan Lalu. Pantau Equity Curve, Drawdown, Rasio Imbalan R-Multiple,
-              Expectancy (EV), dan Heatmap Kalender interaktif.
-            </p>
+            <div class="keunggulan-card">
+              <div class="keunggulan-icon-box">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="18" y1="20" x2="18" y2="10"></line>
+                  <line x1="12" y1="20" x2="12" y2="4"></line>
+                  <line x1="6" y1="20" x2="6" y2="14"></line>
+                </svg>
+              </div>
+              <div>
+                <h4>Kuantitatif EV &amp; Heatmap Kalender</h4>
+                <p>Kalkulasi matematis Expected Value (EV dalam R), R-Multiple, Recovery Factor, Streak, dan visualisasi Heatmap Kalender PnL interaktif.</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
     <!-- Fitur Unggulan Detail -->
-    <section id="fitur" style="background-color: #0E0C17;">
+    <section id="fitur">
       <div class="container">
-        <div class="section-header">
-          <div class="section-tag">Fitur Lengkap</div>
+        <div class="section-header" style="text-align: left; max-width: 800px;">
+          <div class="section-tag">Spesifikasi Modul</div>
           <h2 class="section-title">Infrastruktur Lengkap untuk Trader Kripto Profesional</h2>
           <p class="section-desc">
-            Dirancang dari kebutuhan nyata trader futures aktif: dari sinkronisasi multi-exchange, evaluasi benchmark Bitcoin, hingga generator video kartu analitik siap pamer.
+            Dirancang dari kebutuhan nyata trader futures aktif: sinkronisasi multi-exchange, evaluasi benchmark Bitcoin, hingga generator video kartu analitik siap pamer.
           </p>
         </div>
 
-        <div class="features-grid" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
-          <div class="feature-card">
-            <h3 style="color: #C084FC;">1. Integrasi 5 Exchange Futures</h3>
-            <p>
-              Dukungan adapter Read-Only untuk <strong>Bybit</strong> (Linear V5), <strong>Binance</strong> (USDT-M), <strong>BingX</strong> (Perpetual Swap), <strong>MEXC</strong>, dan <strong>Bitunix</strong>. Arsitektur idempotent menjamin tidak ada trade duplikat.
-            </p>
+        <div class="fitur-category-blocks">
+          <!-- Kategori 1: Engine Native & Sinkronisasi Exchange -->
+          <div class="fitur-group">
+            <div class="fitur-group-header">
+              <span class="fitur-group-pill">Modul 01</span>
+              <h3 class="fitur-group-title">Engine Native &amp; Sinkronisasi Exchange</h3>
+            </div>
+            <div class="fitur-grid-auto">
+              <div class="feature-card">
+                <h4 class="feature-card-heading">1. Integrasi 5 Exchange Futures</h4>
+                <p>Dukungan adapter Read-Only untuk <strong>Bybit</strong> (Linear V5), <strong>Binance</strong> (USDT-M), <strong>BingX</strong> (Perpetual Swap), <strong>MEXC</strong>, dan <strong>Bitunix</strong>. Arsitektur idempotent menjamin tidak ada trade duplikat.</p>
+              </div>
+              <div class="feature-card">
+                <h4 class="feature-card-heading">2. Unified Sync &amp; Event Bus Global</h4>
+                <p>Sinkronisasi data riwayat transaksi, trade fills, komisi, funding fee, dan saldo margin futures berlangsung serentak dalam satu alur terpadu dengan penyegaran seketika.</p>
+              </div>
+              <div class="feature-card">
+                <h4 class="feature-card-heading">3. Performa Native Tauri v2 (Rust Engine)</h4>
+                <p>Aplikasi dibangun di atas engine native <strong>Rust</strong> dan <strong>Tauri v2</strong>. Konsumsi memori sangat hemat (~30–50 MB RAM saat diam), startup instan, dan binary ringkas.</p>
+              </div>
+              <div class="feature-card">
+                <h4 class="feature-card-heading">4. Pemulihan Cadangan Mandiri (Restore Backup v1.8.1)</h4>
+                <p>Pulihkan seluruh riwayat transaksi dan screenshot dalam 1-klik dari folder cadangan lokal menggunakan <em>SQLite Online Backup API</em> dengan migrasi skema otomatis.</p>
+              </div>
+            </div>
           </div>
 
-          <div class="feature-card">
-            <h3 style="color: #C084FC;">2. Unified Sync &amp; Event Bus Global</h3>
-            <p>
-              Sinkronisasi data riwayat transaksi, trade fills, komisi, funding fee, dan saldo margin futures berlangsung serentak dalam satu alur terpadu. Sistem event bus global memastikan seluruh widget saldo dan trade log langsung ter-refresh seketika.
-            </p>
+          <!-- Kategori 2: Analitika Kuantitatif & Benchmark Portofolio -->
+          <div class="fitur-group">
+            <div class="fitur-group-header">
+              <span class="fitur-group-pill">Modul 02</span>
+              <h3 class="fitur-group-title">Analitika Kuantitatif &amp; Benchmark Alpha</h3>
+            </div>
+            <div class="fitur-grid-auto">
+              <div class="feature-card">
+                <h4 class="feature-card-heading">5. Analytics VS ROI BTC (Alpha Benchmark)</h4>
+                <p>Bandingkan return portofolio trading secara objektif langsung terhadap performa Buy &amp; Hold Bitcoin pada rentang periode yang sama dengan kurva ekuitas persentase ganda.</p>
+              </div>
+              <div class="feature-card">
+                <h4 class="feature-card-heading">6. Metrik Risiko Kuantitatif &amp; Preset Cepat</h4>
+                <p>Filter waktu instan (Hari Ini, 7H, 30H, Bulan Ini, Bulan Lalu). Menghitung Expectancy EV (dalam R), R-Multiple, Recovery Factor, Max Streak, dan Heatmap Kalender PnL.</p>
+              </div>
+            </div>
           </div>
 
-          <div class="feature-card">
-            <h3 style="color: #C084FC;">3. Performa Native Tauri v2 (Rust Engine)</h3>
-            <p>
-              Aplikasi dibangun di atas engine native <strong>Rust</strong> dan <strong>Tauri v2</strong>. Konsumsi memori sangat hemat (~30–50 MB RAM saat diam, hemat lebih dari 80% dibanding Electron), peluncuran aplikasi instan, dan ukuran biner yang ringkas.
-            </p>
-          </div>
-
-          <div class="feature-card">
-            <h3 style="color: #C084FC;">4. Pemulihan Cadangan Mandiri (Restore Backup v1.8.1)</h3>
-            <p>
-              Pulihkan seluruh riwayat transaksi dan screenshot dalam 1-klik dari folder cadangan lokal menggunakan <em>SQLite Online Backup API</em>. Sistem secara otomatis menjalankan migrasi skema pasca-restore agar data cadangan lama langsung kompatibel.
-            </p>
-          </div>
-
-          <div class="feature-card">
-            <h3 style="color: #C084FC;">5. Analytics VS ROI BTC (Alpha Benchmark)</h3>
-            <p>
-              Bandingkan return portofolio trading secara objektif (*apple-to-apple*) langsung terhadap performa Buy &amp; Hold Bitcoin pada rentang periode yang sama. Dilengkapi kurva ekuitas persentase ganda (Portfolio % vs BTC %) dan pelacak status Alpha dengan failover 4 tingkat.
-            </p>
-          </div>
-
-          <div class="feature-card">
-            <h3 style="color: #C084FC;">6. Metrik Risiko Kuantitatif &amp; Preset Cepat</h3>
-            <p>
-              Navigasi filter rentang waktu instan (Hari Ini, 7H, 30H, Bulan Ini, Bulan Lalu). Menghitung otomatis Expectancy EV (dalam R), Rasio Imbalan R-Multiple, Total R, Recovery Factor, Max Consecutive Streak, dan visualisasi Heatmap Kalender PnL.
-            </p>
-          </div>
-
-          <div class="feature-card">
-            <h3 style="color: #C084FC;">7. Studio PnL, Video MP4 Faststart &amp; 9:16 Vertikal</h3>
-            <p>
-              Tata letak <strong>Bento Grid 8-Slot</strong> resolusi Retina 2x dengan rasio 1:1, 16:9, dan 9:16 vertikal (TikTok/Reels/Shorts). Dilengkapi lossless MP4 <code>+faststart</code> remuxing (anti-potong 3 detik di TikTok), audio mapping video latar, dan ekspor GIF animasi offline.
-            </p>
-          </div>
-
-          <div class="feature-card">
-            <h3 style="color: #C084FC;">8. Generator Caption Otomatis &amp; SEO Tagar</h3>
-            <p>
-              Panel pembuat caption otomatis di modal Share PnL berbasis analisa data riil transaksi (Long/Short, PnL, ROI, R-Multiple, Setup, Emosi) dengan pembedaan narasi Menang/Kalah dan rekomendasi tagar SEO (<code>#DYOR</code>) siap salin ke clipboard.
-            </p>
-          </div>
-
-          <div class="feature-card">
-            <h3 style="color: #C084FC;">9. Jurnal Emosi Pre/Post &amp; SOP Checklist</h3>
-            <p>
-              Catat tesis analisa sebelum open posisi dan evaluasi emosi setelah penutupan posisi. Dilengkapi checklist kepatuhan SOP trading, input desimal fleksibel untuk rencana risiko, grading disiplin eksekusi (Grade A/B/C/D), dan penandaan tag emosi seperti <code>#FOMO</code>.
-            </p>
-          </div>
-
-          <div class="feature-card">
-            <h3 style="color: #C084FC;">10. Kustomisasi Tema, Privasi PnL &amp; Multi-Platform</h3>
-            <p>
-              Mode sensor privasi PnL (Hide P&amp;L) untuk live streaming, palet tema warna bebas di Settings, ekspor dokumen PDF/CSV/JSON, serta paket installer untuk Windows (tanpa butuh hak Admin/UAC), macOS (Apple Silicon &amp; Intel), dan Linux (AppImage &amp; DEB).
-            </p>
+          <!-- Kategori 3: Psikologi Trading & Studio Visual PnL -->
+          <div class="fitur-group">
+            <div class="fitur-group-header">
+              <span class="fitur-group-pill">Modul 03</span>
+              <h3 class="fitur-group-title">Psikologi Trading &amp; Studio Ekspor PnL</h3>
+            </div>
+            <div class="fitur-grid-auto">
+              <div class="feature-card">
+                <h4 class="feature-card-heading">7. Studio PnL, Video MP4 Faststart &amp; 9:16 Vertikal</h4>
+                <p>Tata letak <strong>Bento Grid 8-Slot</strong> resolusi Retina 2x dengan rasio 1:1, 16:9, dan 9:16 vertikal (TikTok/Reels/Shorts). Lossless MP4 <code>+faststart</code> remuxing dan ekspor GIF animasi.</p>
+              </div>
+              <div class="feature-card">
+                <h4 class="feature-card-heading">8. Generator Caption Otomatis &amp; SEO Tagar</h4>
+                <p>Pembuat caption otomatis di modal Share PnL berbasis analisa data riil transaksi (Long/Short, PnL, ROI, R-Multiple, Setup, Emosi) dengan narasi terpersonalisasi.</p>
+              </div>
+              <div class="feature-card">
+                <h4 class="feature-card-heading">9. Jurnal Emosi Pre/Post &amp; SOP Checklist</h4>
+                <p>Catat tesis analisa sebelum open posisi dan evaluasi emosi setelah exit. Dilengkapi checklist kepatuhan SOP trading, grading eksekusi (Grade A/B/C/D), dan tag emosi.</p>
+              </div>
+              <div class="feature-card">
+                <h4 class="feature-card-heading">10. Kustomisasi Tema, Privasi PnL &amp; Multi-Platform</h4>
+                <p>Mode sensor privasi PnL (Hide P&amp;L) untuk streaming, palet tema warna bebas di Settings, ekspor PDF/CSV/JSON, dan installer mandiri bebas admin.</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -2272,21 +2623,21 @@
 
           <!-- OS Selector Tabs -->
           <div class="download-tabs-nav" role="tablist">
-            <button class="download-tab-btn active" data-os="windows" onclick="switchDownloadTab('windows')" role="tab" aria-selected="true">
+            <button id="tab-btn-os-windows" class="download-tab-btn active" data-os="windows" onclick="switchDownloadTab(\'windows\')" role="tab" aria-selected="true" aria-controls="panel-os-windows" tabindex="0">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.951-1.801"/>
               </svg>
               <span>Windows</span>
             </button>
 
-            <button class="download-tab-btn" data-os="macos" onclick="switchDownloadTab('macos')" role="tab" aria-selected="false">
+            <button id="tab-btn-os-macos" class="download-tab-btn" data-os="macos" onclick="switchDownloadTab(\'macos\')" role="tab" aria-selected="false" aria-controls="panel-os-macos" tabindex="-1">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.38c.62-.75 1.04-1.8 0.92-2.85-.9.04-1.99.6-2.64 1.35-.57.65-.99 1.72-.88 2.76 1.01.08 2.05-.51 2.6-1.26z"/>
               </svg>
               <span>macOS</span>
             </button>
 
-            <button class="download-tab-btn" data-os="linux" onclick="switchDownloadTab('linux')" role="tab" aria-selected="false">
+            <button id="tab-btn-os-linux" class="download-tab-btn" data-os="linux" onclick="switchDownloadTab(\'linux\')" role="tab" aria-selected="false" aria-controls="panel-os-linux" tabindex="-1">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12.002 0c-4.418 0-8 3.582-8 8 0 2.03.76 3.88 2.016 5.29L3.5 19.5h17l-2.516-6.21A7.96 7.96 0 0020.002 8c0-4.418-3.582-8-8-8zm-2 7a1.5 1.5 0 110 3 1.5 1.5 0 010-3zm4 0a1.5 1.5 0 110 3 1.5 1.5 0 010-3z"/>
               </svg>
@@ -2295,7 +2646,7 @@
           </div>
 
           <!-- Windows Panel -->
-          <div id="panel-os-windows" class="download-panel active">
+          <div id="panel-os-windows" class="download-panel active" role="tabpanel" aria-labelledby="tab-btn-os-windows">
             <div class="download-panel-content">
               <div class="download-os-icon">
                 <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor">
@@ -2337,7 +2688,7 @@
           </div>
 
           <!-- macOS Panel -->
-          <div id="panel-os-macos" class="download-panel">
+          <div id="panel-os-macos" class="download-panel" role="tabpanel" aria-labelledby="tab-btn-os-macos">
             <div class="download-panel-content">
               <div class="download-os-icon">
                 <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor">
@@ -2400,7 +2751,7 @@
           </div>
 
           <!-- Linux Panel -->
-          <div id="panel-os-linux" class="download-panel">
+          <div id="panel-os-linux" class="download-panel" role="tabpanel" aria-labelledby="tab-btn-os-linux">
             <div class="download-panel-content">
               <div class="download-os-icon">
                 <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor">
@@ -2486,46 +2837,120 @@
         Hak Cipta &copy; 2026 <strong>nitirekso</strong>. Didistribusikan di bawah Lisensi MIT.
       </p>
       <p style="color: var(--text-dim); font-size: 0.8rem;">
-        Aplikasi Trading Journal Otomatis &amp; Analitik Kripto Futures (Bybit, Binance, BingX, MEXC, Bitunix) — Offline-First, Privat, &amp; Aman.
+        Aplikasi Trading Journal Otomatis &amp; Analitik Kripto Futures (Bybit, Binance, BingX, MEXC, Bitunix): Offline-First, Privat, &amp; Aman.
       </p>
     </div>
   </footer>
 
-  <!-- Script Interaktif Switcher (Showcase & Download Hub) serta Navigasi Mobile -->
+  <!-- Script Interaktif Switcher (Showcase & Download Hub) serta Aksesibilitas & Manajemen Tema -->
   <script>
+    // 1. Pengelolaan Tema (Dark / Light) dengan Penyimpanan Lokal & Aksesibilitas
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
+    const mobileThemeToggleBtn = document.getElementById('mobileThemeToggleBtn');
+    const themeIconSunList = document.querySelectorAll('.theme-icon-sun');
+    const themeIconMoonList = document.querySelectorAll('.theme-icon-moon');
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      try {
+        localStorage.setItem('nitirekso-theme', theme);
+      } catch (e) {
+        // Abaikan jika localStorage tidak diizinkan oleh sandbox
+      }
+      const isDark = theme === 'dark';
+      themeIconSunList.forEach(icon => icon.style.display = isDark ? 'block' : 'none');
+      themeIconMoonList.forEach(icon => icon.style.display = isDark ? 'none' : 'block');
+      if (themeMeta) {
+        themeMeta.setAttribute('content', isDark ? '#0C0B14' : '#F8F9FC');
+      }
+    }
+
+    // Inisialisasi Tema Tersimpan atau Deteksi Sistem OS
+    let initialTheme = 'dark';
+    try {
+      initialTheme = localStorage.getItem('nitirekso-theme') ||
+        (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    } catch (e) {
+      initialTheme = 'dark';
+    }
+    applyTheme(initialTheme);
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      applyTheme(current === 'dark' ? 'light' : 'dark');
+    }
+
+    if (themeToggleBtn) themeToggleBtn.addEventListener('click', toggleTheme);
+    if (mobileThemeToggleBtn) mobileThemeToggleBtn.addEventListener('click', toggleTheme);
+
+    // 2. Showcase Tab Switcher dengan Aksesibilitas ARIA & Keyboard
     function switchShowcaseTab(tabId) {
-      // Perbarui tombol tab showcase yang aktif
       const buttons = document.querySelectorAll('.showcase-tab-btn');
       buttons.forEach(function (btn) {
         const isActive = btn.getAttribute('data-tab') === tabId;
         btn.classList.toggle('active', isActive);
         btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        btn.setAttribute('tabindex', isActive ? '0' : '-1');
       });
 
-      // Perbarui panel konten showcase yang aktif
       const panels = document.querySelectorAll('.showcase-view-panel');
       panels.forEach(function (panel) {
         panel.classList.toggle('active', panel.id === 'panel-' + tabId);
       });
     }
 
+    // 3. Download OS Tab Switcher dengan Aksesibilitas ARIA & Keyboard
     function switchDownloadTab(osId) {
-      // Perbarui tombol tab OS download yang aktif
       const buttons = document.querySelectorAll('.download-tab-btn');
       buttons.forEach(function (btn) {
         const isActive = btn.getAttribute('data-os') === osId;
         btn.classList.toggle('active', isActive);
         btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        btn.setAttribute('tabindex', isActive ? '0' : '-1');
       });
 
-      // Perbarui panel OS download yang aktif
       const panels = document.querySelectorAll('.download-panel');
       panels.forEach(function (panel) {
         panel.classList.toggle('active', panel.id === 'panel-os-' + osId);
       });
     }
 
-    // Navigasi Mobile Drawer Toggle
+    // 4. Navigasi Keyboard Aksesibel (ArrowLeft / ArrowRight / Home / End) untuk Tablist
+    function setupTabKeyboardNav(tablistSelector, buttonSelector, switchFn, getAttr) {
+      const tablist = document.querySelector(tablistSelector);
+      if (!tablist) return;
+      const tabs = Array.from(tablist.querySelectorAll(buttonSelector));
+
+      tablist.addEventListener('keydown', (e) => {
+        const currentIndex = tabs.findIndex(tab => tab === document.activeElement);
+        if (currentIndex === -1) return;
+
+        let targetIndex = -1;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+          targetIndex = (currentIndex + 1) % tabs.length;
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+          targetIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+        } else if (e.key === 'Home') {
+          targetIndex = 0;
+        } else if (e.key === 'End') {
+          targetIndex = tabs.length - 1;
+        }
+
+        if (targetIndex !== -1) {
+          e.preventDefault();
+          const targetTab = tabs[targetIndex];
+          targetTab.focus();
+          const val = targetTab.getAttribute(getAttr);
+          switchFn(val);
+        }
+      });
+    }
+
+    setupTabKeyboardNav('.showcase-tabs-nav', '.showcase-tab-btn', switchShowcaseTab, 'data-tab');
+    setupTabKeyboardNav('.download-tabs-nav', '.download-tab-btn', switchDownloadTab, 'data-os');
+
+    // 5. Navigasi Mobile Drawer Toggle
     const mobileMenuBtn = document.getElementById('mobileMenuBtn');
     const mobileNavMenu = document.getElementById('mobileNavMenu');
     const mobileNavOverlay = document.getElementById('mobileNavOverlay');
@@ -2567,7 +2992,7 @@
       }
     });
 
-    // ScrollSpy untuk menandai menu aktif secara mulus
+    // 6. ScrollSpy untuk menandai menu aktif secara mulus
     const navSections = document.querySelectorAll('section[id]');
     const navLinksList = document.querySelectorAll('.nav-links a');
 
