@@ -1,45 +1,28 @@
-import { useEffect, useState } from 'react'
+import { useAppUpdater } from '../hooks/useAppUpdater'
 import { PageHeader } from '../components/AppShell'
-import { Button } from '../components/ui'
+import { Badge, Button } from '../components/ui'
 import logoUrl from '../assets/logo.svg'
-import type { AppUpdateInfo } from '../../shared/ipc-contract'
+import {
+    formatAssetSize,
+    formatEnvironmentLabel,
+} from '../lib/update/updateHelpers'
+import { updateService } from '../lib/update/updateService'
+
+const NON_INSTALLER_FILES = new Set(['latest.json', 'sha256sums.txt'])
+
+function formatPublishedDate(iso: string | null): string | null {
+    if (!iso) return null
+    const date = new Date(iso)
+    if (Number.isNaN(date.getTime())) return null
+    return date.toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+    })
+}
 
 export function About(): React.JSX.Element {
-    const [version, setVersion] = useState<string>('1.8.2')
-    const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle')
-    const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null)
-    const [errorMessage, setErrorMessage] = useState<string>('')
-
-    useEffect(() => {
-        if (window.api?.getAppVersion) {
-            window.api.getAppVersion().then((v) => {
-                if (v) setVersion(v)
-            }).catch(() => setVersion('1.8.2'))
-        }
-    }, [])
-
-    const handleCheckUpdate = async () => {
-        if (!window.api?.checkForUpdates) return
-        setUpdateStatus('checking')
-        setErrorMessage('')
-        try {
-            const res = await window.api.checkForUpdates()
-            if (res.ok && res.data) {
-                setUpdateInfo(res.data)
-                if (res.data.hasUpdate) {
-                    setUpdateStatus('available')
-                } else {
-                    setUpdateStatus('up-to-date')
-                }
-            } else {
-                setUpdateStatus('error')
-                setErrorMessage(res.error || 'Tidak dapat terhubung ke server pembaruan.')
-            }
-        } catch (err) {
-            setUpdateStatus('error')
-            setErrorMessage(err instanceof Error ? err.message : String(err))
-        }
-    }
+    const updater = useAppUpdater()
 
     const openLink = (url: string) => {
         if (window.api?.openExternalUrl) {
@@ -49,193 +32,439 @@ export function About(): React.JSX.Element {
         }
     }
 
+    const visibleAssets = updater.assets.filter((asset) => {
+        const lower = asset.name.toLowerCase()
+        return !lower.endsWith('.sig') && !NON_INSTALLER_FILES.has(lower)
+    })
+    const envLabel = formatEnvironmentLabel(updater.environment)
+    const publishedLabel = formatPublishedDate(updater.publishedAt)
+    const matchedSizeLabel = formatAssetSize(updater.matchedAsset?.size)
+    const isBusy =
+        updater.status === 'checking' ||
+        updater.status === 'downloading' ||
+        updater.status === 'installing'
+    const isLinuxPackage =
+        updater.environment?.installKind === 'rpm' || updater.environment?.installKind === 'deb'
+
     return (
         <div className="flex h-full flex-col overflow-hidden">
             <PageHeader
-                title="Tentang Nitirekso"
-                description="Informasi aplikasi, pembaruan versi, repositori, dan dukungan pengembang"
+                title="Tentang nitirekso"
+                description="Informasi aplikasi, pembaruan hybrid dalam aplikasi, repositori, dan jaminan privasi lokal"
             />
 
             <div className="flex-1 overflow-y-auto px-6 py-6 max-w-4xl space-y-6">
-                {/* ── HERO BANNER ── */}
-                <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/15 via-card to-background p-6 shadow-sm">
+                {/* Banner Identitas Produk */}
+                <section className="rounded-xl border border-border bg-card p-6">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
                         <img
                             src={logoUrl}
-                            alt="Nitirekso Logo"
-                            className="h-20 w-20 rounded-2xl object-contain shadow-md border border-white/10 p-1.5 bg-card/80 shrink-0"
+                            alt="Logo nitirekso"
+                            width={80}
+                            height={80}
+                            className="h-20 w-20 rounded-xl object-contain border border-border p-1.5 bg-background shrink-0"
                         />
-                        <div className="space-y-1">
-                            <div className="flex items-center gap-3 flex-wrap">
-                                <h2 className="text-2xl font-black tracking-tight text-foreground">
+                        <div className="space-y-1.5 min-w-0">
+                            <div className="flex items-center gap-2.5 flex-wrap">
+                                <h2 className="text-2xl font-bold tracking-tight text-foreground">
                                     nitirekso
                                 </h2>
-                                <span className="text-xs font-mono font-bold bg-primary/20 text-primary border border-primary/40 px-2.5 py-0.5 rounded-full">
-                                    v{version}
+                                <span className="tabular text-xs font-semibold bg-primary/15 text-foreground border border-primary/40 px-2.5 py-0.5 rounded-md">
+                                    v{updater.currentVersion}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                    {envLabel}
                                 </span>
                             </div>
-                            <p className="text-sm font-semibold text-primary/90">
-                                ꦤꦶꦠꦶꦫꦼꦏ꧀ꦱ — Niti Transaksi, Rekso Evaluasi
+                            <p className="text-sm font-medium text-foreground">
+                                ꦤꦶꦠꦶꦫꦼꦏ꧀ꦱ : Niti Transaksi, Rekso Evaluasi
                             </p>
-                            <p className="text-xs text-muted-foreground max-w-xl leading-relaxed pt-1">
-                                Aplikasi jurnal trading kripto lokal (*offline-first*) yang dibangun untuk privasi penuh tanpa telemetri pihak ketiga, mendukung analisis mendalam perpetual futures MEXC dan Bitunix.
+                            <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
+                                Aplikasi jurnal trading kripto lokal (offline-first) tanpa telemetri pihak ketiga, mendukung sinkronisasi read-only untuk MEXC, Bitunix, Bybit, Binance, dan BingX Futures.
                             </p>
                         </div>
                     </div>
-                </div>
+                </section>
 
-                {/* ── CEK PEMBARUAN APLIKASI ── */}
-                <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
+                {/* Pembaruan Aplikasi (Hybrid In-App Updater) */}
+                <section className="rounded-xl border border-border bg-card p-5 space-y-4">
+                    <div className="flex items-start justify-between flex-wrap gap-3">
                         <div>
-                            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                                <span>🔄</span>
-                                <span>Pembaruan Aplikasi</span>
+                            <h3 className="text-sm font-semibold text-foreground">
+                                Pembaruan Aplikasi
                             </h3>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                                Periksa apakah tersedia rilis versi terbaru di repositori resmi GitHub
+                                Pemeriksaan otomatis berjalan di latar belakang tiap 6 jam atau manual dari tombol ini.
                             </p>
                         </div>
                         <Button
                             variant="primary"
                             size="sm"
-                            disabled={updateStatus === 'checking'}
-                            onClick={handleCheckUpdate}
+                            disabled={isBusy || updater.status === 'store-managed'}
+                            onClick={() => void updateService.checkForUpdates({ silent: false })}
                         >
-                            {updateStatus === 'checking' ? 'Memeriksa...' : 'Periksa Pembaruan'}
+                            {updater.status === 'checking' ? 'Memeriksa...' : 'Periksa Pembaruan'}
                         </Button>
                     </div>
 
-                    {/* Status Feedback Pembaruan */}
-                    {updateStatus === 'up-to-date' && (
-                        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-400 flex items-center gap-2">
-                            <span>✅</span>
-                            <span>Aplikasi Anda sudah menggunakan versi terkini (v{version}).</span>
+                    {/* Banner permanen khusus mode Flatpak / Store-Managed */}
+                    {updater.status === 'store-managed' && (
+                        <div className="rounded-lg border border-border bg-muted/50 p-4 space-y-2 text-xs">
+                            <div className="flex items-center gap-2">
+                                <Badge tone="default">Store-Managed</Badge>
+                                <span className="font-semibold text-foreground">
+                                    Pembaruan Dikelola oleh Flatpak / Software Store
+                                </span>
+                            </div>
+                            <p className="text-muted-foreground leading-relaxed">
+                                Instalasi Flatpak menonaktifkan pembaruan mandiri di dalam aplikasi. Perbarui nitirekso melalui KDE Discover, GNOME Software, atau jalankan perintah terminal: <code className="font-mono text-foreground">flatpak update com.nitirekso.app</code>.
+                            </p>
                         </div>
                     )}
 
-                    {updateStatus === 'available' && updateInfo && (
-                        <div className="rounded-xl border border-primary/40 bg-primary/10 p-4 space-y-3">
-                            <div className="flex items-center justify-between flex-wrap gap-2">
-                                <div>
-                                    <span className="text-xs font-bold text-primary block">
-                                        🎉 Versi Baru Tersedia: v{updateInfo.latestVersion}
-                                    </span>
-                                    <span className="text-[11px] text-muted-foreground">
-                                        Versi Anda saat ini: v{version}
-                                    </span>
+                    {/* Loading State */}
+                    {updater.status === 'checking' && (
+                        <div
+                            className="rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground"
+                            role="status"
+                        >
+                            Memeriksa rilis terbaru dari repositori GitHub...
+                        </div>
+                    )}
+
+                    {/* Up-to-date State */}
+                    {updater.status === 'up-to-date' && (
+                        <div className="rounded-lg border border-profit/50 bg-card p-3 text-xs flex items-center justify-between gap-2 flex-wrap">
+                            <span className="font-medium text-profit">
+                                Aplikasi Anda sudah menggunakan versi terkini (v{updater.currentVersion}).
+                            </span>
+                            {updater.lastCheckedAt && (
+                                <span className="text-[11px] text-muted-foreground tabular">
+                                    Terakhir diperiksa:{' '}
+                                    {new Date(updater.lastCheckedAt).toLocaleTimeString('id-ID', {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                    })}
+                                </span>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Available State */}
+                    {updater.status === 'available' && updater.latestVersion && (
+                        <div className="rounded-xl border border-primary/50 bg-background/60 p-4 space-y-3">
+                            <div className="flex items-start justify-between flex-wrap gap-3">
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-sm font-semibold text-foreground">
+                                            Versi Baru Tersedia: v{updater.latestVersion}
+                                        </span>
+                                        {updater.isDismissed && (
+                                            <Badge tone="muted">Diabaikan</Badge>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground tabular">
+                                        Terpasang: v{updater.currentVersion}
+                                        {publishedLabel ? ` · Terbit ${publishedLabel}` : ''}
+                                        {updater.matchedAsset
+                                            ? ` · Paket cocok: ${updater.matchedAsset.name}${matchedSizeLabel ? ` (${matchedSizeLabel})` : ''}`
+                                            : ''}
+                                    </p>
                                 </div>
-                                <Button
-                                    size="sm"
-                                    variant="primary"
-                                    onClick={() => openLink(updateInfo.releaseUrl)}
-                                >
-                                    Unduh di GitHub ↗
-                                </Button>
+
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {updater.environment?.canSelfUpdate ? (
+                                        <Button
+                                            size="sm"
+                                            variant="primary"
+                                            onClick={() => void updateService.downloadUpdate()}
+                                        >
+                                            {matchedSizeLabel
+                                                ? `Unduh Pembaruan (${matchedSizeLabel})`
+                                                : 'Unduh Pembaruan'}
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            size="sm"
+                                            variant="primary"
+                                            onClick={() => openLink(updater.releaseUrl)}
+                                        >
+                                            Unduh di GitHub
+                                        </Button>
+                                    )}
+
+                                    {updater.isDismissed ? (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => void updateService.clearDismissedVersion()}
+                                        >
+                                            Tampilkan Notifikasi Lagi
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => void updateService.dismissLatestVersion()}
+                                        >
+                                            Abaikan Versi Ini
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
-                            {updateInfo.releaseNotes && (
-                                <div className="rounded-lg bg-card/60 p-3 text-[11px] font-mono text-muted-foreground border border-border/50 max-h-36 overflow-y-auto whitespace-pre-wrap">
-                                    {updateInfo.releaseNotes}
+
+                            {updater.environment?.isDev && (
+                                <p className="text-xs text-muted-foreground">
+                                    Mode pengembangan aktif: unduhan langsung dinonaktifkan agar biner lokal tidak tertimpa.
+                                </p>
+                            )}
+
+                            {updater.releaseNotes && (
+                                <div className="rounded-lg bg-background/80 p-3 text-xs font-mono text-muted-foreground border border-border max-h-40 overflow-y-auto whitespace-pre-wrap">
+                                    {updater.releaseNotes}
                                 </div>
                             )}
                         </div>
                     )}
 
-                    {updateStatus === 'error' && (
-                        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive flex items-center justify-between gap-3 flex-wrap">
-                            <div className="flex items-center gap-2">
-                                <span>⚠️</span>
-                                <span>{errorMessage}</span>
+                    {/* Downloading State */}
+                    {updater.status === 'downloading' && updater.downloadProgress && (
+                        <div className="rounded-xl border border-primary/50 bg-background/60 p-4 space-y-2.5">
+                            <div className="flex items-center justify-between gap-2 text-xs">
+                                <span className="font-semibold text-foreground truncate">
+                                    Mengunduh {updater.downloadProgress.assetName}
+                                </span>
+                                <span className="tabular font-semibold text-foreground shrink-0">
+                                    {Math.round(updater.downloadProgress.percent)}%
+                                </span>
                             </div>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 text-xs text-destructive hover:bg-destructive/10"
-                                onClick={() => openLink('https://github.com/KaleksananBarqi/nitirekso/releases')}
+
+                            <div
+                                className="h-2 w-full overflow-hidden rounded-full bg-muted"
+                                role="progressbar"
+                                aria-label="Progres unduhan pembaruan"
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                                aria-valuenow={Math.round(updater.downloadProgress.percent)}
                             >
-                                Periksa di GitHub ↗
-                            </Button>
+                                <div
+                                    className="h-full bg-primary transition-all duration-150"
+                                    style={{
+                                        width: `${Math.min(100, Math.max(0, updater.downloadProgress.percent))}%`,
+                                    }}
+                                />
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] text-muted-foreground tabular">
+                                <span>
+                                    {formatAssetSize(updater.downloadProgress.downloadedBytes) || '0 KB'}
+                                    {updater.downloadProgress.totalBytes
+                                        ? ` / ${formatAssetSize(updater.downloadProgress.totalBytes)}`
+                                        : ''}
+                                </span>
+                                <span>Berjalan di latar belakang, Anda tetap dapat menggunakan jurnal.</span>
+                            </div>
                         </div>
                     )}
-                </div>
 
-                {/* ── DUKUNGAN PENGEMBANG (SAWERIA) & GITHUB ── */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Kartu Traktir Kopi */}
-                    <div className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 via-card to-card p-5 flex flex-col justify-between space-y-3">
-                        <div className="space-y-1.5">
-                            <div className="flex items-center gap-2">
-                                <span className="text-xl">☕</span>
-                                <h3 className="text-sm font-bold text-amber-400">Beliin Aku Kopi</h3>
+                    {/* Ready to Install State */}
+                    {updater.status === 'ready-to-install' && (
+                        <div className="rounded-xl border border-profit/50 bg-background/60 p-4 space-y-3">
+                            <div className="flex items-start justify-between flex-wrap gap-3">
+                                <div className="space-y-1">
+                                    <p className="text-sm font-semibold text-profit">
+                                        Pembaruan v{updater.latestVersion} Siap Dipasang
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {isLinuxPackage
+                                            ? 'Berkas telah lolos verifikasi checksum SHA-256. Pemasangan meminta otorisasi administrator sistem (pkexec).'
+                                            : 'Berkas pembaruan telah lolos verifikasi tanda tangan kriptografis minisign.'}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <Button
+                                        size="sm"
+                                        variant="primary"
+                                        onClick={() => void updateService.installAndRestart()}
+                                    >
+                                        Pasang & Restart Sekarang
+                                    </Button>
+                                    {isLinuxPackage && updater.downloadedLocalPath && (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => void updateService.openDownloadedInstallerFallback()}
+                                        >
+                                            Buka Berkas Installer
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
-                            <p className="text-xs text-muted-foreground leading-relaxed">
-                                Nitirekso adalah proyek open-source dan bebas digunakan sepenuhnya. Jika aplikasi ini membantu perjalanan trading Anda, dukung pengembang lewat Saweria!
-                            </p>
-                        </div>
-                        <Button
-                            variant="secondary"
-                            className="w-full justify-center gap-2 border-amber-500/40 text-amber-300 hover:bg-amber-500/20 font-bold"
-                            onClick={() => openLink('https://saweria.co/arthex1204')}
-                        >
-                            <span>☕</span>
-                            <span>Traktir Kopi via Saweria</span>
-                        </Button>
-                    </div>
 
-                    {/* Kartu GitHub & Komunitas */}
+                            {updater.errorMessage && (
+                                <p className="text-xs text-muted-foreground border-t border-border/60 pt-2">
+                                    {updater.errorMessage}
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Installing State */}
+                    {updater.status === 'installing' && (
+                        <div
+                            className="rounded-lg border border-border bg-muted/50 p-3 text-xs text-foreground"
+                            role="status"
+                        >
+                            Memasang pembaruan dan menyiapkan restart aplikasi...
+                        </div>
+                    )}
+
+                    {/* Error State */}
+                    {updater.status === 'error' && (
+                        <div
+                            className="rounded-lg border border-loss/50 bg-card p-3 text-xs flex items-center justify-between gap-3 flex-wrap"
+                            role="alert"
+                        >
+                            <div className="flex items-center gap-2 min-w-0">
+                                <Badge tone="loss">Gagal</Badge>
+                                <span className="text-foreground font-medium">
+                                    {updater.errorMessage || 'Tidak dapat memeriksa pembaruan saat ini.'}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => void updateService.checkForUpdates({ silent: false })}
+                                >
+                                    Coba Lagi
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => openLink(updater.releaseUrl)}
+                                >
+                                    Buka GitHub Releases
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Drawer Unduhan Manual Lintas Format */}
+                    {visibleAssets.length > 0 && (
+                        <details className="rounded-lg border border-border bg-background/50">
+                            <summary className="px-3.5 py-2.5 text-xs font-medium text-foreground select-none hover:bg-accent/50 rounded-lg transition-colors">
+                                Pilihan Unduhan Manual Lintas Format ({visibleAssets.length} berkas)
+                            </summary>
+                            <div className="border-t border-border px-3.5 py-2.5 space-y-1.5">
+                                {visibleAssets.map((asset) => {
+                                    const sizeText = formatAssetSize(asset.size)
+                                    const isRecommended = updater.matchedAsset?.name === asset.name
+                                    return (
+                                        <div
+                                            key={asset.name}
+                                            className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-xs hover:bg-accent/40"
+                                        >
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <span className="font-mono text-foreground truncate">
+                                                    {asset.name}
+                                                </span>
+                                                {isRecommended && (
+                                                    <Badge tone="default">Cocok</Badge>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-3 shrink-0">
+                                                {sizeText && (
+                                                    <span className="text-muted-foreground tabular">
+                                                        {sizeText}
+                                                    </span>
+                                                )}
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-7 px-2 text-xs"
+                                                    onClick={() => openLink(asset.downloadUrl)}
+                                                >
+                                                    Unduh
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </details>
+                    )}
+                </section>
+
+                {/* Dukungan Pengembang & Repositori */}
+                <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between space-y-3">
                         <div className="space-y-1.5">
-                            <div className="flex items-center gap-2">
-                                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" className="text-foreground">
-                                    <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
-                                </svg>
-                                <h3 className="text-sm font-bold text-foreground">Repositori & Kode Sumber</h3>
-                            </div>
+                            <h3 className="text-sm font-semibold text-foreground">
+                                Dukung Pengembang
+                            </h3>
                             <p className="text-xs text-muted-foreground leading-relaxed">
-                                Kode sumber terbuka di GitHub. Temukan rilis mandiri multiplatform, diskusikan fitur baru, atau laporkan bug lewat issue tracker.
+                                nitirekso bersifat open-source dan bebas digunakan sepenuhnya. Jika aplikasi ini membantu evaluasi trading Anda, Anda dapat mendukung pengembangan lewat Saweria.
                             </p>
                         </div>
                         <Button
                             variant="secondary"
-                            className="w-full justify-center gap-2 border-border/80 font-bold"
-                            onClick={() => openLink('https://github.com/KaleksananBarqi/nitirekso')}
+                            className="w-full justify-center font-semibold"
+                            onClick={() => openLink('https://saweria.co/arthex1204')}
                         >
-                            <span>Buka Repositori GitHub ↗</span>
+                            Traktir Kopi via Saweria
                         </Button>
                     </div>
-                </div>
 
-                {/* ── ARSITEKTUR & KEAMANAN ── */}
-                <div className="rounded-xl border border-border/70 bg-card/60 p-5 space-y-3">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                        🛡️ Jaminan Privasi & Lingkungan Sistem
+                    <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between space-y-3">
+                        <div className="space-y-1.5">
+                            <h3 className="text-sm font-semibold text-foreground">
+                                Repositori & Kode Sumber
+                            </h3>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                Kode sumber terbuka tersedia di GitHub. Telusuri rilis multiplatform, catatan perubahan, atau laporkan kendala melalui issue tracker.
+                            </p>
+                        </div>
+                        <Button
+                            variant="secondary"
+                            className="w-full justify-center font-semibold"
+                            onClick={() => openLink('https://github.com/KaleksananBarqi/nitirekso')}
+                        >
+                            Buka Repositori GitHub
+                        </Button>
+                    </div>
+                </section>
+
+                {/* Jaminan Privasi & Lingkungan Sistem */}
+                <section className="rounded-xl border border-border bg-card p-5 space-y-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Jaminan Privasi & Lingkungan Sistem
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                        <div className="rounded-lg border border-border/50 bg-background/60 p-3 space-y-1">
-                            <span className="font-bold text-foreground block">Zero-Telemetry</span>
-                            <p className="text-[11px] text-muted-foreground">
+                        <div className="rounded-lg border border-border bg-background/60 p-3 space-y-1">
+                            <span className="font-semibold text-foreground block">Zero-Telemetry</span>
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">
                                 Tidak ada data trading atau analitik yang dikirim ke server cloud eksternal. Semua komputasi berjalan di mesin Anda.
                             </p>
                         </div>
-                        <div className="rounded-lg border border-border/50 bg-background/60 p-3 space-y-1">
-                            <span className="font-bold text-foreground block">Database Lokal</span>
-                            <p className="text-[11px] text-muted-foreground">
-                                Disimpan dengan SQLite ACID compliant. Berkas database ada di direktori pengguna lokal (%APPDATA%\nitirekso).
+                        <div className="rounded-lg border border-border bg-background/60 p-3 space-y-1">
+                            <span className="font-semibold text-foreground block">Database Lokal</span>
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                Data transaksi dan jurnal tersimpan di SQLite lokal pada direktori pengguna sistem operasi Anda.
                             </p>
                         </div>
-                        <div className="rounded-lg border border-border/50 bg-background/60 p-3 space-y-1">
-                            <span className="font-bold text-foreground block">Enkripsi Aman Lokal</span>
-                            <p className="text-[11px] text-muted-foreground">
-                                API Key & Secret exchange dienkripsi aman dengan standar AES-256-GCM native Rust di penyimpanan kredensial lokal.
+                        <div className="rounded-lg border border-border bg-background/60 p-3 space-y-1">
+                            <span className="font-semibold text-foreground block">Enkripsi Lokal</span>
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                API Key dan Secret exchange dienkripsi menggunakan AES-256-GCM native Rust pada penyimpanan kredensial lokal.
                             </p>
                         </div>
                     </div>
-                </div>
+                </section>
 
-                {/* Lisensi & Hak Cipta */}
-                <div className="text-center text-[11px] text-muted-foreground/60 py-2">
+                <footer className="text-center text-[11px] text-muted-foreground py-2">
                     Copyright © 2026 nitirekso. Lisensi MIT. Bebas dimodifikasi dan didistribusikan.
-                </div>
+                </footer>
             </div>
         </div>
     )

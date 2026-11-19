@@ -18,8 +18,13 @@ import type {
     BtcKlinePoint,
     CredentialSavePayload,
     CredentialStatusPayload,
+    InstallEnvironment,
+    InstallKind,
     JournalAnalysisResult,
+    LinuxDownloadVerificationResult,
+    LinuxInstallResult,
     LogEntry,
+    ReleaseMetadataResult,
     ScreenshotUploadPayload,
     SettingsPayload,
     SyncableExchange,
@@ -30,6 +35,7 @@ import type {
     TradeFilterPayload,
     TradeMeta,
     TradeSavePayload,
+    UpdateDownloadProgress,
 } from '@shared/ipc-contract'
 
 // Re-export tipe domain agar konsumen IpcClient dapat mengakses seluruh tipe yang dibutuhkan
@@ -45,8 +51,13 @@ export type {
     BtcKlinePoint,
     CredentialSavePayload,
     CredentialStatusPayload,
+    InstallEnvironment,
+    InstallKind,
     JournalAnalysisResult,
+    LinuxDownloadVerificationResult,
+    LinuxInstallResult,
     LogEntry,
+    ReleaseMetadataResult,
     ScreenshotUploadPayload,
     SettingsPayload,
     SyncableExchange,
@@ -57,6 +68,7 @@ export type {
     TradeFilterPayload,
     TradeMeta,
     TradeSavePayload,
+    UpdateDownloadProgress,
 }
 
 /**
@@ -242,6 +254,25 @@ export interface SystemClient {
     getAppVersion(): Promise<AppResult<string>>
     /** Memeriksa ketersediaan rilis pembaruan baru di GitHub. */
     checkForUpdates(): Promise<AppResult<AppUpdateInfo>>
+    /** Mendeteksi lingkungan instalasi runtime (.rpm, .deb, .AppImage, Flatpak, Windows, macOS). */
+    detectInstallEnvironment(): Promise<AppResult<InstallEnvironment>>
+    /** Mengambil metadata rilis terbaru via backend dengan dukungan ETag & fallback statis. */
+    fetchReleaseMetadata(etag?: string | null): Promise<AppResult<ReleaseMetadataResult>>
+    /** Mengunduh dan memverifikasi checksum SHA-256 paket Linux (.rpm/.deb). */
+    downloadLinuxPackage(
+        assetUrl: string,
+        assetName: string,
+        expectedVersion: string
+    ): Promise<AppResult<LinuxDownloadVerificationResult>>
+    /** Memasang paket Linux via pkexec lalu me-restart aplikasi secara bersih. */
+    installLinuxPackageAndRelaunch(
+        localPath: string,
+        installKind: InstallKind
+    ): Promise<AppResult<LinuxInstallResult>>
+    /** Membuka installer lokal lewat aplikasi default sistem (xdg-open fallback). */
+    openLocalInstallerFallback(localPath: string): Promise<AppResult<LinuxInstallResult>>
+    /** Mendaftarkan pendengar progres unduhan pembaruan. Mengembalikan fungsi unlisten. */
+    onUpdateDownloadProgress(callback: (progress: UpdateDownloadProgress) => void): () => void
     /** Membuka URL eksternal pada browser bawaan OS secara aman. */
     openExternalUrl(url: string): Promise<AppResult<void>>
     /** Mengambil data harga lilin Bitcoin (BTC) historis untuk komparasi analitik ROI. */

@@ -269,6 +269,8 @@ export interface SettingsPayload {
     gdriveLocalFolder?: string
     /** Mode sinkronisasi Google Drive: 'folder' | 'oauth' */
     gdriveSyncMode?: 'folder' | 'oauth'
+    /** Versi rilis pembaruan yang diabaikan pengguna (disimpan di SQLite). */
+    dismissedUpdateVersion?: string | null
     [key: string]: unknown
 }
 
@@ -314,6 +316,68 @@ export interface AppUpdateInfo {
     releaseUrl: string
     releaseNotes?: string
     publishedAt?: string
+}
+
+export type InstallKind =
+    | 'flatpak'
+    | 'app-image'
+    | 'rpm'
+    | 'deb'
+    | 'windows-nsis'
+    | 'windows-msi'
+    | 'mac-os'
+    | 'dev'
+    | 'unknown'
+
+export type PackageManagerKind = 'dnf' | 'zypper' | 'rpm' | 'apt-get' | 'none'
+
+export type InstallResultStatus = 'installed-relaunching' | 'opened-fallback' | 'cancelled'
+
+export interface InstallEnvironment {
+    os: string
+    arch: string
+    installKind: InstallKind
+    packageManager: PackageManagerKind
+    canSelfUpdate: boolean
+    storeManaged: boolean
+    isDev: boolean
+    executablePath?: string | null
+}
+
+export interface ReleaseAssetInfo {
+    name: string
+    downloadUrl: string
+    size: number
+}
+
+export interface ReleaseMetadataResult {
+    notModified: boolean
+    etag?: string | null
+    source: string
+    latestVersion: string
+    releaseUrl: string
+    releaseNotes?: string | null
+    publishedAt?: string | null
+    assets: ReleaseAssetInfo[]
+    rateLimitResetAt?: number | null
+}
+
+export interface UpdateDownloadProgress {
+    downloadedBytes: number
+    totalBytes?: number | null
+    percent: number
+    assetName: string
+}
+
+export interface LinuxDownloadVerificationResult {
+    localPath: string
+    sha256: string
+    size: number
+}
+
+export interface LinuxInstallResult {
+    status: InstallResultStatus
+    message: string
 }
 
 /** Bentuk `window.api` yang diekspos preload ke renderer. */
@@ -376,6 +440,19 @@ export interface PreloadApi {
     openExternalUrl(url: string): Promise<MutationResult<void>>
     getAppVersion(): Promise<string>
     checkForUpdates(): Promise<MutationResult<AppUpdateInfo>>
+    detectInstallEnvironment(): Promise<InstallEnvironment>
+    fetchReleaseMetadata(etag?: string | null): Promise<MutationResult<ReleaseMetadataResult>>
+    downloadLinuxPackage(
+        assetUrl: string,
+        assetName: string,
+        expectedVersion: string
+    ): Promise<MutationResult<LinuxDownloadVerificationResult>>
+    installLinuxPackageAndRelaunch(
+        localPath: string,
+        installKind: InstallKind
+    ): Promise<MutationResult<LinuxInstallResult>>
+    openLocalInstallerFallback(localPath: string): Promise<MutationResult<LinuxInstallResult>>
+    onUpdateDownloadProgress(callback: (progress: UpdateDownloadProgress) => void): () => void
 
     // --- BTC Market Data (Analytics ROI) ---
     getBtcKlines(payload: { startTime: number; endTime: number }): Promise<MutationResult<{ time: number; close: number }[]>>

@@ -19,8 +19,13 @@ import type {
     ChecklistItem,
     CredentialSavePayload,
     CredentialStatusPayload,
+    InstallEnvironment,
+    InstallKind,
     JournalAnalysisResult,
+    LinuxDownloadVerificationResult,
+    LinuxInstallResult,
     LogEntry,
+    ReleaseMetadataResult,
     ScreenshotUploadPayload,
     SettingsPayload,
     SyncableExchange,
@@ -31,6 +36,7 @@ import type {
     TradeFilterPayload,
     TradeMeta,
     TradeSavePayload,
+    UpdateDownloadProgress,
 } from '@shared/ipc-contract'
 import type {
     PlannedRisk,
@@ -696,16 +702,79 @@ export class InMemoryMockAdapter implements IpcClient {
         },
 
         getAppVersion: async (): Promise<AppResult<string>> => {
-            return ok('1.9.0-mock')
+            return ok('1.10.0-mock')
         },
 
         checkForUpdates: async (): Promise<AppResult<AppUpdateInfo>> => {
             return ok({
                 hasUpdate: false,
-                currentVersion: '1.9.0-mock',
-                latestVersion: '1.9.0-mock',
+                currentVersion: '1.10.0-mock',
+                latestVersion: '1.10.0-mock',
                 releaseUrl: 'https://github.com/KaleksananBarqi/nitirekso/releases',
             })
+        },
+
+        detectInstallEnvironment: async (): Promise<AppResult<InstallEnvironment>> => {
+            return ok({
+                os: 'linux',
+                arch: 'x86_64',
+                installKind: 'dev',
+                packageManager: 'none',
+                canSelfUpdate: false,
+                storeManaged: false,
+                isDev: true,
+                executablePath: null,
+            })
+        },
+
+        fetchReleaseMetadata: async (): Promise<AppResult<ReleaseMetadataResult>> => {
+            return ok({
+                notModified: false,
+                etag: null,
+                source: 'mock',
+                latestVersion: '1.10.0',
+                releaseUrl: 'https://github.com/KaleksananBarqi/nitirekso/releases',
+                releaseNotes: null,
+                publishedAt: null,
+                assets: [],
+                rateLimitResetAt: null,
+            })
+        },
+
+        downloadLinuxPackage: async (
+            _assetUrl: string,
+            assetName: string
+        ): Promise<AppResult<LinuxDownloadVerificationResult>> => {
+            return ok({
+                localPath: `/tmp/nitirekso-updates/${assetName}`,
+                sha256: 'mock-sha256',
+                size: 1024,
+            })
+        },
+
+        installLinuxPackageAndRelaunch: async (
+            _localPath: string,
+            _installKind: InstallKind
+        ): Promise<AppResult<LinuxInstallResult>> => {
+            return ok({
+                status: 'installed-relaunching',
+                message: 'Simulasi instalasi mock selesai.',
+            })
+        },
+
+        openLocalInstallerFallback: async (
+            _localPath: string
+        ): Promise<AppResult<LinuxInstallResult>> => {
+            return ok({
+                status: 'opened-fallback',
+                message: 'Simulasi membuka installer fallback.',
+            })
+        },
+
+        onUpdateDownloadProgress: (
+            _callback: (progress: UpdateDownloadProgress) => void
+        ): (() => void) => {
+            return () => {}
         },
 
         openExternalUrl: async (_url: string): Promise<AppResult<void>> => {

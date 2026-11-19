@@ -8,7 +8,9 @@ import { useHidePnl } from '../hooks/useHidePnl'
 import {
     BUILTIN_TEMPLATES,
     loadShareSettings,
+    saveShareSettings,
     loadCustomBgList,
+    initIndexedDbCustomBg,
     addCustomBgItem,
     getAllShareTemplates,
     saveCustomShareTemplate,
@@ -16,6 +18,9 @@ import {
     getActiveTemplateId,
     setActiveTemplateId,
     getAllBgTemplates,
+    resolveMediaType,
+    resolveInitialShareBgState,
+    resolveTemplateBackgroundSelection,
     type BgTemplate,
     type ShareCardTemplate,
     type CustomBgItem
@@ -93,26 +98,34 @@ function ShareAnalyticsModalContent({
     const activeTemplate = templates.find((t) => t.id === activeTemplateId) || templates[0]!
     const [allBgTemplates] = useState<BgTemplate[]>(() => getAllBgTemplates())
 
-    const initialBgIdx = Math.max(
-        0,
-        allBgTemplates.findIndex((t) => t.id === (activeTemplate?.bgPresetId || savedSettings.bgPresetId))
+    const [initialResolvedBg] = useState(() =>
+        resolveInitialShareBgState({
+            savedSettings,
+            activeTemplate,
+            allBgTemplates,
+            customBgList
+        })
     )
 
     // --- State: Skema Warna & Wallpaper ---
-    const initialCustomBgId = activeTemplate?.customBgId || savedSettings.customBgId || (customBgList[0]?.id ?? null)
-    const [selectedBgIdx, setSelectedBgIdx] = useState<number>(initialBgIdx)
-    const [selectedCustomBgId, setSelectedCustomBgId] = useState<string | null>(initialCustomBgId)
-    const [isCustomBgActive, setIsCustomBgActive] = useState<boolean>(
-        activeTemplate
-            ? activeTemplate.isCustomBg && (!!activeTemplate.customBgId || customBgList.length > 0)
-            : savedSettings.isCustomBg && customBgList.length > 0
-    )
+    const [selectedBgIdx, setSelectedBgIdx] = useState<number>(initialResolvedBg.selectedBgIdx)
+    const [selectedCustomBgId, setSelectedCustomBgId] = useState<string | null>(initialResolvedBg.selectedCustomBgId)
+    const [isCustomBgActive, setIsCustomBgActive] = useState<boolean>(initialResolvedBg.isCustomBgActive)
+    const [uploadBgError, setUploadBgError] = useState<string | null>(null)
+    const hasUserModifiedBgRef = useRef<boolean>(false)
 
-    // Wallpaper kustom yang sedang aktif
-    const activeCustomBgItem = customBgList.find((b) => b.id === selectedCustomBgId) || customBgList[0] || null
-    const activeCustomBgUrl = activeCustomBgItem ? activeCustomBgItem.dataUrl : (savedSettings.customBgUrl || null)
-    const bgPosX = activeCustomBgItem?.bgPosX ?? savedSettings.bgPosX ?? 50
-    const bgPosY = activeCustomBgItem?.bgPosY ?? savedSettings.bgPosY ?? 50
+    // Wallpaper kustom yang sedang aktif (hanya gunakan wallpaper bertipe gambar di kartu analitik)
+    const imageBgList = customBgList.filter((b) => resolveMediaType(b.mediaType, b.dataUrl, 'image') === 'image')
+    const activeCustomBgItem = imageBgList.find((b) => b.id === selectedCustomBgId) || imageBgList[0] || null
+    const savedImageFallback =
+        savedSettings.customBgUrl &&
+        resolveMediaType(savedSettings.customBgMediaType, savedSettings.customBgUrl, 'image') === 'image'
+            ? savedSettings.customBgUrl
+            : null
+    const activeCustomBgUrl = activeCustomBgItem ? activeCustomBgItem.dataUrl : savedImageFallback
+    const isEffectiveCustomBgActive = isCustomBgActive && Boolean(activeCustomBgUrl)
+    const bgPosX = activeCustomBgItem?.bgPosX ?? activeCustomBgItem?.posX ?? savedSettings.bgPosX ?? 50
+    const bgPosY = activeCustomBgItem?.bgPosY ?? activeCustomBgItem?.posY ?? savedSettings.bgPosY ?? 50
 
     const bg: BgTemplate = allBgTemplates[selectedBgIdx] ?? allBgTemplates[0]!
     const accent = isProfit ? bg.accentProfit : bg.accentLoss
@@ -153,30 +166,82 @@ function ShareAnalyticsModalContent({
     const avatarImgRef = useRef<HTMLImageElement | null>(null)
     const customBgImgRef = useRef<HTMLImageElement | null>(null)
 
-    // Upload background baru langsung dari modal
-    const handleUploadNewBg = (file?: File) => {
+    // Rehidrasi galeri wallpaper dari IndexedDB saat modal analitik dibuka
+    useEffect(() => {
+        let active = true
+        void initIndexedDbCustomBg().then((items) => {
+            if (!active) return
+            setCustomBgList(items)
+            if (hasUserModifiedBgRef.current) return
+
+            const imgItems = items.filter((b) => resolveMediaType(b.mediaType, b.dataUrl, 'image') === 'image')
+            if (imgItems.length === 0) {
+                if (savedSettings.isCustomBg) {
+                    setIsCustomBgActive(false)
+                    setSelectedCustomBgId(null)
+                }
+                return
+            }
+
+            const matched = savedSettings.customBgId
+                ? imgItems.find((b) => b.id === savedSettings.customBgId)
+                : null
+            const targetItem = matched || imgItems[0]!
+            setSelectedCustomBgId(targetItem.id)
+            if (savedSettings.isCustomBg) {
+                setIsCustomBgActive(true)
+            }
+        })
+        return () => {
+            active = false
+        }
+    }, [savedSettings.customBgId, savedSettings.isCustomBg])
+
+    // Upload background baru langsung dari modal (tersimpan sebagai Blob di IndexedDB)
+    const handleUploadNewBg = async (file?: File) => {
         if (!file) return
-        const reader = new FileReader()
-        reader.onload = (e) => {
-            const dataUrl = e.target?.result as string
-            if (!dataUrl) return
-            const name = file.name.replace(/\.[^/.]+$/, '').slice(0, 15)
-            const newItem = addCustomBgItem({ name, dataUrl })
+        setUploadBgError(null)
+        if (!file.type.startsWith('image/') && !/\.(png|jpe?g|webp|svg|gif|avif)$/i.test(file.name)) {
+            setUploadBgError('Harap pilih berkas gambar (PNG, JPG, WebP, atau SVG).')
+            return
+        }
+        if (file.size > 25 * 1024 * 1024) {
+            setUploadBgError('Ukuran gambar maksimal 25MB.')
+            return
+        }
+        try {
+            hasUserModifiedBgRef.current = true
+            const name = file.name.replace(/\.[^/.]+$/, '').slice(0, 15) || `Wallpaper ${customBgList.length + 1}`
+            const newItem = await addCustomBgItem({ name, mediaType: 'image', blob: file })
             const updated = loadCustomBgList()
             setCustomBgList(updated)
             setSelectedCustomBgId(newItem.id)
             setIsCustomBgActive(true)
+            saveShareSettings({
+                customBgId: newItem.id,
+                isCustomBg: true,
+                customBgMediaType: 'image',
+                customBgUrl: newItem.dataUrl,
+                bgPosX: 50,
+                bgPosY: 50
+            })
+        } catch {
+            setUploadBgError('Gagal menyimpan gambar latar belakang ke penyimpanan lokal.')
         }
-        reader.readAsDataURL(file)
     }
 
     // Preload Avatar
     useEffect(() => {
         if (avatarUrl) {
             const img = new Image()
-            img.crossOrigin = 'anonymous'
+            if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://')) {
+                img.crossOrigin = 'anonymous'
+            }
             img.src = avatarUrl
-            img.onload = () => { avatarImgRef.current = img }
+            img.onload = () => {
+                avatarImgRef.current = img
+                setMediaLoadTick((v) => v + 1)
+            }
         } else {
             avatarImgRef.current = null
         }
@@ -186,28 +251,53 @@ function ShareAnalyticsModalContent({
     useEffect(() => {
         if (activeCustomBgUrl) {
             const img = new Image()
-            img.crossOrigin = 'anonymous'
+            if (activeCustomBgUrl.startsWith('http://') || activeCustomBgUrl.startsWith('https://')) {
+                img.crossOrigin = 'anonymous'
+            }
             img.src = activeCustomBgUrl
-            img.onload = () => { customBgImgRef.current = img }
+            img.onload = () => {
+                customBgImgRef.current = img
+                setMediaLoadTick((v) => v + 1)
+            }
         } else {
             customBgImgRef.current = null
         }
     }, [activeCustomBgUrl])
 
+    const [mediaLoadTick, setMediaLoadTick] = useState(0)
+
     // Switch Template
     const handleApplyTemplate = (tpl: ShareCardTemplate) => {
+        hasUserModifiedBgRef.current = true
         setActiveTplId(tpl.id)
         setActiveTemplateId(tpl.id)
 
-        const bgIdx = allBgTemplates.findIndex((b) => b.id === tpl.bgPresetId)
-        if (bgIdx >= 0) setSelectedBgIdx(bgIdx)
+        const nextBg = resolveTemplateBackgroundSelection({
+            template: tpl,
+            allBgTemplates,
+            customBgList: imageBgList,
+            currentState: {
+                isCustomBgActive,
+                selectedCustomBgId,
+                bgPosX,
+                bgPosY,
+                bgDimming,
+                bgDimmingDirection: savedSettings.bgDimmingDirection
+            }
+        })
 
-        if (tpl.isCustomBg && tpl.customBgId) {
-            setSelectedCustomBgId(tpl.customBgId)
-            setIsCustomBgActive(true)
-        } else {
-            setIsCustomBgActive(false)
-        }
+        setSelectedBgIdx(nextBg.selectedBgIdx)
+        setSelectedCustomBgId(nextBg.selectedCustomBgId)
+        setIsCustomBgActive(nextBg.isCustomBgActive)
+
+        const nextPresetId = allBgTemplates[nextBg.selectedBgIdx]?.id || tpl.bgPresetId
+        const nextBgItem = imageBgList.find((b) => b.id === nextBg.selectedCustomBgId) || null
+        saveShareSettings({
+            bgPresetId: nextPresetId,
+            isCustomBg: nextBg.isCustomBgActive,
+            customBgId: nextBg.selectedCustomBgId,
+            ...(nextBg.isCustomBgActive && nextBgItem ? { customBgMediaType: 'image' as const } : {})
+        })
 
         setShowProfile(tpl.showProfile)
         setShowWatermark(tpl.showWatermark)
@@ -268,8 +358,8 @@ function ShareAnalyticsModalContent({
             report,
             bg,
             accent,
-            isCustomBgActive,
-            customMedia: isCustomBgActive ? customBgImgRef.current : null,
+            isCustomBgActive: isEffectiveCustomBgActive,
+            customMedia: isEffectiveCustomBgActive ? customBgImgRef.current : null,
             bgDimming,
             bgPosX,
             bgPosY,
@@ -291,7 +381,7 @@ function ShareAnalyticsModalContent({
         report,
         bg,
         accent,
-        isCustomBgActive,
+        isEffectiveCustomBgActive,
         bgDimming,
         bgPosX,
         bgPosY,
@@ -319,10 +409,10 @@ function ShareAnalyticsModalContent({
         return canvas
     }, [buildCurrentSpec])
 
-    // Update canvas render saat spesifikasi berubah
+    // Update canvas render saat spesifikasi atau media gambar selesai dimuat
     useEffect(() => {
         renderCanvas()
-    }, [renderCanvas])
+    }, [renderCanvas, mediaLoadTick])
 
     // --- Action Handlers ---
 
@@ -493,7 +583,7 @@ function ShareAnalyticsModalContent({
                             brandSubtitle={brandSubtitle}
                             activeReferral={activeReferral}
                             avatarUrl={avatarUrl}
-                            isCustomBgActive={isCustomBgActive}
+                            isCustomBgActive={isEffectiveCustomBgActive}
                             customBgUrl={activeCustomBgUrl}
                             bgDimming={bgDimming}
                             bgPosX={bgPosX}
@@ -528,7 +618,10 @@ function ShareAnalyticsModalContent({
                                     <button
                                         key={t.id}
                                         type="button"
-                                        onClick={() => setSelectedBgIdx(i)}
+                                        onClick={() => {
+                                            setSelectedBgIdx(i)
+                                            saveShareSettings({ bgPresetId: t.id })
+                                        }}
                                         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
                                             isColorSelected
                                                 ? isCustomBgActive
@@ -583,7 +676,11 @@ function ShareAnalyticsModalContent({
                         {/* Opsi Polos (Gunakan Warna Tema Saja) */}
                         <button
                             type="button"
-                            onClick={() => setIsCustomBgActive(false)}
+                            onClick={() => {
+                                hasUserModifiedBgRef.current = true
+                                setIsCustomBgActive(false)
+                                saveShareSettings({ isCustomBg: false })
+                            }}
                             className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
                                 !isCustomBgActive
                                     ? 'border-primary bg-primary/20 text-foreground font-bold shadow-xs ring-1 ring-primary/50'
@@ -595,15 +692,26 @@ function ShareAnalyticsModalContent({
                             <span>Warna Tema Polos</span>
                         </button>
 
-                        {customBgList.map((bgItem) => {
+                        {imageBgList.map((bgItem) => {
                             const isSelected = isCustomBgActive && selectedCustomBgId === bgItem.id
                             return (
                                 <button
                                     key={bgItem.id}
                                     type="button"
                                     onClick={() => {
+                                        hasUserModifiedBgRef.current = true
                                         setSelectedCustomBgId(bgItem.id)
                                         setIsCustomBgActive(true)
+                                        const px = bgItem.bgPosX ?? bgItem.posX ?? 50
+                                        const py = bgItem.bgPosY ?? bgItem.posY ?? 50
+                                        saveShareSettings({
+                                            customBgId: bgItem.id,
+                                            isCustomBg: true,
+                                            customBgMediaType: 'image',
+                                            customBgUrl: bgItem.dataUrl,
+                                            bgPosX: px,
+                                            bgPosY: py
+                                        })
                                     }}
                                     className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
                                         isSelected
@@ -627,7 +735,7 @@ function ShareAnalyticsModalContent({
                             type="file"
                             accept="image/*"
                             onChange={(e) => {
-                                handleUploadNewBg(e.target.files?.[0])
+                                void handleUploadNewBg(e.target.files?.[0])
                                 if (uploadBgModalInputRef.current) uploadBgModalInputRef.current.value = ''
                             }}
                             className="hidden"
@@ -643,6 +751,12 @@ function ShareAnalyticsModalContent({
                             <span>+ Upload BG</span>
                         </button>
                     </div>
+
+                    {uploadBgError && (
+                        <p className="text-xs text-destructive" role="alert">
+                            {uploadBgError}
+                        </p>
+                    )}
 
                     <div className="text-[11px] text-muted-foreground/80 italic flex items-center gap-1">
                         <span>💡</span>

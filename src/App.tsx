@@ -7,6 +7,10 @@ import { PnlValue } from './components/PnlValue'
 import { useTheme } from './hooks/useTheme'
 import { useTrades } from './hooks/useTrades'
 import { useHidePnl } from './hooks/useHidePnl'
+import { useAppUpdater } from './hooks/useAppUpdater'
+import { initIndexedDbCustomBg } from './lib/shareSettings'
+import { getUpdatePillContent } from './lib/update/updateHelpers'
+import { updateService } from './lib/update/updateService'
 import { Analytics } from './routes/Analytics'
 import { Dashboard } from './routes/Dashboard'
 import { ErrorLog } from './routes/ErrorLog'
@@ -36,9 +40,22 @@ export default function App(): React.JSX.Element {
     const { theme, colorblindSafe, isDark, setTheme, setColorblindSafe } = useTheme()
     const { trades, meta, loading, error, reload } = useTrades()
     const { hidePnl, setHidePnl } = useHidePnl()
+    const updaterState = useAppUpdater()
+    const updatePill = useMemo(() => getUpdatePillContent(updaterState), [updaterState])
 
     // Ambil path DB, pasang listener error global, dan jalankan sinkron otomatis saat buka app.
     useEffect(() => {
+        // Warm-up rehidrasi galeri background PnL dari IndexedDB sejak awal aplikasi dibuka
+        void initIndexedDbCustomBg()
+
+        // Inisialisasi Hybrid In-App Updater: silent check setelah 3 detik + berkala tiap 6 jam
+        void updateService.init()
+        const initialUpdateTimer = window.setTimeout(() => {
+            void updateService.checkForUpdates({ silent: true })
+        }, 3000)
+        const periodicUpdateTimer = window.setInterval(() => {
+            void updateService.checkForUpdates({ silent: true })
+        }, 6 * 60 * 60 * 1000)
         window.api
             .getAppHealth()
             .then((health) => {
@@ -93,6 +110,8 @@ export default function App(): React.JSX.Element {
 
         return () => {
             isMounted = false
+            window.clearTimeout(initialUpdateTimer)
+            window.clearInterval(periodicUpdateTimer)
             window.removeEventListener('error', handleGlobalError)
             window.removeEventListener('unhandledrejection', handleUnhandledRejection)
             window.removeEventListener('app:sync-complete', handleGlobalSyncComplete)
@@ -174,9 +193,15 @@ export default function App(): React.JSX.Element {
     )
 
     const handleNavigate = useCallback((next: RouteId) => {
+        if (isEditing && next !== route) {
+            const confirmed = window.confirm(
+                'Editor trade sedang terbuka. Pindah halaman sekarang akan menutup editor dan membuang perubahan yang belum disimpan. Lanjutkan?'
+            )
+            if (!confirmed) return
+        }
         setRoute(next)
         closeEditor()
-    }, [closeEditor])
+    }, [isEditing, route, closeEditor])
 
     const handleExport = useCallback(async (format: 'csv' | 'json' | 'pdf'): Promise<void> => {
         const result = await window.api.exportJournal(format, {})
@@ -240,7 +265,7 @@ export default function App(): React.JSX.Element {
     )
 
     return (
-        <AppShell active={route} onNavigate={handleNavigate} statusSlot={statusSlot}>
+        <AppShell active={route} onNavigate={handleNavigate} statusSlot={statusSlot} updatePill={updatePill}>
             {isEditing ? (
                 <TradeEditor
                     detail={editing}

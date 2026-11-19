@@ -19,9 +19,14 @@ import type {
     BtcKlinePoint,
     CredentialSavePayload,
     CredentialStatusPayload,
+    InstallEnvironment,
+    InstallKind,
     JournalAnalysisResult,
+    LinuxDownloadVerificationResult,
+    LinuxInstallResult,
     LogEntry,
     MutationResult,
+    ReleaseMetadataResult,
     ScreenshotUploadPayload,
     SettingsPayload,
     SyncableExchange,
@@ -32,6 +37,7 @@ import type {
     TradeFilterPayload,
     TradeMeta,
     TradeSavePayload,
+    UpdateDownloadProgress,
 } from '@shared/ipc-contract'
 import {
     createAppError,
@@ -421,6 +427,90 @@ export class NativeTauriAdapter implements IpcClient {
                 undefined,
                 'CHECK_UPDATES_FAILED'
             )
+        },
+
+        detectInstallEnvironment: async (): Promise<AppResult<InstallEnvironment>> => {
+            return await invokeDirect<InstallEnvironment>(
+                'detect_install_environment',
+                undefined,
+                'DETECT_INSTALL_ENV_ERROR'
+            )
+        },
+
+        fetchReleaseMetadata: async (
+            etag?: string | null
+        ): Promise<AppResult<ReleaseMetadataResult>> => {
+            return await invokeMutation<ReleaseMetadataResult>(
+                'fetch_release_update_metadata',
+                { etag: etag ?? null },
+                'FETCH_RELEASE_METADATA_FAILED'
+            )
+        },
+
+        downloadLinuxPackage: async (
+            assetUrl: string,
+            assetName: string,
+            expectedVersion: string
+        ): Promise<AppResult<LinuxDownloadVerificationResult>> => {
+            return await invokeMutation<LinuxDownloadVerificationResult>(
+                'download_and_verify_linux_package',
+                { assetUrl, assetName, expectedVersion },
+                'LINUX_DOWNLOAD_FAILED'
+            )
+        },
+
+        installLinuxPackageAndRelaunch: async (
+            localPath: string,
+            installKind: InstallKind
+        ): Promise<AppResult<LinuxInstallResult>> => {
+            return await invokeMutation<LinuxInstallResult>(
+                'install_linux_package_and_relaunch',
+                { localPath, installKind },
+                'LINUX_INSTALL_FAILED'
+            )
+        },
+
+        openLocalInstallerFallback: async (
+            localPath: string
+        ): Promise<AppResult<LinuxInstallResult>> => {
+            return await invokeMutation<LinuxInstallResult>(
+                'open_local_installer_fallback',
+                { localPath },
+                'LINUX_FALLBACK_OPEN_FAILED'
+            )
+        },
+
+        onUpdateDownloadProgress: (
+            callback: (progress: UpdateDownloadProgress) => void
+        ): (() => void) => {
+            let unlistenFn: (() => void) | null = null
+            let cancelled = false
+            import('@tauri-apps/api/event')
+                .then(({ listen }) => {
+                    listen<UpdateDownloadProgress>('updater:download-progress', (event) => {
+                        callback(event.payload)
+                    }).then((unlisten) => {
+                        if (cancelled) {
+                            unlisten()
+                        } else {
+                            unlistenFn = unlisten
+                        }
+                    })
+                })
+                .catch((e) => {
+                    console.error(
+                        '[NativeTauriAdapter] Gagal mendaftarkan listen event updater:download-progress:',
+                        e
+                    )
+                })
+
+            return () => {
+                cancelled = true
+                if (unlistenFn) {
+                    unlistenFn()
+                    unlistenFn = null
+                }
+            }
         },
 
         openExternalUrl: async (url: string): Promise<AppResult<void>> => {

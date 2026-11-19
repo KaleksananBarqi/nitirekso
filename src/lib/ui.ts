@@ -20,8 +20,8 @@ export type ButtonSize = 'sm' | 'md' | 'icon'
 
 const buttonBase =
     'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors ' +
-    'focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 ' +
-    'select-none whitespace-nowrap'
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ' +
+    'disabled:opacity-50 select-none whitespace-nowrap'
 
 const buttonVariants: Record<ButtonVariant, string> = {
     primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
@@ -96,7 +96,7 @@ export function badgeClass(
     className?: string
 ): string {
     const tones = {
-        default: 'bg-primary/15 text-primary border-primary/30',
+        default: 'bg-primary/15 text-foreground border-primary/40',
         profit: 'bg-profit/15 text-profit border-profit/30',
         loss: 'bg-loss/15 text-loss border-loss/30',
         muted: 'bg-muted text-muted-foreground border-border',

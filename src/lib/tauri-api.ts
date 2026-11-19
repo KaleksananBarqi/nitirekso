@@ -49,6 +49,21 @@ export function createTauriApi(customClient?: IpcClient): PreloadApi {
         getAppHealth: async () => unwrapAppResult(await client.system.getAppHealth()),
         getAppVersion: async () => unwrapAppResult(await client.system.getAppVersion()),
         checkForUpdates: async () => toMutation(await client.system.checkForUpdates()),
+        detectInstallEnvironment: async () =>
+            unwrapAppResult(await client.system.detectInstallEnvironment()),
+        fetchReleaseMetadata: async (etag) =>
+            toMutation(await client.system.fetchReleaseMetadata(etag)),
+        downloadLinuxPackage: async (assetUrl, assetName, expectedVersion) =>
+            toMutation(
+                await client.system.downloadLinuxPackage(assetUrl, assetName, expectedVersion)
+            ),
+        installLinuxPackageAndRelaunch: async (localPath, installKind) =>
+            toMutation(
+                await client.system.installLinuxPackageAndRelaunch(localPath, installKind)
+            ),
+        openLocalInstallerFallback: async (localPath) =>
+            toMutation(await client.system.openLocalInstallerFallback(localPath)),
+        onUpdateDownloadProgress: (callback) => client.system.onUpdateDownloadProgress(callback),
         openExternalUrl: async (url) => toMutation(await client.system.openExternalUrl(url)),
         getBtcKlines: async (payload) => toMutation(await client.system.getBtcKlines(payload)),
 

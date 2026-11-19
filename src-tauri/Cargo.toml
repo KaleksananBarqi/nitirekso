@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "1.9.0"
+version = "1.10.0"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -26,7 +26,8 @@ tauri-plugin-store = "2"
 tauri-plugin-log = "2"
 rusqlite = { version = "0.33", features = ["bundled", "backup"] }
 dirs = "6.0"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+futures-util = "0.3"
 tokio = { version = "1", features = ["full"] }
 sha2 = "0.10"
 hmac = "0.12"
@@ -37,3 +38,8 @@ rand = "0.8"
 urlencoding = "2.1"
 rfd = "0.15"
 opener = "0.7"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { cn } from '../lib/utils'
+import type { UpdatePillContent } from '../lib/update/updateHelpers'
 
 import logoUrl from '../assets/logo.svg'
 
@@ -36,6 +37,8 @@ interface AppShellProps {
     onNavigate: (route: RouteId) => void
     /** Info status di bagian bawah sidebar. */
     statusSlot?: ReactNode
+    /** Indikator pembaruan aplikasi non-blocking. */
+    updatePill?: UpdatePillContent
     children: ReactNode
 }
 
@@ -43,6 +46,7 @@ export function AppShell({
     active,
     onNavigate,
     statusSlot,
+    updatePill,
     children
 }: AppShellProps): React.JSX.Element {
     return (
@@ -87,12 +91,65 @@ export function AppShell({
                                 {isActive && (
                                     <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-primary" />
                                 )}
-                                <span className="text-[13px] font-medium">{item.label}</span>
-                                <span className="text-[10px] opacity-70">{item.hint}</span>
+                                <div className="flex w-full items-center justify-between gap-2">
+                                    <span className="text-[13px] font-medium">{item.label}</span>
+                                    {item.id === 'about' && updatePill?.visible && (
+                                        <span
+                                            className={cn(
+                                                'rounded border px-1.5 py-0.5 text-[10px] font-semibold tabular',
+                                                updatePill.tone === 'profit'
+                                                    ? 'border-profit/50 bg-card text-profit'
+                                                    : updatePill.tone === 'warning'
+                                                        ? 'border-border bg-secondary text-foreground'
+                                                        : 'border-primary/40 bg-primary/15 text-foreground'
+                                            )}
+                                        >
+                                            {updatePill.badgeText}
+                                        </span>
+                                    )}
+                                </div>
+                                <span className="text-[10px] text-muted-foreground">{item.hint}</span>
                             </button>
                         )
                     })}
                 </nav>
+
+                {updatePill?.visible && (
+                    <div className="border-t border-border px-2.5 py-2">
+                        <button
+                            type="button"
+                            onClick={() => onNavigate('about')}
+                            className={cn(
+                                'flex w-full items-center justify-between gap-2 rounded-md border bg-card px-2.5 py-2 text-left text-xs font-medium transition-colors hover:bg-accent',
+                                updatePill.tone === 'profit'
+                                    ? 'border-profit/50 text-profit'
+                                    : updatePill.tone === 'warning'
+                                        ? 'border-border text-foreground'
+                                        : 'border-primary/40 text-foreground'
+                            )}
+                            title="Buka halaman About untuk melihat detail pembaruan"
+                        >
+                            <span className="flex items-center gap-2 min-w-0">
+                                <svg
+                                    viewBox="0 0 20 20"
+                                    width="14"
+                                    height="14"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                    className="shrink-0"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M10 3v9m0 0-3.5-3.5M10 12l3.5-3.5M4 15.5h12" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                                <span className="truncate tabular">{updatePill.label}</span>
+                            </span>
+                            <span className="text-[10px] font-semibold text-foreground shrink-0">
+                                Buka
+                            </span>
+                        </button>
+                    </div>
+                )}
 
                 {statusSlot && <div className="border-t border-border p-3">{statusSlot}</div>}
 
@@ -108,10 +165,22 @@ export function AppShell({
                                 window.open(url, '_blank')
                             }
                         }}
-                        className="group flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/50 hover:shadow-xs transition-all"
+                        className="group flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-secondary/70 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-accent hover:border-primary/40 transition-colors"
                         title="Dukung pengembang nitirekso lewat Saweria"
                     >
-                        <span className="transition-transform group-hover:scale-110">☕</span>
+                        <svg
+                            viewBox="0 0 24 24"
+                            width="14"
+                            height="14"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            className="shrink-0 text-primary"
+                            aria-hidden="true"
+                        >
+                            <path d="M18 8h1a4 4 0 0 1 0 8h-1M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8Z" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M6 2v2M10 2v2M14 2v2" strokeLinecap="round" />
+                        </svg>
                         <span>Beliin Aku Kopi</span>
                     </button>
                 </div>

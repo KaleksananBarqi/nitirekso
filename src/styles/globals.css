@@ -56,7 +56,7 @@
      Profit/loss adalah warna SEMANTIK, bukan nama warna. Pemetaan ke
      biru/oranye untuk mode colorblind-safe dilakukan di .colorblind-safe,
      sehingga komponen tidak perlu tahu mode mana yang aktif. */
-    --profit: hsl(142 71% 36%);
+    --profit: hsl(160 93% 24%);
     --profit-foreground: hsl(0 0% 100%);
     --loss: hsl(0 72% 45%);
     --loss-foreground: hsl(0 0% 100%);
@@ -261,5 +261,27 @@
     :focus-visible {
         outline: 2px solid var(--ring);
         outline-offset: 2px;
+    }
+
+    a[href],
+    button:not(:disabled),
+    summary,
+    select:not(:disabled),
+    input[type='checkbox']:not(:disabled),
+    input[type='radio']:not(:disabled),
+    label[for],
+    label:has(input[type='checkbox']:not(:disabled)),
+    label:has(input[type='radio']:not(:disabled)),
+    [role='button']:not([aria-disabled='true']),
+    [role='switch']:not([aria-disabled='true']),
+    [role='tab']:not([aria-disabled='true']) {
+        cursor: pointer;
+    }
+
+    button:disabled,
+    select:disabled,
+    input:disabled,
+    [aria-disabled='true'] {
+        cursor: not-allowed;
     }
 }

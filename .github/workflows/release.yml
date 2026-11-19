@@ -56,13 +56,108 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Build application (Tauri)
-        uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ "${{ matrix.platform }}" = "macOS" ]; then
+            npx tauri build --target universal-apple-darwin
+          else
+            npx tauri build
+          fi
+        shell: bash
+
+      - name: Collect signed release bundles
+        shell: bash
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const outDir = path.resolve("dist-artifacts");
+            fs.mkdirSync(outDir, { recursive: true });
+            const exts = [".exe", ".msi", ".dmg", ".app.tar.gz", ".AppImage", ".rpm", ".deb", ".sig"];
+            const bundleMarker = path.sep + "release" + path.sep + "bundle" + path.sep;
+            function walk(dir) {
+              if (!fs.existsSync(dir)) return;
+              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                  if (entry.name.endsWith(".app")) continue;
+                  walk(full);
+                } else if (entry.isFile()) {
+                  if (!full.includes(bundleMarker)) continue;
+                  if (exts.some((ext) => entry.name.endsWith(ext))) {
+                    fs.copyFileSync(full, path.join(outDir, entry.name));
+                    console.log("Collected:", entry.name);
+                  }
+                }
+              }
+            }
+            walk(path.resolve("src-tauri/target"));
+          '
+
+      - name: Upload platform artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ github.ref_name }} # Action automatically sets this to the tag name
-          releaseName: 'nitirekso ${{ github.ref_name }}'
-          releaseBody: 'Lihat CHANGELOG.md untuk informasi pembaruan.'
-          releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.platform == 'macOS' && '--target universal-apple-darwin' || '' }}
+          name: bundle-${{ matrix.platform }}
+          path: dist-artifacts/*
+          if-no-files-found: error
+
+  publish:
+    name: Generate Manifests & Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Generate latest.json and SHA256SUMS.txt
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="v$(node -p "require('./package.json').version")"
+          fi
+          VERSION="${TAG#v}"
+          printf '%s' "$TAG" > /tmp/release_tag.txt
+
+          node scripts/generate-release-manifests.mjs \
+            --dir release-artifacts \
+            --out release-manifests \
+            --version "$VERSION" \
+            --repo "${{ github.repository }}" \
+            --changelog CHANGELOG.md \
+            --notes-out /tmp/release_notes.md
+
+      - name: Publish assets and manifests to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="$(cat /tmp/release_tag.txt)"
+          mkdir -p upload-assets
+          find release-artifacts -type f -exec cp -f {} upload-assets/ \;
+          cp -f release-manifests/latest.json upload-assets/latest.json
+          cp -f release-manifests/SHA256SUMS.txt upload-assets/SHA256SUMS.txt
+
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "nitirekso $TAG" \
+              --notes-file /tmp/release_notes.md
+          fi
+
+          gh release upload "$TAG" upload-assets/* --repo "${{ github.repository }}" --clobber

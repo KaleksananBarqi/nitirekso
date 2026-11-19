@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, CardHeader, Field, Button } from './ui'
 import {
     BG_TEMPLATES,
@@ -6,6 +6,7 @@ import {
     loadShareSettings,
     saveShareSettings,
     loadCustomBgList,
+    initIndexedDbCustomBg,
     addCustomBgItem,
     updateCustomBgItem,
     deleteCustomBgItem,
@@ -83,6 +84,32 @@ export function ShareBrandingSettings(): React.JSX.Element {
             return next
         })
     }
+
+    // Rehidrasi galeri wallpaper dari IndexedDB saat Settings dibuka
+    useEffect(() => {
+        let active = true
+        void initIndexedDbCustomBg().then((items) => {
+            if (!active) return
+            setCustomBgList(items)
+            setSettings((prev) => {
+                if (items.length === 0) {
+                    return prev.isCustomBg
+                        ? { ...prev, isCustomBg: false, customBgId: null, customBgUrl: null }
+                        : prev
+                }
+                const matched = (prev.customBgId && items.find((b) => b.id === prev.customBgId)) || items[0]!
+                return {
+                    ...prev,
+                    customBgId: matched.id,
+                    customBgUrl: matched.dataUrl,
+                    customBgMediaType: resolveMediaType(matched.mediaType, matched.dataUrl, 'image')
+                }
+            })
+        })
+        return () => {
+            active = false
+        }
+    }, [])
 
     const handleSetDefaultTemplate = (templateId: string) => {
         setActiveTemplateId(templateId)
@@ -177,17 +204,43 @@ export function ShareBrandingSettings(): React.JSX.Element {
         setTimeout(() => setSchemeFeedback(null), 3000)
     }
 
-    const handleAddCustomBg = (dataUrl: string, fileName?: string, mediaType: 'image' | 'video' = 'image') => {
-        const cleanName = fileName ? fileName.replace(/\.[^/.]+$/, '').slice(0, 18) : `${mediaType === 'video' ? 'Video' : 'Wallpaper'} ${customBgList.length + 1}`
-        const created = addCustomBgItem({ name: cleanName, dataUrl, mediaType })
-        const updated = loadCustomBgList()
-        setCustomBgList(updated)
-        updateSettings({
-            isCustomBg: true,
-            customBgId: created.id,
-            customBgUrl: created.dataUrl,
-            customBgMediaType: mediaType
-        })
+    const handleAddCustomBgFile = async (file: File | undefined) => {
+        setBgFileError(null)
+        if (!file) return
+
+        const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|svg|gif|avif)$/i.test(file.name)
+        const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov|ogg)$/i.test(file.name)
+        if (!isImage && !isVideo) {
+            setBgFileError('Harap pilih berkas gambar (PNG, JPG, SVG, WebP) atau video (MP4, WebM).')
+            return
+        }
+        if (file.size > 25 * 1024 * 1024) {
+            setBgFileError('Ukuran berkas maksimal 25MB.')
+            return
+        }
+
+        const mediaType: 'image' | 'video' = isVideo ? 'video' : 'image'
+        const cleanName = file.name.replace(/\.[^/.]+$/, '').slice(0, 18) || `${mediaType === 'video' ? 'Video' : 'Wallpaper'} ${customBgList.length + 1}`
+
+        try {
+            const created = await addCustomBgItem({
+                name: cleanName,
+                mediaType,
+                blob: file
+            })
+            const updated = loadCustomBgList()
+            setCustomBgList(updated)
+            updateSettings({
+                isCustomBg: true,
+                customBgId: created.id,
+                customBgUrl: created.dataUrl,
+                customBgMediaType: mediaType,
+                bgPosX: 50,
+                bgPosY: 50
+            })
+        } catch {
+            setBgFileError('Gagal menyimpan berkas media ke penyimpanan lokal.')
+        }
     }
 
     const handleDeleteCustomBg = (id: string) => {
@@ -866,12 +919,7 @@ export function ShareBrandingSettings(): React.JSX.Element {
                                 accept="image/*,video/mp4,video/webm"
                                 onChange={(e) => {
                                     const file = e.target.files?.[0]
-                                    handleMediaUpload(
-                                        file,
-                                        25,
-                                        setBgFileError,
-                                        (dataUrl, isVideo) => handleAddCustomBg(dataUrl, file?.name, isVideo ? 'video' : 'image')
-                                    )
+                                    void handleAddCustomBgFile(file)
                                     if (bgInputRef.current) bgInputRef.current.value = ''
                                 }}
                                 className="hidden"
@@ -925,7 +973,7 @@ export function ShareBrandingSettings(): React.JSX.Element {
                                                 })}
                                                 className="h-24 w-full bg-cover cursor-pointer relative group overflow-hidden bg-black/40"
                                                 style={!isVideo ? {
-                                                    backgroundImage: `url(${bgItem.dataUrl})`,
+                                                    backgroundImage: `url("${bgItem.dataUrl}")`,
                                                     backgroundPosition: `${bgItem.posX ?? 50}% ${bgItem.posY ?? 50}%`
                                                 } : undefined}
                                             >
@@ -1363,7 +1411,7 @@ export function ShareBrandingSettings(): React.JSX.Element {
                                         <div
                                             className="pointer-events-none absolute inset-0 bg-cover"
                                             style={{
-                                                backgroundImage: `url(${settings.customBgUrl})`,
+                                                backgroundImage: `url("${settings.customBgUrl}")`,
                                                 backgroundPosition: `${settings.bgPosX ?? 50}% ${settings.bgPosY ?? 50}%`,
                                             }}
                                         />

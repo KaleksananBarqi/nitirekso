@@ -261,6 +261,17 @@ export function Modal({
     footer?: ReactNode
     size?: 'sm' | 'md' | 'lg' | 'xl'
 }): React.JSX.Element | null {
+    useEffect(() => {
+        if (!isOpen) return
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isOpen, onClose])
+
     if (!isOpen) return null
 
     const maxWidthClass = {
@@ -271,7 +282,12 @@ export function Modal({
     }[size]
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label={title}
+        >
             {/* Backdrop */}
             <div
                 className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
@@ -295,9 +311,10 @@ export function Modal({
                     <button
                         type="button"
                         onClick={onClose}
+                        aria-label="Tutup dialog"
                         className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     >
-                        ✕
+                        <span aria-hidden="true">×</span>
                     </button>
                 </div>
 

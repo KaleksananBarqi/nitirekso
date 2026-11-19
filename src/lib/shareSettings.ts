@@ -447,7 +447,7 @@ export function updateCustomShareColorScheme(
     return target
 }
 
-/** Memperbarui wallpaper kustom (nama, posX, posY) */
+/** Memperbarui wallpaper kustom (nama, posX, posY) dan menyinkronkan ke IndexedDB */
 export function updateCustomBgItem(
     id: string,
     updates: Partial<Omit<CustomBgItem, 'id' | 'dataUrl' | 'createdAt'>>
@@ -470,6 +470,7 @@ export function updateCustomBgItem(
     }
 
     saveCustomBgList(list)
+    void persistToIndexedDb(target)
     return target
 }
 
@@ -650,8 +651,63 @@ export function getPlayableMediaUrl(rawUrl: string | null | undefined, mediaType
 // ---------------------------------------------------------------------------
 
 let memoryBgList: CustomBgItem[] | null = null
+let inFlightIdbInit: Promise<CustomBgItem[]> | null = null
+const objectUrlRegistry = new Map<string, string>()
+
 const IDB_NAME = 'nitirekso_media_v1'
 const IDB_STORE = 'custom_bg'
+
+interface CustomBgStoredMeta {
+    id: string
+    name: string
+    dataUrl?: string
+    createdAt: number
+    mediaType?: 'image' | 'video'
+    posX?: number
+    posY?: number
+    bgPosX?: number
+    bgPosY?: number
+}
+
+function isEphemeralBlobUrl(url: string | null | undefined): boolean {
+    return typeof url === 'string' && url.startsWith('blob:')
+}
+
+function isPersistentDirectUrl(url: string | null | undefined): boolean {
+    return (
+        typeof url === 'string' &&
+        (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/'))
+    )
+}
+
+function getOrCreateObjectUrl(id: string, blob: Blob): string {
+    const existing = objectUrlRegistry.get(id)
+    if (existing) return existing
+    const nextUrl = URL.createObjectURL(blob)
+    objectUrlRegistry.set(id, nextUrl)
+    return nextUrl
+}
+
+function revokeRegisteredObjectUrl(id: string): void {
+    const existing = objectUrlRegistry.get(id)
+    if (existing) {
+        try {
+            URL.revokeObjectURL(existing)
+        } catch {
+            // Abaikan bila URL sudah dilepas oleh browser
+        }
+        objectUrlRegistry.delete(id)
+    }
+}
+
+/** Mereset cache memori (khusus kebutuhan pengujian unit / simulasi restart). */
+export function resetCustomBgMemoryCache(): void {
+    for (const id of Array.from(objectUrlRegistry.keys())) {
+        revokeRegisteredObjectUrl(id)
+    }
+    memoryBgList = null
+    inFlightIdbInit = null
+}
 
 function openMediaDb(): Promise<IDBDatabase | null> {
     if (typeof window === 'undefined' || !window.indexedDB) return Promise.resolve(null)
@@ -672,118 +728,317 @@ function openMediaDb(): Promise<IDBDatabase | null> {
     })
 }
 
-/** Inisialisasi dan baca wallpaper kustom berukuran besar dari IndexedDB */
-export async function initIndexedDbCustomBg(): Promise<CustomBgItem[]> {
-    const db = await openMediaDb()
-    if (!db) return loadCustomBgList()
-    return new Promise((resolve) => {
+function readRawLocalBgList(): CustomBgStoredMeta[] {
+    try {
+        const raw = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST)
+        if (!raw) return []
+        const parsed = JSON.parse(raw)
+        return Array.isArray(parsed) ? parsed : []
+    } catch {
+        return []
+    }
+}
+
+/** Menyusun item runtime dengan URL playable dari Blob atau data URL. */
+function hydrateBgRecord(item: CustomBgItem): CustomBgItem | null {
+    const mType = resolveMediaType(item.mediaType, item.dataUrl, 'image')
+
+    if (item.blob instanceof Blob) {
+        const activeUrl = getOrCreateObjectUrl(item.id, item.blob)
+        return {
+            ...item,
+            mediaType: mType,
+            dataUrl: activeUrl,
+            blobUrl: mType === 'video' ? activeUrl : undefined
+        }
+    }
+
+    if (item.dataUrl && item.dataUrl.startsWith('data:')) {
         try {
-            const tx = db.transaction(IDB_STORE, 'readonly')
-            const store = tx.objectStore(IDB_STORE)
-            const req = store.getAll()
-            req.onsuccess = () => {
-                const idbList = req.result as CustomBgItem[]
-                if (Array.isArray(idbList) && idbList.length > 0) {
-                    const localList = loadCustomBgList()
-                    // Gabungkan item dari IndexedDB dan localStorage tanpa duplikasi
-                    const mergedMap = new Map<string, CustomBgItem>()
-                    for (const item of localList) {
-                        mergedMap.set(item.id, item)
-                    }
-                    for (const item of idbList) {
-                        const mType = resolveMediaType(item.mediaType, item.dataUrl, 'image')
-                        let activeUrl = item.dataUrl
-                        if (mType === 'video') {
-                            if (item.blob) {
-                                activeUrl = URL.createObjectURL(item.blob)
-                            } else if (item.dataUrl && item.dataUrl.startsWith('data:')) {
-                                activeUrl = getPlayableMediaUrl(item.dataUrl, 'video') || item.dataUrl
-                            }
-                        }
-                        mergedMap.set(item.id, {
-                            ...item,
-                            mediaType: mType,
-                            dataUrl: activeUrl,
-                            blobUrl: mType === 'video' ? activeUrl : undefined
-                        })
-                    }
-                    memoryBgList = Array.from(mergedMap.values())
-                    resolve(memoryBgList)
-                } else {
-                    resolve(loadCustomBgList())
+            const convertedBlob = dataUrlToBlob(item.dataUrl)
+            const activeUrl = getOrCreateObjectUrl(item.id, convertedBlob)
+            return {
+                ...item,
+                mediaType: mType,
+                blob: convertedBlob,
+                dataUrl: activeUrl,
+                blobUrl: mType === 'video' ? activeUrl : undefined
+            }
+        } catch {
+            // Gunakan dataUrl asli untuk gambar bila konversi blob gagal
+            if (mType === 'image') {
+                return {
+                    ...item,
+                    mediaType: mType
                 }
             }
-            req.onerror = () => resolve(loadCustomBgList())
-        } catch {
-            resolve(loadCustomBgList())
+            return null
         }
-    })
+    }
+
+    if (isPersistentDirectUrl(item.dataUrl)) {
+        return {
+            ...item,
+            mediaType: mType,
+            blobUrl: mType === 'video' ? item.dataUrl : undefined
+        }
+    }
+
+    // Item dengan URL blob: mati tanpa Blob di IndexedDB dibuang sebagai yatim
+    return null
+}
+
+/** Inisialisasi dan rehidrasi seluruh wallpaper kustom (gambar & video) dari IndexedDB */
+export function initIndexedDbCustomBg(): Promise<CustomBgItem[]> {
+    if (inFlightIdbInit) return inFlightIdbInit
+
+    inFlightIdbInit = (async () => {
+        const db = await openMediaDb()
+        const localRawList = readRawLocalBgList()
+
+        if (!db) {
+            const fallbackList = loadCustomBgList()
+            inFlightIdbInit = null
+            return fallbackList
+        }
+
+        const idbRecords = await new Promise<CustomBgItem[]>((resolve) => {
+            try {
+                const tx = db.transaction(IDB_STORE, 'readonly')
+                const store = tx.objectStore(IDB_STORE)
+                const req = store.getAll()
+                req.onsuccess = () => {
+                    resolve(Array.isArray(req.result) ? (req.result as CustomBgItem[]) : [])
+                }
+                req.onerror = () => resolve([])
+            } catch {
+                resolve([])
+            }
+        })
+
+        const mergedMap = new Map<string, CustomBgItem>()
+        const recordsToMigrate: CustomBgItem[] = []
+
+        // 1. Proses record dari IndexedDB terlebih dahulu (sumber kebenaran biner Blob)
+        for (const rawItem of idbRecords) {
+            const hadNoBlob = !(rawItem.blob instanceof Blob)
+            const hydrated = hydrateBgRecord(rawItem)
+            if (hydrated) {
+                mergedMap.set(hydrated.id, hydrated)
+                if (hadNoBlob && hydrated.blob instanceof Blob) {
+                    recordsToMigrate.push(hydrated)
+                }
+            } else {
+                // Bersihkan record rusak/yatim dari IndexedDB
+                void removeFromIndexedDb(rawItem.id)
+            }
+        }
+
+        // 2. Gabungkan metadata dari localStorage & migrasi base64 lama ke IndexedDB
+        for (const localItem of localRawList) {
+            const existing = mergedMap.get(localItem.id)
+            if (existing) {
+                // Pertahankan metadata terbaru (nama, posisi X/Y) jika ada di localStorage
+                mergedMap.set(localItem.id, {
+                    ...existing,
+                    name: localItem.name || existing.name,
+                    posX: localItem.posX ?? existing.posX,
+                    posY: localItem.posY ?? existing.posY,
+                    bgPosX: localItem.bgPosX ?? existing.bgPosX,
+                    bgPosY: localItem.bgPosY ?? existing.bgPosY
+                })
+                continue
+            }
+
+            const hydrated = hydrateBgRecord({
+                ...localItem,
+                dataUrl: localItem.dataUrl || ''
+            })
+            if (hydrated) {
+                mergedMap.set(hydrated.id, hydrated)
+                if (hydrated.blob instanceof Blob) {
+                    recordsToMigrate.push(hydrated)
+                }
+            }
+        }
+
+        // 3. Migrasi legacy SHARE_STORAGE_KEYS.CUSTOM_BG jika list masih kosong
+        const legacyBg = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
+        if (legacyBg && mergedMap.size === 0 && !isEphemeralBlobUrl(legacyBg)) {
+            const legacyType = resolveMediaType(undefined, legacyBg, 'image')
+            const legacyId = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID) || `bg_${Date.now()}_default`
+            const hydrated = hydrateBgRecord({
+                id: legacyId,
+                name: 'Wallpaper Kustom 1',
+                dataUrl: legacyBg,
+                createdAt: Date.now(),
+                mediaType: legacyType
+            })
+            if (hydrated) {
+                mergedMap.set(hydrated.id, hydrated)
+                if (hydrated.blob instanceof Blob) {
+                    recordsToMigrate.push(hydrated)
+                }
+            }
+        }
+
+        // 4. Persistasikan item hasil migrasi ke IndexedDB secara paralel
+        for (const rec of recordsToMigrate) {
+            try {
+                await persistToIndexedDb(rec)
+            } catch {
+                // Abaikan bila migrasi parsial gagal; log sudah dicatat oleh persistToIndexedDb
+            }
+        }
+
+        // Urutkan terbaru terlebih dahulu sesuai urutan list
+        const finalList = Array.from(mergedMap.values()).sort((a, b) => b.createdAt - a.createdAt)
+        memoryBgList = finalList
+        saveCustomBgList(finalList)
+
+        // 5. Bersihkan key CUSTOM_BG jika masih menyimpan data: besar atau blob: mati
+        if (legacyBg && (legacyBg.startsWith('data:') || isEphemeralBlobUrl(legacyBg))) {
+            localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
+        }
+
+        // 6. Pastikan CUSTOM_BG_ID menunjuk ke item yang masih valid
+        const storedActiveId = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID)
+        if (storedActiveId && !finalList.some((item) => item.id === storedActiveId)) {
+            if (finalList.length > 0) {
+                localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID, finalList[0]!.id)
+            } else {
+                localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID)
+                localStorage.setItem(SHARE_STORAGE_KEYS.IS_CUSTOM_BG, 'false')
+            }
+        }
+
+        inFlightIdbInit = null
+        return finalList
+    })()
+
+    return inFlightIdbInit
+}
+
+function buildIndexedDbPayload(item: CustomBgItem): Record<string, unknown> {
+    return {
+        id: item.id,
+        name: item.name,
+        mediaType: item.mediaType,
+        blob: item.blob,
+        // Jangan simpan blob: URL sementara ke IndexedDB; jika sudah ada blob, cukup simpan blob-nya
+        dataUrl: item.blob instanceof Blob ? '' : (isEphemeralBlobUrl(item.dataUrl) ? '' : item.dataUrl),
+        createdAt: item.createdAt,
+        posX: item.posX,
+        posY: item.posY,
+        bgPosX: item.bgPosX,
+        bgPosY: item.bgPosY
+    }
 }
 
 async function persistToIndexedDb(item: CustomBgItem): Promise<void> {
     const db = await openMediaDb()
-    if (!db) return
-    try {
-        const tx = db.transaction(IDB_STORE, 'readwrite')
-        tx.objectStore(IDB_STORE).put(item)
-    } catch (e) {
-        logSharePnlError(
-            SharePnlErrorCode.STORAGE_PERSIST_FAILED,
-            `Gagal menyimpan wallpaper "${item.name}" ke IndexedDB`,
-            e,
-            'WARN'
-        )
+    if (!db) {
+        if (!item.dataUrl || isEphemeralBlobUrl(item.dataUrl)) {
+            throw new Error('Penyimpanan IndexedDB tidak tersedia untuk menyimpan berkas media.')
+        }
+        return
     }
+    return new Promise((resolve, reject) => {
+        try {
+            const tx = db.transaction(IDB_STORE, 'readwrite')
+            tx.oncomplete = () => resolve()
+            tx.onerror = () => {
+                const err = tx.error ?? new Error('Transaksi IndexedDB gagal')
+                logSharePnlError(
+                    SharePnlErrorCode.STORAGE_PERSIST_FAILED,
+                    `Gagal menyimpan wallpaper "${item.name}" ke IndexedDB`,
+                    err,
+                    'WARN'
+                )
+                reject(err)
+            }
+            tx.onabort = () => {
+                const err = tx.error ?? new Error('Transaksi IndexedDB dibatalkan')
+                logSharePnlError(
+                    SharePnlErrorCode.STORAGE_PERSIST_FAILED,
+                    `Penyimpanan wallpaper "${item.name}" ke IndexedDB dibatalkan`,
+                    err,
+                    'WARN'
+                )
+                reject(err)
+            }
+            tx.objectStore(IDB_STORE).put(buildIndexedDbPayload(item))
+        } catch (e) {
+            logSharePnlError(
+                SharePnlErrorCode.STORAGE_PERSIST_FAILED,
+                `Gagal menyimpan wallpaper "${item.name}" ke IndexedDB`,
+                e,
+                'WARN'
+            )
+            reject(e)
+        }
+    })
 }
 
 async function removeFromIndexedDb(id: string): Promise<void> {
     const db = await openMediaDb()
     if (!db) return
-    try {
-        const tx = db.transaction(IDB_STORE, 'readwrite')
-        tx.objectStore(IDB_STORE).delete(id)
-    } catch (e) {
-        logSharePnlError(
-            SharePnlErrorCode.STORAGE_PERSIST_FAILED,
-            `Gagal menghapus wallpaper ID "${id}" dari IndexedDB`,
-            e,
-            'WARN'
-        )
-    }
+    return new Promise((resolve) => {
+        try {
+            const tx = db.transaction(IDB_STORE, 'readwrite')
+            tx.oncomplete = () => resolve()
+            tx.onerror = () => resolve()
+            tx.onabort = () => resolve()
+            tx.objectStore(IDB_STORE).delete(id)
+        } catch (e) {
+            logSharePnlError(
+                SharePnlErrorCode.STORAGE_PERSIST_FAILED,
+                `Gagal menghapus wallpaper ID "${id}" dari IndexedDB`,
+                e,
+                'WARN'
+            )
+            resolve()
+        }
+    })
 }
 
 /** Membaca seluruh gambar/video background kustom dari cache memori & localStorage */
 export function loadCustomBgList(): CustomBgItem[] {
-    if (memoryBgList !== null && memoryBgList.length > 0) {
+    if (memoryBgList !== null) {
         return memoryBgList
     }
 
     try {
-        const raw = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST)
-        let list: CustomBgItem[] = raw ? JSON.parse(raw) : []
-        if (!Array.isArray(list)) list = []
+        const rawList = readRawLocalBgList()
+        const hydratedList: CustomBgItem[] = []
 
-        // Normalisasi setiap item agar selalu memiliki mediaType dan URL yang dapat diputar
-        list = list.map((item) => {
+        for (const item of rawList) {
             const mType = resolveMediaType(item.mediaType, item.dataUrl, 'image')
-            const playableUrl = (mType === 'video' && item.dataUrl && item.dataUrl.startsWith('data:'))
-                ? (getPlayableMediaUrl(item.dataUrl, 'video') || item.dataUrl)
-                : item.dataUrl
-            return {
+            const rawUrl = item.dataUrl || ''
+            // Tanpa IndexedDB, hanya item dengan data: (lama) atau http(s):/ yang bisa dipakai sinkron
+            if (!rawUrl || isEphemeralBlobUrl(rawUrl)) {
+                continue
+            }
+            const playableUrl =
+                mType === 'video' && rawUrl.startsWith('data:')
+                    ? getPlayableMediaUrl(rawUrl, 'video') || rawUrl
+                    : rawUrl
+            hydratedList.push({
                 ...item,
                 mediaType: mType,
                 dataUrl: playableUrl,
                 blobUrl: mType === 'video' ? playableUrl : undefined
-            }
-        })
+            })
+        }
 
-        // Migrasi data lama jika CUSTOM_BG ada tapi list belum terisi
+        // Migrasi data lama jika CUSTOM_BG ada dan belum ada IndexedDB
         const legacyBg = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
-        if (legacyBg && list.length === 0) {
+        if (legacyBg && hydratedList.length === 0 && !isEphemeralBlobUrl(legacyBg)) {
             const legacyType = resolveMediaType(undefined, legacyBg, 'image')
-            const playableLegacy = (legacyType === 'video' && legacyBg.startsWith('data:'))
-                ? (getPlayableMediaUrl(legacyBg, 'video') || legacyBg)
-                : legacyBg
+            const playableLegacy =
+                legacyType === 'video' && legacyBg.startsWith('data:')
+                    ? getPlayableMediaUrl(legacyBg, 'video') || legacyBg
+                    : legacyBg
             const legacyItem: CustomBgItem = {
                 id: `bg_${Date.now()}_default`,
                 name: 'Wallpaper Kustom 1',
@@ -792,80 +1047,121 @@ export function loadCustomBgList(): CustomBgItem[] {
                 mediaType: legacyType,
                 blobUrl: legacyType === 'video' ? playableLegacy : undefined
             }
-            list = [legacyItem]
-            try {
-                localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST, JSON.stringify(list))
-                localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID, legacyItem.id)
-            } catch {
-                // Abaikan jika quota storage terlampaui
-            }
+            hydratedList.push(legacyItem)
         }
 
-        memoryBgList = list
-        return list
+        // Jika masih belum pakai IndexedDB (mis. baru startup sebelum initIndexedDbCustomBg selesai)
+        // dan localStorage hanya berisi metadata tanpa URL, biarkan memoryBgList tetap null agar
+        // initIndexedDbCustomBg dapat mengisi penuh saat siap.
+        if (hydratedList.length > 0 || rawList.length === 0) {
+            memoryBgList = hydratedList
+        }
+        return hydratedList
     } catch {
         return []
     }
 }
 
-/** Menyimpan seluruh daftar background kustom ke memory, localStorage, dan IndexedDB */
+/** Menyimpan metadata daftar background kustom ke memory & localStorage (tanpa payload biner besar) */
 export function saveCustomBgList(list: CustomBgItem[]): void {
     memoryBgList = list
     try {
-        // Jangan sertakan dataUrl raksasa base64 di localStorage untuk video
-        const cleanForLocal = list.map((item) => {
-            if (item.mediaType === 'video' && item.dataUrl && item.dataUrl.length > 500) {
-                return { ...item, dataUrl: '' }
+        const hasIdb = typeof window !== 'undefined' && !!window.indexedDB
+        const cleanForLocal: CustomBgStoredMeta[] = list.map((item) => {
+            // Simpan dataUrl ke localStorage hanya bila berupa URL eksternal atau fallback non-IDB
+            let persistedDataUrl = ''
+            if (isPersistentDirectUrl(item.dataUrl)) {
+                persistedDataUrl = item.dataUrl
+            } else if (!hasIdb && item.dataUrl && item.dataUrl.startsWith('data:') && item.mediaType !== 'video') {
+                persistedDataUrl = item.dataUrl
             }
-            return item
+            return {
+                id: item.id,
+                name: item.name,
+                dataUrl: persistedDataUrl,
+                createdAt: item.createdAt,
+                mediaType: item.mediaType,
+                posX: item.posX,
+                posY: item.posY,
+                bgPosX: item.bgPosX,
+                bgPosY: item.bgPosY
+            }
         })
         localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST, JSON.stringify(cleanForLocal))
     } catch (err) {
         logSharePnlError(
             SharePnlErrorCode.STORAGE_PERSIST_FAILED,
-            'Ukuran daftar wallpaper melebihi kuota 5MB localStorage, persistensi diamankan via IndexedDB',
+            'Gagal menyimpan metadata daftar wallpaper ke localStorage',
             err,
             'WARN'
         )
     }
 }
 
-/** Menambahkan background kustom baru ke galeri */
-export function addCustomBgItem(item: {
+/** Menambahkan background kustom baru ke galeri (IndexedDB Blob + metadata localStorage) */
+export async function addCustomBgItem(item: {
     name: string
-    dataUrl: string
+    dataUrl?: string
     mediaType?: 'image' | 'video'
     blob?: Blob
     blobUrl?: string
-}): CustomBgItem {
+}): Promise<CustomBgItem> {
+    // Pastikan cache memori sudah sinkron dengan IndexedDB sebelum menambah item baru
+    if (memoryBgList === null && typeof window !== 'undefined' && window.indexedDB) {
+        await initIndexedDbCustomBg()
+    }
     const list = loadCustomBgList()
     const now = Date.now()
+    const id = `bg_${now}_${Math.random().toString(36).slice(2, 7)}`
     const resolvedType = resolveMediaType(item.mediaType, item.dataUrl, 'image')
-    const effectiveBlobUrl = item.blobUrl || (item.blob ? URL.createObjectURL(item.blob) : (resolvedType === 'video' ? getPlayableMediaUrl(item.dataUrl, 'video') || item.dataUrl : item.dataUrl))
+
+    let resolvedBlob = item.blob
+    if (!(resolvedBlob instanceof Blob) && item.dataUrl && item.dataUrl.startsWith('data:')) {
+        try {
+            resolvedBlob = dataUrlToBlob(item.dataUrl)
+        } catch {
+            resolvedBlob = undefined
+        }
+    }
+
+    let effectiveUrl = item.dataUrl || ''
+    if (resolvedBlob instanceof Blob) {
+        effectiveUrl = getOrCreateObjectUrl(id, resolvedBlob)
+    } else if (item.blobUrl) {
+        effectiveUrl = item.blobUrl
+    } else if (resolvedType === 'video' && effectiveUrl.startsWith('data:')) {
+        effectiveUrl = getPlayableMediaUrl(effectiveUrl, 'video') || effectiveUrl
+    }
 
     const newItem: CustomBgItem = {
-        id: `bg_${now}_${Math.random().toString(36).slice(2, 7)}`,
+        id,
         name: item.name.trim() || `${resolvedType === 'video' ? 'Video' : 'Wallpaper'} ${list.length + 1}`,
-        dataUrl: effectiveBlobUrl,
-        blob: item.blob,
-        blobUrl: resolvedType === 'video' ? effectiveBlobUrl : undefined,
+        dataUrl: effectiveUrl,
+        blob: resolvedBlob,
+        blobUrl: resolvedType === 'video' ? effectiveUrl : undefined,
         createdAt: now,
         mediaType: resolvedType
     }
+
+    // Tunggu penulisan ke IndexedDB terlebih dahulu agar tidak hilang saat modal ditutup/app restart
+    try {
+        await persistToIndexedDb(newItem)
+    } catch (err) {
+        revokeRegisteredObjectUrl(id)
+        throw err
+    }
+
     const updated = [newItem, ...list]
     memoryBgList = updated
     saveCustomBgList(updated)
-    void persistToIndexedDb(newItem)
 
     try {
-        // Jangan simpan string base64 raksasa ke localStorage jika video
-        if (resolvedType !== 'video') {
-            localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, newItem.dataUrl)
-        }
         localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID, newItem.id)
         localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_MEDIA_TYPE, newItem.mediaType || 'image')
+        // Bersihkan legacy CUSTOM_BG agar tidak memakan kuota localStorage dengan base64/blob mati
+        localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
     } catch {
-        // Abaikan jika quota storage terlampaui oleh file video
+        // Abaikan bila storage terbatas
     }
     return newItem
 }
@@ -881,11 +1177,13 @@ export function updateCustomBgItemName(id: string, name: string): boolean {
     return true
 }
 
-/** Menghapus background kustom dari galeri */
+/** Menghapus background kustom dari galeri, IndexedDB, dan melepas ObjectURL */
 export function deleteCustomBgItem(id: string): boolean {
     const list = loadCustomBgList()
     const filtered = list.filter((b) => b.id !== id)
     if (filtered.length === list.length) return false
+
+    revokeRegisteredObjectUrl(id)
     memoryBgList = filtered
     saveCustomBgList(filtered)
     void removeFromIndexedDb(id)
@@ -895,9 +1193,6 @@ export function deleteCustomBgItem(id: string): boolean {
     if (currentActiveBgId === id) {
         if (filtered.length > 0) {
             localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID, filtered[0]!.id)
-            try {
-                localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, filtered[0]!.dataUrl)
-            } catch {}
         } else {
             localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID)
             localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
@@ -939,8 +1234,13 @@ export function loadShareSettings(): ShareSettings {
         bingxReferralCode: localStorage.getItem(SHARE_STORAGE_KEYS.BINGX_REF) || '',
         showReferral: localStorage.getItem(SHARE_STORAGE_KEYS.SHOW_REF) !== 'false', // default true
         bgPresetId: localStorage.getItem(SHARE_STORAGE_KEYS.BG_PRESET_ID) || 'dark-navy',
-        customBgId: activeBgItem ? activeBgItem.id : null,
-        customBgUrl: activeBgItem ? activeBgItem.dataUrl : (localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG) || null),
+        customBgId: activeBgItem ? activeBgItem.id : (storedBgId || null),
+        customBgUrl: activeBgItem
+            ? activeBgItem.dataUrl
+            : (() => {
+                  const legacy = localStorage.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
+                  return legacy && !isEphemeralBlobUrl(legacy) ? legacy : null
+              })(),
         isCustomBg: localStorage.getItem(SHARE_STORAGE_KEYS.IS_CUSTOM_BG) === 'true',
         bgDimming: (() => {
             const raw = localStorage.getItem(SHARE_STORAGE_KEYS.BG_DIMMING)
@@ -1028,13 +1328,17 @@ export function saveShareSettings(settings: Partial<ShareSettings>): void {
         else localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID)
     }
     if (settings.customBgUrl !== undefined) {
-        if (settings.customBgUrl) {
+        const hasIdb = typeof window !== 'undefined' && !!window.indexedDB
+        if (settings.customBgUrl && isPersistentDirectUrl(settings.customBgUrl)) {
+            localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, settings.customBgUrl)
+        } else if (settings.customBgUrl && !hasIdb && !isEphemeralBlobUrl(settings.customBgUrl)) {
             try {
                 localStorage.setItem(SHARE_STORAGE_KEYS.CUSTOM_BG, settings.customBgUrl)
             } catch {
-                // Abaikan jika video kustom berukuran besar melebihi batas 5MB localStorage
+                // Abaikan jika melebihi batas 5MB localStorage
             }
         } else {
+            // Jangan simpan URL blob: sementara atau base64 besar saat IndexedDB aktif
             localStorage.removeItem(SHARE_STORAGE_KEYS.CUSTOM_BG)
         }
     }
@@ -1079,5 +1383,134 @@ export function saveShareSettings(settings: Partial<ShareSettings>): void {
     }
     if (settings.videoDurationMode !== undefined) {
         localStorage.setItem(SHARE_STORAGE_KEYS.VIDEO_DURATION_MODE, settings.videoDurationMode)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Resolver Prioritas State Background Modal & Template
+// ---------------------------------------------------------------------------
+
+export interface ResolvedShareBgState {
+    selectedBgIdx: number
+    selectedCustomBgId: string | null
+    isCustomBgActive: boolean
+    bgPosX: number
+    bgPosY: number
+    bgDimming: number
+    bgDimmingDirection: BgDimmingDirection
+}
+
+/**
+ * Menentukan state background awal saat modal Share dibuka.
+ * Pilihan wallpaper terakhir pengguna di `savedSettings` diprioritaskan di atas
+ * template bawaan agar foto background yang baru dipilih tidak hilang saat modal dibuka ulang.
+ */
+export function resolveInitialShareBgState(params: {
+    savedSettings: ShareSettings
+    activeTemplate: ShareCardTemplate | null | undefined
+    allBgTemplates: BgTemplate[]
+    customBgList: CustomBgItem[]
+}): ResolvedShareBgState {
+    const { savedSettings, activeTemplate, allBgTemplates, customBgList } = params
+
+    const preferredPresetId = savedSettings.bgPresetId || activeTemplate?.bgPresetId || 'dark-navy'
+    const selectedBgIdx = Math.max(
+        0,
+        allBgTemplates.findIndex((t) => t.id === preferredPresetId)
+    )
+
+    const matchedSavedBg = savedSettings.customBgId
+        ? customBgList.find((b) => b.id === savedSettings.customBgId)
+        : undefined
+    const matchedTemplateBg = activeTemplate?.customBgId
+        ? customBgList.find((b) => b.id === activeTemplate.customBgId)
+        : undefined
+
+    const selectedCustomBgId =
+        matchedSavedBg?.id ??
+        savedSettings.customBgId ??
+        matchedTemplateBg?.id ??
+        activeTemplate?.customBgId ??
+        (customBgList[0]?.id ?? null)
+
+    const activeItem = customBgList.find((b) => b.id === selectedCustomBgId) || customBgList[0] || null
+
+    const hasCustomCandidate = Boolean(selectedCustomBgId || customBgList.length > 0 || savedSettings.customBgUrl)
+    const isCustomBgActive = savedSettings.isCustomBg && hasCustomCandidate
+
+    return {
+        selectedBgIdx,
+        selectedCustomBgId,
+        isCustomBgActive,
+        bgPosX: savedSettings.bgPosX ?? activeItem?.bgPosX ?? activeItem?.posX ?? activeTemplate?.bgPosX ?? 50,
+        bgPosY: savedSettings.bgPosY ?? activeItem?.bgPosY ?? activeItem?.posY ?? activeTemplate?.bgPosY ?? 50,
+        bgDimming: savedSettings.bgDimming ?? activeTemplate?.bgDimming ?? 75,
+        bgDimmingDirection: savedSettings.bgDimmingDirection ?? activeTemplate?.bgDimmingDirection ?? 'uniform'
+    }
+}
+
+/**
+ * Menghitung state background baru saat pengguna mengklik tombol template.
+ * - Template bawaan mempertahankan wallpaper kustom yang sedang aktif (kecuali mode Transparan Sticker).
+ * - Template kustom menerapkan wallpaper yang tertaut ke template tersebut.
+ */
+export function resolveTemplateBackgroundSelection(params: {
+    template: ShareCardTemplate
+    allBgTemplates: BgTemplate[]
+    customBgList: CustomBgItem[]
+    currentState: {
+        isCustomBgActive: boolean
+        selectedCustomBgId: string | null
+        bgPosX: number
+        bgPosY: number
+        bgDimming: number
+        bgDimmingDirection: BgDimmingDirection
+    }
+}): ResolvedShareBgState {
+    const { template, allBgTemplates, customBgList, currentState } = params
+    const bgIdx = Math.max(0, allBgTemplates.findIndex((b) => b.id === template.bgPresetId))
+    const targetPreset = allBgTemplates[bgIdx]
+
+    if (template.isBuiltin) {
+        if (targetPreset?.isTransparent) {
+            return {
+                selectedBgIdx: bgIdx,
+                selectedCustomBgId: currentState.selectedCustomBgId,
+                isCustomBgActive: false,
+                bgPosX: currentState.bgPosX,
+                bgPosY: currentState.bgPosY,
+                bgDimming: template.bgDimming ?? currentState.bgDimming,
+                bgDimmingDirection: template.bgDimmingDirection ?? currentState.bgDimmingDirection
+            }
+        }
+        return {
+            selectedBgIdx: bgIdx,
+            selectedCustomBgId: currentState.selectedCustomBgId,
+            isCustomBgActive: currentState.isCustomBgActive,
+            bgPosX: currentState.bgPosX,
+            bgPosY: currentState.bgPosY,
+            bgDimming: currentState.isCustomBgActive
+                ? currentState.bgDimming
+                : (template.bgDimming ?? currentState.bgDimming),
+            bgDimmingDirection: currentState.isCustomBgActive
+                ? currentState.bgDimmingDirection
+                : (template.bgDimmingDirection ?? currentState.bgDimmingDirection)
+        }
+    }
+
+    const nextCustomBgId = template.isCustomBg
+        ? (template.customBgId && customBgList.some((b) => b.id === template.customBgId)
+            ? template.customBgId
+            : (customBgList[0]?.id ?? null))
+        : currentState.selectedCustomBgId
+
+    return {
+        selectedBgIdx: bgIdx,
+        selectedCustomBgId: nextCustomBgId,
+        isCustomBgActive: Boolean(template.isCustomBg && nextCustomBgId),
+        bgPosX: template.bgPosX ?? 50,
+        bgPosY: template.bgPosY ?? 50,
+        bgDimming: template.bgDimming ?? currentState.bgDimming,
+        bgDimmingDirection: template.bgDimmingDirection ?? currentState.bgDimmingDirection
     }
 }

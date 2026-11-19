@@ -68,13 +68,17 @@ npm run build
 
 ### 6. Publikasi GitHub Release & Pemantauan CI/CD
 1. Buat catatan rilis pada berkas sementara (misal `/tmp/release_notes_vX.Y.Z.md`) berisi sorotan fitur, daftar installer multi-platform, dan hasil tes.
-2. Buat release di GitHub:
+2. Buat release di GitHub (bersifat idempoten terhadap job `publish` di workflow CI yang akan mengunggah biner bertanda tangan `minisign`, `latest.json`, dan `SHA256SUMS.txt` dengan `--clobber`):
    ```bash
    gh release create vX.Y.Z --title "nitirekso vX.Y.Z - <Judul Rilis>" --notes-file /tmp/release_notes_vX.Y.Z.md
    ```
-3. Periksa status pemicuan workflow multi-platform di GitHub Actions:
+3. Periksa status workflow multi-platform (`build` Windows/macOS/Linux dan job `publish`) di GitHub Actions:
    ```bash
    gh run list --limit 2
+   ```
+4. Setelah workflow selesai sukses, verifikasi bahwa seluruh aset termasuk `latest.json` dan `SHA256SUMS.txt` telah terbit di GitHub Release:
+   ```bash
+   gh release view vX.Y.Z --json assets --jq '.assets[].name'
    ```
 
 ### 7. Integrasi Second Brain (Obsidian Dev Vault)

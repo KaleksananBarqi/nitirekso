@@ -3,6 +3,27 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.10.0] - 2026-11-19
+
+### 🚀 Fitur Baru
+- **Hybrid In-App Auto-Updater & Single-Instance (`updater.rs`, `updateService.ts`, `About.tsx`, `AppShell.tsx`)**:
+  - Integrasi `tauri-plugin-updater` (`minisign` + `latest.json`), `tauri-plugin-process`, dan `tauri-plugin-single-instance` untuk pembaruan langsung di dalam aplikasi pada Windows (NSIS/MSI), macOS (Universal), dan Linux (`.AppImage`).
+  - Dukungan updater native Rust khusus Linux `.rpm` (Fedora/RHEL/openSUSE) dan `.deb` (Debian/Ubuntu) lengkap dengan deteksi lingkungan instalasi (`FLATPAK_ID`, `APPIMAGE`, `rpm -qf`, `dpkg -S`), verifikasi checksum `SHA256SUMS.txt`, elevasi `pkexec` (`dnf`/`zypper`/`rpm`/`apt-get`) beserta fallback `xdg-open`, serta relaunch helper yang melepas lock single-instance secara bersih.
+  - Resilience terhadap GitHub API rate-limit melalui conditional request `ETag` (`304 Not Modified`) serta fallback otomatis ke endpoint statis `latest.json` dan `SHA256SUMS.txt` saat terkena HTTP `403`/`429`.
+  - UX pembaruan non-blocking: pengecekan latar belakang saat startup dan berkala tiap 6 jam, badge & pill status di sidebar, progres unduhan real-time (MB & `%`), konfirmasi eksplisit **Pasang & Restart Sekarang**, opsi **Abaikan Versi Ini** persisten di SQLite, banner panduan Flatpak (`store-managed`), dan drawer unduhan manual lintas format.
+
+### 🐛 Perbaikan Bug
+- **Persistensi Foto & Video Background Share PnL (`shareSettings.ts`, `SharePnlModal.tsx`, `ShareAnalyticsModal.tsx`, `ShareBrandingSettings.tsx`)**:
+  - Menyimpan biner gambar dan video sebagai `Blob` di IndexedDB (`nitirekso_media_v1`) dengan rehidrasi `ObjectURL` untuk kedua tipe media, sementara `localStorage` hanya menyimpan metadata ringan (mencegah hilangnya foto saat modal dibuka ulang/restart dan menghindari batas kuota 5MB).
+  - Menambahkan migrasi otomatis base64 lama, pembersihan entri `blob:` yatim mati, sinkronisasi posisi pan ke IndexedDB, dan `URL.revokeObjectURL()` saat media dihapus.
+  - Memprioritaskan pilihan wallpaper terakhir pengguna saat modal Share dibuka ulang dan mempertahankan wallpaper aktif ketika berpindah preset bawaan non-transparan.
+
+### 🛠️ Peningkatan & Optimasi Sistem
+- **Pipeline Rilis Terpusat Multi-Platform**: Pemisahan job `build` (Windows, macOS Universal, Linux) dan job `publish` idempoten pada `.github/workflows/release.yml` menggunakan `scripts/generate-release-manifests.mjs` untuk menerbitkan aset bertanda tangan `minisign`, `latest.json`, dan `SHA256SUMS.txt`.
+- **Aksesibilitas & Kontras WCAG AA**: Penyesuaian token warna `--profit` Light Mode, badge, kartu status `About.tsx`, ring `focus-visible`, dukungan `Escape` di modal, dan aturan `cursor: pointer`/`not-allowed` global.
+
+---
+
 ## [1.9.0] - 2026-10-28
 
 ### 🚀 Perubahan Arsitektur Utama (Deep Modules)

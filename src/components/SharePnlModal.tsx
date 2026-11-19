@@ -21,6 +21,8 @@ import {
     getAllBgTemplates,
     resolveMediaType,
     getPlayableMediaUrl,
+    resolveInitialShareBgState,
+    resolveTemplateBackgroundSelection,
     type BgTemplate,
     type ExchangeName,
     type ShareCardTemplate,
@@ -93,18 +95,21 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const activeTemplate = templates.find((t) => t.id === activeTemplateId) || templates[0]!
     const [allBgTemplates] = useState<BgTemplate[]>(() => getAllBgTemplates())
 
-    const initialBgIdx = Math.max(
-        0,
-        allBgTemplates.findIndex((t) => t.id === (activeTemplate?.bgPresetId || savedSettings.bgPresetId))
+    const [initialResolvedBg] = useState(() =>
+        resolveInitialShareBgState({
+            savedSettings,
+            activeTemplate,
+            allBgTemplates,
+            customBgList
+        })
     )
 
     // --- State: Background & Galeri ---
-    const initialCustomBgId = activeTemplate?.customBgId || savedSettings.customBgId || (customBgList[0]?.id ?? null)
-    const [selectedBgIdx, setSelectedBgIdx] = useState<number>(initialBgIdx)
-    const [selectedCustomBgId, setSelectedCustomBgId] = useState<string | null>(initialCustomBgId)
-    const [isCustomBgActive, setIsCustomBgActive] = useState<boolean>(
-        activeTemplate ? (activeTemplate.isCustomBg && (!!activeTemplate.customBgId || customBgList.length > 0)) : (savedSettings.isCustomBg && customBgList.length > 0)
-    )
+    const [selectedBgIdx, setSelectedBgIdx] = useState<number>(initialResolvedBg.selectedBgIdx)
+    const [selectedCustomBgId, setSelectedCustomBgId] = useState<string | null>(initialResolvedBg.selectedCustomBgId)
+    const [isCustomBgActive, setIsCustomBgActive] = useState<boolean>(initialResolvedBg.isCustomBgActive)
+    const [uploadBgError, setUploadBgError] = useState<string | null>(null)
+    const hasUserModifiedBgRef = useRef<boolean>(false)
 
     // Wallpaper kustom yang sedang aktif
     const activeCustomBgItem = customBgList.find((b) => b.id === selectedCustomBgId) || customBgList[0] || null
@@ -113,8 +118,8 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const activeCustomBgPlayableUrl = getPlayableMediaUrl(activeCustomBgUrl, activeCustomBgMediaType)
 
     // State: Dimming & Arah Gradien Reaktif Langsung di Modal
-    const [bgDimming, setBgDimming] = useState<number>(() => (savedSettings.bgDimming !== undefined ? savedSettings.bgDimming : 75))
-    const [bgDimmingDirection, setBgDimmingDirection] = useState<BgDimmingDirection>(() => savedSettings.bgDimmingDirection || 'uniform')
+    const [bgDimming, setBgDimming] = useState<number>(initialResolvedBg.bgDimming)
+    const [bgDimmingDirection, setBgDimmingDirection] = useState<BgDimmingDirection>(initialResolvedBg.bgDimmingDirection)
 
     // State: Opsi Rasio Video 9:16 TikTok & Frame Backdrop
     const [exportAspect, setExportAspect] = useState<ExportAspect>(() => savedSettings.exportAspect || 'original')
@@ -135,10 +140,8 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const [confirmDeleteBgId, setConfirmDeleteBgId] = useState<string | null>(null)
 
     // --- State: Posisi Wallpaper Kustom (Pan X & Pan Y dalam %) ---
-    const initialBgPosX = activeTemplate?.bgPosX ?? activeCustomBgItem?.bgPosX ?? savedSettings.bgPosX ?? 50
-    const initialBgPosY = activeTemplate?.bgPosY ?? activeCustomBgItem?.bgPosY ?? savedSettings.bgPosY ?? 50
-    const [bgPosX, setBgPosX] = useState<number>(initialBgPosX)
-    const [bgPosY, setBgPosY] = useState<number>(initialBgPosY)
+    const [bgPosX, setBgPosX] = useState<number>(initialResolvedBg.bgPosX)
+    const [bgPosY, setBgPosY] = useState<number>(initialResolvedBg.bgPosY)
     const [isSavedDefaultBgPos, setIsSavedDefaultBgPos] = useState<boolean>(false)
     const [confirmDeleteTplId, setConfirmDeleteTplId] = useState<string | null>(null)
 
@@ -186,6 +189,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         if (isDraggingBg) {
             setIsDraggingBg(false)
             dragStartRef.current = null
+            saveShareSettings({ bgPosX, bgPosY })
             try {
                 ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
             } catch {
@@ -197,6 +201,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     const handleSaveDefaultBgPos = () => {
         if (!selectedCustomBgId) return
         updateCustomBgItem(selectedCustomBgId, { bgPosX, bgPosY })
+        saveShareSettings({ bgPosX, bgPosY })
         setCustomBgList(loadCustomBgList())
         setIsSavedDefaultBgPos(true)
         setTimeout(() => setIsSavedDefaultBgPos(false), 2000)
@@ -258,9 +263,10 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
 
     const uploadBgModalInputRef = useRef<HTMLInputElement>(null)
 
-    // Upload background gambar atau video baru langsung dari modal
-    const handleUploadNewBg = (file: File | undefined) => {
+    // Upload background gambar atau video baru langsung dari modal (tersimpan sebagai Blob di IndexedDB)
+    const handleUploadNewBg = async (file: File | undefined) => {
         if (!file) return
+        setUploadBgError(null)
         const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|svg|gif|avif)$/i.test(file.name)
         const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov|ogg)$/i.test(file.name)
         if (!isImage && !isVideo) {
@@ -270,7 +276,12 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 { name: file.name, type: file.type, size: file.size },
                 'WARN'
             )
-            alert(getSharePnlUserMessage(SharePnlErrorCode.UPLOAD_UNSUPPORTED_FORMAT, 'Harap pilih berkas gambar (PNG, JPG, SVG, WebP) atau video (MP4, WebM).'))
+            setUploadBgError(
+                getSharePnlUserMessage(
+                    SharePnlErrorCode.UPLOAD_UNSUPPORTED_FORMAT,
+                    'Harap pilih berkas gambar (PNG, JPG, SVG, WebP) atau video (MP4, WebM).'
+                )
+            )
             return
         }
         if (file.size > 25 * 1024 * 1024) {
@@ -281,22 +292,24 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                 { name: file.name, size: file.size },
                 'WARN'
             )
-            alert(getSharePnlUserMessage(SharePnlErrorCode.UPLOAD_FILE_SIZE_EXCEEDED, `Ukuran berkas (${sizeMb}MB) melebihi batas maksimal 25MB.`))
+            setUploadBgError(
+                getSharePnlUserMessage(
+                    SharePnlErrorCode.UPLOAD_FILE_SIZE_EXCEEDED,
+                    `Ukuran berkas (${sizeMb}MB) melebihi batas maksimal 25MB.`
+                )
+            )
             return
         }
 
         const detectedType: 'image' | 'video' = isVideo ? 'video' : 'image'
         const cleanName = file.name.replace(/\.[^/.]+$/, '').slice(0, 18) || `${detectedType === 'video' ? 'Video' : 'Wallpaper'} ${customBgList.length + 1}`
 
-        if (isVideo) {
-            // Untuk video: Buat Blob URL langsung agar instan diputar oleh player Chromium
-            const blobUrl = URL.createObjectURL(file)
-            const created = addCustomBgItem({
+        try {
+            hasUserModifiedBgRef.current = true
+            const created = await addCustomBgItem({
                 name: cleanName,
-                dataUrl: blobUrl,
-                mediaType: 'video',
-                blob: file,
-                blobUrl
+                mediaType: detectedType,
+                blob: file
             })
             const updatedList = loadCustomBgList()
             setCustomBgList(updatedList)
@@ -307,44 +320,25 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             saveShareSettings({
                 customBgId: created.id,
                 isCustomBg: true,
-                customBgMediaType: 'video',
-                customBgUrl: blobUrl,
+                customBgMediaType: detectedType,
+                customBgUrl: created.dataUrl,
                 bgPosX: 50,
                 bgPosY: 50
             })
-            return
-        }
-
-        const reader = new FileReader()
-        reader.onload = (e) => {
-            const dataUrl = e.target?.result as string
-            if (dataUrl) {
-                const created = addCustomBgItem({ name: cleanName, dataUrl, mediaType: 'image', blob: file })
-                const updatedList = loadCustomBgList()
-                setCustomBgList(updatedList)
-                setSelectedCustomBgId(created.id)
-                setIsCustomBgActive(true)
-                setBgPosX(50)
-                setBgPosY(50)
-                saveShareSettings({
-                    customBgId: created.id,
-                    isCustomBg: true,
-                    customBgMediaType: 'image',
-                    customBgUrl: created.dataUrl,
-                    bgPosX: 50,
-                    bgPosY: 50
-                })
-            }
-        }
-        reader.onerror = (err) => {
+        } catch (err) {
             logSharePnlError(
-                SharePnlErrorCode.UPLOAD_READ_FAILED,
-                `Gagal membaca berkas gambar "${file.name}" via FileReader`,
+                SharePnlErrorCode.STORAGE_PERSIST_FAILED,
+                `Gagal menyimpan berkas "${file.name}" ke penyimpanan lokal`,
                 err,
                 'ERROR'
             )
+            setUploadBgError(
+                getSharePnlUserMessage(
+                    SharePnlErrorCode.STORAGE_PERSIST_FAILED,
+                    'Gagal menyimpan media ke penyimpanan lokal. Pastikan ruang disk mencukupi.'
+                )
+            )
         }
-        reader.readAsDataURL(file)
     }
 
     // Hapus wallpaper kustom langsung dari modal
@@ -380,26 +374,49 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
         }
     }
 
-    // Switch ke template terpilih
+    // Switch ke template terpilih (mempertahankan wallpaper aktif untuk preset bawaan non-transparan)
     const handleSelectTemplate = (tpl: ShareCardTemplate) => {
+        hasUserModifiedBgRef.current = true
         setActiveTplId(tpl.id)
         setActiveTemplateId(tpl.id)
-        const bgIdx = allBgTemplates.findIndex((b) => b.id === tpl.bgPresetId)
-        if (bgIdx >= 0) setSelectedBgIdx(bgIdx)
-        if (tpl.isCustomBg) {
-            setIsCustomBgActive(true)
-            if (tpl.customBgId) {
-                setSelectedCustomBgId(tpl.customBgId)
-            } else if (customBgList.length > 0) {
-                setSelectedCustomBgId(customBgList[0]!.id)
+
+        const nextBg = resolveTemplateBackgroundSelection({
+            template: tpl,
+            allBgTemplates,
+            customBgList,
+            currentState: {
+                isCustomBgActive,
+                selectedCustomBgId,
+                bgPosX,
+                bgPosY,
+                bgDimming,
+                bgDimmingDirection
             }
-        } else {
-            setIsCustomBgActive(false)
-        }
-        setBgPosX(tpl.bgPosX ?? 50)
-        setBgPosY(tpl.bgPosY ?? 50)
-        if (tpl.bgDimming !== undefined) setBgDimming(tpl.bgDimming)
-        if (tpl.bgDimmingDirection !== undefined) setBgDimmingDirection(tpl.bgDimmingDirection)
+        })
+
+        setSelectedBgIdx(nextBg.selectedBgIdx)
+        setSelectedCustomBgId(nextBg.selectedCustomBgId)
+        setIsCustomBgActive(nextBg.isCustomBgActive)
+        setBgPosX(nextBg.bgPosX)
+        setBgPosY(nextBg.bgPosY)
+        setBgDimming(nextBg.bgDimming)
+        setBgDimmingDirection(nextBg.bgDimmingDirection)
+
+        const nextPresetId = allBgTemplates[nextBg.selectedBgIdx]?.id || tpl.bgPresetId
+        const nextBgItem = customBgList.find((b) => b.id === nextBg.selectedCustomBgId) || null
+        saveShareSettings({
+            bgPresetId: nextPresetId,
+            isCustomBg: nextBg.isCustomBgActive,
+            customBgId: nextBg.selectedCustomBgId,
+            customBgMediaType: nextBgItem
+                ? resolveMediaType(nextBgItem.mediaType, nextBgItem.dataUrl, 'image')
+                : undefined,
+            bgPosX: nextBg.bgPosX,
+            bgPosY: nextBg.bgPosY,
+            bgDimming: nextBg.bgDimming,
+            bgDimmingDirection: nextBg.bgDimmingDirection
+        })
+
         if (tpl.exportAspect !== undefined) setExportAspect(tpl.exportAspect)
         if (tpl.frameBgSource !== undefined) setFrameBgSource(tpl.frameBgSource)
         if (tpl.frameBlur !== undefined) setFrameBlur(tpl.frameBlur)
@@ -569,14 +586,35 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
     } | null>(null)
     const [isSavingExportedAgain, setIsSavingExportedAgain] = useState(false)
 
-    // Muat galeri wallpaper kustom dari IndexedDB (untuk video/gambar berukuran besar)
+    // Muat & rehidrasi galeri wallpaper kustom dari IndexedDB saat modal dibuka
     useEffect(() => {
+        let active = true
         void initIndexedDbCustomBg().then((items) => {
-            if (items && items.length > 0) {
-                setCustomBgList(items)
+            if (!active) return
+            setCustomBgList(items)
+            if (hasUserModifiedBgRef.current) return
+
+            if (items.length === 0) {
+                if (savedSettings.isCustomBg) {
+                    setIsCustomBgActive(false)
+                    setSelectedCustomBgId(null)
+                }
+                return
+            }
+
+            const matched = savedSettings.customBgId
+                ? items.find((b) => b.id === savedSettings.customBgId)
+                : null
+            const targetItem = matched || items[0]!
+            setSelectedCustomBgId(targetItem.id)
+            if (savedSettings.isCustomBg) {
+                setIsCustomBgActive(true)
             }
         })
-    }, [])
+        return () => {
+            active = false
+        }
+    }, [savedSettings.customBgId, savedSettings.isCustomBg])
 
     // Logo & Referral aktif berdasarkan exchange terpilih (otomatis fallback ke logo resmi bawaan)
     const customExchangeLogo = (savedSettings[`${selectedExchange}LogoUrl` as keyof typeof savedSettings] as string | null) || null
@@ -1096,6 +1134,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                         onClick={() => {
                                             setBgPosX(50)
                                             setBgPosY(50)
+                                            saveShareSettings({ bgPosX: 50, bgPosY: 50 })
                                         }}
                                         className="text-[10px] text-primary hover:underline"
                                     >
@@ -1125,7 +1164,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                         <div
                                             className="absolute inset-0 w-full h-full bg-cover bg-center scale-125"
                                             style={{
-                                                backgroundImage: `url(${activeCustomBgUrl})`,
+                                                backgroundImage: `url("${activeCustomBgUrl}")`,
                                                 filter: `blur(${frameBlur}px)`
                                             }}
                                         />
@@ -1361,6 +1400,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                         type="button"
                                         onClick={() => {
                                             setSelectedBgIdx(i)
+                                            saveShareSettings({ bgPresetId: t.id })
                                         }}
                                         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
                                             isColorSelected
@@ -1417,6 +1457,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                         <button
                             type="button"
                             onClick={() => {
+                                hasUserModifiedBgRef.current = true
                                 setIsCustomBgActive(false)
                                 saveShareSettings({ isCustomBg: false })
                             }}
@@ -1441,6 +1482,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                     <button
                                         type="button"
                                         onClick={() => {
+                                            hasUserModifiedBgRef.current = true
                                             setSelectedCustomBgId(bgItem.id)
                                             setIsCustomBgActive(true)
                                             const px = bgItem.bgPosX ?? bgItem.posX ?? 50
@@ -1525,7 +1567,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                             type="file"
                             accept="image/*,video/mp4,video/webm"
                             onChange={(e) => {
-                                handleUploadNewBg(e.target.files?.[0])
+                                void handleUploadNewBg(e.target.files?.[0])
                                 if (uploadBgModalInputRef.current) uploadBgModalInputRef.current.value = ''
                             }}
                             className="hidden"
@@ -1541,6 +1583,12 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                             <span>+ Upload Media</span>
                         </button>
                     </div>
+
+                    {uploadBgError && (
+                        <p className="text-xs text-destructive" role="alert">
+                            {uploadBgError}
+                        </p>
+                    )}
 
                     {/* Panel Kontrol Reposisi Wallpaper Kustom */}
                     {isCustomBgActive && (
@@ -1560,6 +1608,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                         onClick={() => {
                                             setBgPosX(50)
                                             setBgPosY(50)
+                                            saveShareSettings({ bgPosX: 50, bgPosY: 50 })
                                         }}
                                         className="text-[10px] px-2 py-0.5 rounded border border-border bg-background hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                                         title="Kembalikan posisi ke tengah (50% 50%)"
@@ -1593,7 +1642,11 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                         min="0"
                                         max="100"
                                         value={bgPosX}
-                                        onChange={(e) => setBgPosX(Number(e.target.value))}
+                                        onChange={(e) => {
+                                            const nextX = Number(e.target.value)
+                                            setBgPosX(nextX)
+                                            saveShareSettings({ bgPosX: nextX })
+                                        }}
                                         className="flex-1 accent-primary h-1.5 cursor-ew-resize"
                                     />
                                 </div>
@@ -1606,7 +1659,11 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                         min="0"
                                         max="100"
                                         value={bgPosY}
-                                        onChange={(e) => setBgPosY(Number(e.target.value))}
+                                        onChange={(e) => {
+                                            const nextY = Number(e.target.value)
+                                            setBgPosY(nextY)
+                                            saveShareSettings({ bgPosY: nextY })
+                                        }}
                                         className="flex-1 accent-primary h-1.5 cursor-ns-resize"
                                     />
                                 </div>
