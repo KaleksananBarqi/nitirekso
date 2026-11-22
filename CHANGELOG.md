@@ -3,6 +3,35 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.11.0] - 2026-11-23
+
+### 🚀 Perubahan Arsitektur Utama
+- **Sync Vault (Syncthing-Ready & Siap Android) (`src-tauri/src/vault/`, `commands/vault.rs`)**:
+  - Arsitektur sinkronisasi *peer-to-peer* berbasis folder melalui *append-only* NDJSON op-log per perangkat (`ops/<device_id>/`) dengan rotasi otomatis 1 MB, filter berkas temporer Syncthing (`.syncthing.*.tmp`), dan aset media *content-addressed* (`media/<sha256>.<ext>`).
+  - Abstraksi trait `VaultStorage` dengan implementasi desktop `FsVaultStorage`, dirancang agar portabel menuju implementasi Android SAF di rilis berikutnya tanpa mengubah mesin op-log maupun resolusi konflik.
+- **Local Cache SQLite & Migrasi 008 (`008_sync_vault_foundation.sql`, `repositories/`)**:
+  - Konsolidasi seluruh entitas kerja aplikasi ke satu *Local Cache* SQLite yang dapat dibangun ulang, dilengkapi UUIDv5 deterministik (Exchange Sync) / UUIDv4, *Hybrid Logical Clock* (HLC) *field-level Last-Write-Wins*, dan mekanisme *soft-delete tombstone* (`deleted_at`).
+  - Penyatuan penyimpanan media (screenshot trade dan latar belakang Share Card) ke tabel `media_assets` di bawah subdirektori media terpadu.
+- **Vault Passphrase untuk Kredensial Lintas Perangkat (`vault/crypto.rs`, `credentials/mod.rs`)**:
+  - Enkripsi kredensial bursa dan penyedia AI menggunakan derivasi kunci Argon2id + AEAD AES-256-GCM sebelum ditulis ke Sync Vault, dengan pemisahan kunci perangkat lokal (`.device-secret`) di luar database SQLite agar aman dan tetap 100% luring.
+
+### 🚀 Fitur Baru
+- **Panel Device Sync (`DeviceSyncPanel.tsx`, `Settings.tsx`, `App.tsx`)**:
+  - Antarmuka baru di tab Pengaturan untuk memilih folder Sync Vault, mengatur **Vault Passphrase**, melihat jumlah perangkat terhubung serta status sinkronisasi, dan memicu **Sync Now**.
+  - Sinkronisasi dua arah otomatis saat aplikasi dijalankan (*startup*), saat jendela kembali fokus (`window.focus`), serta *file watcher* desktop berbasis `notify` yang diisolasi agar aman terhadap target mobile.
+- **Konsolidasi Tema Kustom & Pengaturan Share Card (`customThemes.ts`, `shareSettings.ts`, `storageMigration.ts`)**:
+  - Perpindahan penuh konfigurasi tema kustom, latar Share Card, dan *caption template* dari `localStorage`/`IndexedDB` ke tabel `settings` dan `media_assets` SQLite melalui IPC.
+  - Migrasi otomatis satu kali saat startup dengan pelestarian ekstensi MIME (JPEG, WebP, GIF, SVG, WebM, MP4) dan preferensi teks pengguna.
+
+### 🛠️ Peningkatan & Optimasi Sistem
+- **Kebijakan 100% Luring — Local Snapshot (`backup/mod.rs`, `BackupPanel.tsx`)**:
+  - Penghapusan menyeluruh integrasi penyimpanan cloud eksternal dan penggantian alur pencadangan sepenuhnya menjadi **Local Snapshot** ke folder lokal pilihan pengguna, sambil melindungi `local_device_meta` dan `device_sync_cursors` ketika memulihkan database.
+- **Dokumentasi Domain & Keputusan Arsitektur (`GLOSSARY.md`, `docs/adr/`)**:
+  - Penambahan daftar istilah domain resmi (**Sync Vault**, **Local Cache**, **Device Sync**, **Exchange Sync**, **Local Snapshot**, **Vault Passphrase**) serta tiga ADR arsitektur (`0001`–`0003`).
+- **Dukungan Multi-Platform**: Kompatibilitas penuh dan terverifikasi untuk target build desktop Windows, macOS, dan Linux.
+
+---
+
 ## [1.10.0] - 2026-11-19
 
 ### 🚀 Fitur Baru
