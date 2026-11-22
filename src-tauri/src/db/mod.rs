@@ -75,9 +75,9 @@ mod tests {
         let mut conn = Connection::open_in_memory().expect("Buka DB in-memory");
         conn.pragma_update(None, "foreign_keys", "ON").unwrap();
 
-        // 1. Uji Migrasi 001..=007
+        // 1. Uji Migrasi 001..=008
         let applied = migrations::run_migrations(&mut conn).expect("Migrasi berhasil");
-        assert_eq!(applied.len(), 7, "Semua 7 migrasi harus terpasang");
+        assert_eq!(applied.len(), 8, "Semua 8 migrasi harus terpasang");
 
         // Jalankan ulang migrasi (idempotent)
         let rerun = migrations::run_migrations(&mut conn).expect("Migrasi ulang berhasil");

@@ -1,32 +1,22 @@
-use crate::credentials::{delete_gdrive_token, load_gdrive_token, save_gdrive_token};
-use crate::db::repositories::settings::{get_setting, set_setting};
+use crate::db::repositories::settings::get_setting;
 use crate::db::repositories::trades::list_trades;
 use crate::models::{TradeDetail, TradeFilter};
-use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-use base64::Engine;
-use rand::Rng;
-use rusqlite::Connection;
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
+use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const DEFAULT_REDIRECT_PORT: u16 = 17380;
-const OAUTH_SCOPE: &str = "https://www.googleapis.com/auth/drive.file";
+const META_SNAPSHOT_FOLDER: &str = "local_snapshot_folder";
+const META_LAST_SNAPSHOT_AT: &str = "last_local_snapshot_at";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupStatusPayload {
     pub connected: bool,
-    pub email: Option<String>,
-    pub folder: Option<String>,
     pub last_backup_at: Option<i64>,
-    pub next_backup_at: Option<i64>,
-    pub sync_mode: Option<String>,
     pub local_folder: Option<String>,
-    pub client_id_configured: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,23 +39,13 @@ pub struct BackupRestoreResult {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TokenData {
-    pub access_token: String,
-    pub refresh_token: Option<String>,
-    pub expiry_date: Option<i64>,
-    pub email: Option<String>,
-}
-
 #[derive(Debug, Clone)]
 pub struct BackupContext {
     pub snapshot_json: String,
-    pub local_folder: Option<String>,
-    pub token_data: Option<TokenData>,
+    pub local_folder: String,
     pub db_path: PathBuf,
     pub date_str: String,
     pub now_ms: i64,
-    pub client_id: String,
 }
 
 fn now_millis() -> i64 {
@@ -92,394 +72,115 @@ pub fn format_date_ymd(timestamp_ms: i64) -> String {
     format!("{:04}-{:02}-{:02}", final_y, m, d)
 }
 
-/// Dapatkan Google Drive OAuth Client ID yang aktif dari settings DB atau env
-pub fn get_effective_client_id(conn: &Connection) -> String {
-    let configured = get_setting(conn, "gdriveClientId")
-        .unwrap_or(None)
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_default();
-
-    if !configured.is_empty() {
-        return configured;
-    }
-
-    std::env::var("GDRIVE_CLIENT_ID").unwrap_or_default()
+fn read_local_meta(conn: &Connection, key: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT value FROM local_device_meta WHERE key = ?1",
+        params![key],
+        |r| r.get::<_, String>(0),
+    )
+    .ok()
+    .filter(|s| !s.trim().is_empty())
 }
 
-/// Ambil status konfigurasi dan koneksi backup
-pub fn get_backup_status(conn: &Connection) -> BackupStatusPayload {
-    let token = load_gdrive_token().and_then(|json_str| serde_json::from_str::<TokenData>(&json_str).ok());
-    let email = get_setting(conn, "gdriveEmail")
+pub fn set_local_meta(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO local_device_meta (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )
+    .map_err(|e| format!("Gagal menyimpan metadata perangkat lokal: {}", e))?;
+    Ok(())
+}
+
+fn delete_local_meta(conn: &Connection, key: &str) {
+    let _ = conn.execute("DELETE FROM local_device_meta WHERE key = ?1", params![key]);
+}
+
+/// Membaca path folder Local Snapshot aktif dengan fallback kompatibilitas dari setting versi lama.
+fn resolve_snapshot_folder(conn: &Connection) -> Option<String> {
+    if let Some(folder) = read_local_meta(conn, META_SNAPSHOT_FOLDER) {
+        return Some(folder);
+    }
+
+    // Fallback satu kali dari pengaturan versi lama jika belum dipindahkan ke local_device_meta
+    get_setting(conn, "gdriveLocalFolder")
         .unwrap_or(None)
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_default();
-    let folder = get_setting(conn, "gdriveFolderId")
-        .unwrap_or(None)
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_default();
-    let last_backup_at = get_setting(conn, "gdriveLastBackupAt")
+        .and_then(|v| v.as_str().map(|s| s.trim().to_string()))
+        .filter(|s| !s.is_empty())
+}
+
+fn resolve_last_snapshot_at(conn: &Connection) -> Option<i64> {
+    if let Some(raw) = read_local_meta(conn, META_LAST_SNAPSHOT_AT) {
+        if let Ok(ts) = raw.parse::<i64>() {
+            if ts > 0 {
+                return Some(ts);
+            }
+        }
+    }
+
+    get_setting(conn, "gdriveLastBackupAt")
         .unwrap_or(None)
         .and_then(|v| v.as_i64())
-        .unwrap_or(0);
-    let local_folder = get_setting(conn, "gdriveLocalFolder")
-        .unwrap_or(None)
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_default();
+        .filter(|ts| *ts > 0)
+}
 
-    let sync_mode = get_setting(conn, "gdriveSyncMode")
-        .unwrap_or(None)
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| {
-            if !local_folder.is_empty() {
-                "folder".to_string()
-            } else {
-                "oauth".to_string()
-            }
-        });
-
-    let client_id = get_effective_client_id(conn);
+/// Ambil status konfigurasi Local Snapshot
+pub fn get_backup_status(conn: &Connection) -> BackupStatusPayload {
+    let local_folder = resolve_snapshot_folder(conn);
+    let last_backup_at = resolve_last_snapshot_at(conn);
 
     BackupStatusPayload {
-        connected: token.is_some() || !local_folder.is_empty(),
-        email: if email.is_empty() { None } else { Some(email) },
-        folder: if folder.is_empty() { None } else { Some(folder) },
-        last_backup_at: if last_backup_at > 0 { Some(last_backup_at) } else { None },
-        next_backup_at: None,
-        sync_mode: Some(sync_mode),
-        local_folder: if local_folder.is_empty() { None } else { Some(local_folder) },
-        client_id_configured: Some(!client_id.is_empty()),
+        connected: local_folder.is_some(),
+        last_backup_at,
+        local_folder,
     }
 }
 
-/// Putus koneksi Google Drive dan bersihkan folder lokal
+/// Simpan folder Local Snapshot pilihan pengguna
+pub fn save_local_snapshot_folder(conn: &Connection, folder_path: &str) -> Result<(), String> {
+    let trimmed = folder_path.trim();
+    if trimmed.is_empty() {
+        return Err("Path folder Local Snapshot tidak boleh kosong.".to_string());
+    }
+    set_local_meta(conn, META_SNAPSHOT_FOLDER, trimmed)?;
+    log::info!("[snapshot] Folder Local Snapshot disetel ke: {}", trimmed);
+    Ok(())
+}
+
+/// Simpan timestamp eksekusi Local Snapshot terakhir
+pub fn record_last_snapshot_at(conn: &Connection, ts_ms: i64) -> Result<(), String> {
+    set_local_meta(conn, META_LAST_SNAPSHOT_AT, &ts_ms.to_string())
+}
+
+/// Putus tautan folder Local Snapshot
 pub fn disconnect_backup(conn: &Connection) -> Result<(), String> {
-    let _ = delete_gdrive_token();
-    let _ = set_setting(conn, "gdriveEmail", &json!(""));
-    let _ = set_setting(conn, "gdriveFolderId", &json!(""));
-    let _ = set_setting(conn, "gdriveLocalFolder", &json!(""));
-    let _ = set_setting(conn, "gdriveLastBackupAt", &json!(0));
-    log::info!("[backup] Koneksi backup berhasil diputus dan dibersihkan");
-    Ok(())
-}
-
-/// Buka dialog native pemilih folder untuk sync lokal
-pub fn select_local_folder(conn: &Connection) -> Result<Option<String>, String> {
-    let dialog = rfd::FileDialog::new().set_title("Pilih Folder Sinkronisasi Google Drive / Cadangan");
-    if let Some(folder_path) = dialog.pick_folder() {
-        let chosen = folder_path.to_string_lossy().to_string();
-        set_setting(conn, "gdriveLocalFolder", &json!(&chosen))
-            .map_err(|e| format!("Gagal menyimpan folder backup: {}", e))?;
-        set_setting(conn, "gdriveSyncMode", &json!("folder"))
-            .map_err(|e| format!("Gagal menyimpan mode sync: {}", e))?;
-        log::info!("[backup] Folder lokal backup disetel ke: {}", chosen);
-        Ok(Some(chosen))
-    } else {
-        Ok(None)
-    }
-}
-
-/// Generate pasangan PKCE (verifier & S256 challenge)
-fn generate_pkce() -> (String, String) {
-    let mut verifier_bytes = [0u8; 32];
-    rand::thread_rng().fill(&mut verifier_bytes);
-    let verifier = URL_SAFE_NO_PAD.encode(verifier_bytes);
-
-    let mut hasher = Sha256::new();
-    hasher.update(verifier.as_bytes());
-    let hash = hasher.finalize();
-    let challenge = URL_SAFE_NO_PAD.encode(hash);
-
-    (verifier, challenge)
-}
-
-/// Extract email dari payload id_token (JWT bagian kedua)
-fn extract_email_from_id_token(id_token: &str) -> Option<String> {
-    let parts: Vec<&str> = id_token.split('.').collect();
-    if parts.len() < 2 {
-        return None;
-    }
-
-    let payload_bytes = URL_SAFE_NO_PAD
-        .decode(parts[1])
-        .or_else(|_| STANDARD.decode(parts[1]))
-        .ok()?;
-
-    let val: Value = serde_json::from_slice(&payload_bytes).ok()?;
-    val.get("email").and_then(|v| v.as_str()).map(|s| s.to_string())
-}
-
-/// Mulai alur OAuth Google Drive dengan PKCE dan loopback server lokal di port 17380
-pub async fn start_backup_oauth(
-    db_path: PathBuf,
-    client_id_override: Option<String>,
-) -> Result<(), String> {
-    let client_id = {
-        let conn = rusqlite::Connection::open(&db_path)
-            .map_err(|e| format!("Gagal membuka koneksi DB: {}", e))?;
-
-        if let Some(ref cid) = client_id_override {
-            let trimmed = cid.trim();
-            if !trimmed.is_empty() {
-                let _ = set_setting(&conn, "gdriveClientId", &json!(trimmed));
-            }
-        }
-
-        let id = client_id_override
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| get_effective_client_id(&conn));
-
-        if id.trim().is_empty() {
-            return Err(
-                "Google Drive Client ID belum dikonfigurasi. Masukkan Client ID di menu Pengaturan atau gunakan Folder Sync lokal."
-                    .to_string(),
-            );
-        }
-        id
-    };
-
-    let port = DEFAULT_REDIRECT_PORT;
-    let (verifier, challenge) = generate_pkce();
-
-    let mut state_bytes = [0u8; 16];
-    rand::thread_rng().fill(&mut state_bytes);
-    let state = hex::encode(state_bytes);
-
-    let redirect_uri = format!("http://localhost:{}", port);
-    let encoded_redirect_uri = urlencoding::encode(&redirect_uri);
-    let encoded_scope = urlencoding::encode(OAUTH_SCOPE);
-
-    let auth_url = format!(
-        "https://accounts.google.com/o/oauth2/v2/auth?client_id={}&redirect_uri={}&response_type=code&scope={}&access_type=offline&prompt=consent&code_challenge={}&code_challenge_method=S256&state={}",
-        urlencoding::encode(&client_id),
-        encoded_redirect_uri,
-        encoded_scope,
-        challenge,
-        state
+    delete_local_meta(conn, META_SNAPSHOT_FOLDER);
+    delete_local_meta(conn, META_LAST_SNAPSHOT_AT);
+    // Bersihkan sisa kunci legacy bila masih ada di settings
+    let _ = conn.execute(
+        "DELETE FROM settings WHERE key IN ('gdriveClientId', 'gdriveEmail', 'gdriveFolderId', 'gdriveLocalFolder', 'gdriveLastBackupAt', 'gdriveSyncMode')",
+        [],
     );
-
-    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port))
-        .await
-        .map_err(|e| format!("Gagal membuka listener port {}: {}", port, e))?;
-
-    log::info!("[backup] Loopback OAuth listener mendengarkan di port {}", port);
-
-    // Buka browser pengguna
-    opener::open(&auth_url).map_err(|e| format!("Gagal membuka browser sistem: {}", e))?;
-
-    // Tunggu koneksi dari browser dengan timeout 5 menit
-    let client_id_clone = client_id.clone();
-    let state_clone = state.clone();
-
-    tokio::spawn(async move {
-        let wait_result = tokio::time::timeout(Duration::from_secs(300), listener.accept()).await;
-
-        match wait_result {
-            Ok(Ok((mut stream, _))) => {
-                use tokio::io::{AsyncReadExt, AsyncWriteExt};
-                let mut buffer = [0u8; 2048];
-                let n = stream.read(&mut buffer).await.unwrap_or(0);
-                let request_str = String::from_utf8_lossy(&buffer[..n]);
-
-                // Parse request path & query params
-                let first_line = request_str.lines().next().unwrap_or("");
-                let path_and_query = first_line.split_whitespace().nth(1).unwrap_or("/");
-
-                let query_str = path_and_query.split_once('?').map(|(_, q)| q).unwrap_or("");
-                let mut query_pairs = std::collections::HashMap::new();
-                for pair in query_str.split('&') {
-                    if let Some((k, v)) = pair.split_once('=') {
-                        let decoded_k = urlencoding::decode(k).unwrap_or_default().to_string();
-                        let decoded_v = urlencoding::decode(v).unwrap_or_default().to_string();
-                        query_pairs.insert(decoded_k, decoded_v);
-                    }
-                }
-
-                if let Some(err) = query_pairs.get("error") {
-                    let html = "<html><body style=\"font-family:sans-serif;text-align:center;padding:50px;\"><h2>Autentikasi Dibatalkan</h2><p>Anda bisa menutup tab ini.</p></body></html>";
-                    let resp = format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", html.len(), html);
-                    let _ = stream.write_all(resp.as_bytes()).await;
-                    log::warn!("[backup] OAuth Google Drive dibatalkan oleh pengguna: {}", err);
-                    return;
-                }
-
-                let returned_state = query_pairs.get("state").cloned().unwrap_or_default();
-                if returned_state != state_clone {
-                    let html = "<html><body style=\"font-family:sans-serif;text-align:center;padding:50px;\"><h2>State Mismatch</h2><p>Kemungkinan ada percobaan CSRF.</p></body></html>";
-                    let resp = format!("HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", html.len(), html);
-                    let _ = stream.write_all(resp.as_bytes()).await;
-                    return;
-                }
-
-                if let Some(code) = query_pairs.get("code") {
-                    match exchange_code_for_token(code, &verifier, port, &client_id_clone).await {
-                        Ok(token_data) => {
-                            if let Ok(serialized) = serde_json::to_string(&token_data) {
-                                let _ = save_gdrive_token(&serialized);
-                            }
-                            let email = token_data.email.clone().unwrap_or_default();
-
-                            if let Ok(conn) = rusqlite::Connection::open(&db_path) {
-                                let _ = set_setting(&conn, "gdriveEmail", &json!(email));
-                                let _ = set_setting(&conn, "gdriveFolderId", &json!(""));
-                                let _ = set_setting(&conn, "gdriveLastBackupAt", &json!(0));
-                                let _ = set_setting(&conn, "gdriveSyncMode", &json!("oauth"));
-                            }
-
-                            let html = "<html><body style=\"font-family:sans-serif;text-align:center;padding:50px;\"><h2 style=\"color:#22c55e;\">Google Drive Terhubung!</h2><p>Akun berhasil terautentikasi. Anda dapat menutup tab ini dan kembali ke aplikasi Nitirekso.</p></body></html>";
-                            let resp = format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", html.len(), html);
-                            let _ = stream.write_all(resp.as_bytes()).await;
-                            log::info!("[backup] Google Drive berhasil terhubung via OAuth ({})", email);
-                        }
-                        Err(err) => {
-                            let html = format!("<html><body style=\"font-family:sans-serif;text-align:center;padding:50px;\"><h2 style=\"color:#ef4444;\">Gagal Menghubungkan</h2><p>{}</p></body></html>", err);
-                            let resp = format!("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", html.len(), html);
-                            let _ = stream.write_all(resp.as_bytes()).await;
-                            log::error!("[backup] Gagal pertukaran token Google: {}", err);
-                        }
-                    }
-                } else {
-                    let html = "<html><body><h2>Permintaan tidak dikenali.</h2></body></html>";
-                    let resp = format!("HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", html.len(), html);
-                    let _ = stream.write_all(resp.as_bytes()).await;
-                }
-            }
-            Ok(Err(e)) => {
-                log::error!("[backup] Listener accept error: {}", e);
-            }
-            Err(_) => {
-                log::warn!("[backup] Timeout 5 menit tercapai untuk OAuth redirect listener");
-            }
-        }
-    });
-
+    log::info!("[snapshot] Tautan folder Local Snapshot berhasil dilepas");
     Ok(())
 }
 
-/// Tukar authorization code dengan access token & refresh token
-async fn exchange_code_for_token(
-    code: &str,
-    verifier: &str,
-    port: u16,
-    client_id: &str,
-) -> Result<TokenData, String> {
-    let redirect_uri = format!("http://localhost:{}", port);
-    let params = [
-        ("client_id", client_id),
-        ("code", code),
-        ("code_verifier", verifier),
-        ("grant_type", "authorization_code"),
-        ("redirect_uri", &redirect_uri),
-    ];
-
-    let client = reqwest::Client::new();
-    let resp = client
-        .post("https://oauth2.googleapis.com/token")
-        .form(&params)
-        .send()
-        .await
-        .map_err(|e| format!("Koneksi token exchange gagal: {}", e))?;
-
-    if !resp.status().is_success() {
-        let err_body = resp.text().await.unwrap_or_default();
-        return Err(format!("Token exchange ditolak: {}", err_body));
-    }
-
-    let token_resp: Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("Gagal parse token response: {}", e))?;
-
-    let access_token = token_resp
-        .get("access_token")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "access_token tidak ditemukan di response".to_string())?
-        .to_string();
-
-    let refresh_token = token_resp
-        .get("refresh_token")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-
-    let expires_in = token_resp.get("expires_in").and_then(|v| v.as_i64()).unwrap_or(3600);
-    let expiry_date = Some(now_millis() + expires_in * 1000);
-
-    let email = token_resp
-        .get("id_token")
-        .and_then(|v| v.as_str())
-        .and_then(extract_email_from_id_token);
-
-    Ok(TokenData {
-        access_token,
-        refresh_token,
-        expiry_date,
-        email,
-    })
-}
-
-/// Refresh token jika kadaluarsa
-async fn get_valid_access_token(client_id: &str, mut token_data: TokenData) -> Result<(String, TokenData), String> {
-    let now = now_millis();
-    let is_expired = token_data.expiry_date.map(|exp| now > exp - 60_000).unwrap_or(false);
-
-    if !is_expired {
-        return Ok((token_data.access_token.clone(), token_data));
-    }
-
-    if let Some(ref r_token) = token_data.refresh_token {
-        let params = [
-            ("client_id", client_id),
-            ("refresh_token", r_token.as_str()),
-            ("grant_type", "refresh_token"),
-        ];
-
-        let client = reqwest::Client::new();
-        let resp = client
-            .post("https://oauth2.googleapis.com/token")
-            .form(&params)
-            .send()
-            .await
-            .map_err(|e| format!("Gagal refresh token: {}", e))?;
-
-        if resp.status().is_success() {
-            let res_json: Value = resp.json().await.map_err(|e| e.to_string())?;
-            if let Some(new_at) = res_json.get("access_token").and_then(|v| v.as_str()) {
-                token_data.access_token = new_at.to_string();
-                let expires_in = res_json.get("expires_in").and_then(|v| v.as_i64()).unwrap_or(3600);
-                token_data.expiry_date = Some(now_millis() + expires_in * 1000);
-
-                if let Ok(serialized) = serde_json::to_string(&token_data) {
-                    let _ = save_gdrive_token(&serialized);
-                }
-
-                log::info!("[backup] Access token Google Drive berhasil diperbarui (refresh)");
-                return Ok((token_data.access_token.clone(), token_data));
-            }
-        }
-    }
-
-    Ok((token_data.access_token.clone(), token_data))
-}
-
-/// Direktori screenshots yang terkelola
+/// Direktori screenshots versi lama yang masih dapat dipulihkan / disalin
 pub fn get_screenshot_dir(db_path: &Path) -> PathBuf {
     db_path.parent().unwrap_or(Path::new(".")).join("screenshots")
 }
 
-/// Siapkan data snapshot backup dari DB secara synchronous (sebelum async upload)
-pub fn prepare_backup_context(conn: &Connection, db_path: &Path) -> Result<BackupContext, String> {
-    let token_raw = load_gdrive_token();
-    let token_data = token_raw.and_then(|s| serde_json::from_str::<TokenData>(&s).ok());
-    let local_folder = get_setting(conn, "gdriveLocalFolder")
-        .unwrap_or(None)
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .filter(|s| !s.trim().is_empty());
+/// Direktori media content-addressed (`media/<sha256>.<ext>`)
+pub fn get_media_dir(db_path: &Path) -> PathBuf {
+    db_path.parent().unwrap_or(Path::new(".")).join("media")
+}
 
-    if token_data.is_none() && local_folder.is_none() {
-        return Err(
-            "Google Drive belum terhubung. Silakan pilih Folder Google Drive di komputer atau hubungkan akun Google Drive via OAuth."
-                .to_string(),
-        );
-    }
+/// Siapkan konteks Local Snapshot dari Local Cache (SQLite) secara synchronous
+pub fn prepare_backup_context(conn: &Connection, db_path: &Path) -> Result<BackupContext, String> {
+    let local_folder = resolve_snapshot_folder(conn).ok_or_else(|| {
+        "Folder Local Snapshot belum dipilih. Silakan pilih folder tujuan di perangkat Anda terlebih dahulu."
+            .to_string()
+    })?;
 
     let trades: Vec<TradeDetail> = list_trades(conn, &TradeFilter::default())
         .map_err(|e| format!("Gagal membaca daftar trade: {}", e))?;
@@ -489,273 +190,113 @@ pub fn prepare_backup_context(conn: &Connection, db_path: &Path) -> Result<Backu
 
     let snapshot_value = json!({
         "exportedAt": now_ms,
-        "version": 1,
+        "version": 2,
         "trades": trades
     });
 
     let snapshot_json = serde_json::to_string_pretty(&snapshot_value)
         .map_err(|e| format!("Gagal membuat snapshot JSON: {}", e))?;
 
-    let client_id = get_effective_client_id(conn);
-
     Ok(BackupContext {
         snapshot_json,
         local_folder,
-        token_data,
         db_path: db_path.to_path_buf(),
         date_str,
         now_ms,
-        client_id,
     })
 }
 
-/// Eksekusi backup asinkron (Local Folder Sync dan/atau Google Drive Cloud)
-pub async fn execute_backup(ctx: BackupContext) -> Result<(BackupRunResult, Option<String>), String> {
+fn copy_dir_files(src: &Path, dst: &Path) -> (usize, usize) {
+    let mut files = 0;
+    let mut bytes = 0;
+    if !src.exists() || !src.is_dir() {
+        return (0, 0);
+    }
+    let _ = fs::create_dir_all(dst);
+    if let Ok(entries) = fs::read_dir(src) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let target = dst.join(entry.file_name());
+                if let Ok(copied) = fs::copy(&path, target) {
+                    files += 1;
+                    bytes += copied as usize;
+                }
+            }
+        }
+    }
+    (files, bytes)
+}
+
+/// Eksekusi Local Snapshot asinkron ke folder lokal pilihan pengguna
+pub async fn execute_backup(ctx: BackupContext) -> Result<BackupRunResult, String> {
     let start = Instant::now();
     let snapshot_bytes = ctx.snapshot_json.as_bytes();
+    let dest_dir = Path::new(&ctx.local_folder);
 
-    let mut files_uploaded = 0;
-    let mut bytes_uploaded = 0;
-    let mut cloud_folder_id: Option<String> = None;
+    if !dest_dir.exists() {
+        fs::create_dir_all(dest_dir)
+            .map_err(|e| format!("Gagal membuat direktori {}: {}", ctx.local_folder, e))?;
+    }
 
-    // Mode A: Sinkronisasi ke folder lokal (Google Drive desktop / folder backup)
-    if let Some(ref local_folder) = ctx.local_folder {
-        let dest_dir = Path::new(local_folder);
-        if !dest_dir.exists() {
-            fs::create_dir_all(dest_dir).map_err(|e| format!("Gagal membuat direktori {}: {}", local_folder, e))?;
-        }
+    let mut files_written = 0;
+    let mut bytes_written = 0;
 
-        let json_filename = format!("trading-journal-{}.json", ctx.date_str);
-        let json_dest = dest_dir.join(&json_filename);
-        fs::write(&json_dest, snapshot_bytes)
-            .map_err(|e| format!("Gagal menulis snapshot {}: {}", json_dest.display(), e))?;
+    // 1. Tulis snapshot JSON portabel
+    let json_filename = format!("trading-journal-{}.json", ctx.date_str);
+    let json_dest = dest_dir.join(&json_filename);
+    fs::write(&json_dest, snapshot_bytes)
+        .map_err(|e| format!("Gagal menulis snapshot {}: {}", json_dest.display(), e))?;
+    files_written += 1;
+    bytes_written += snapshot_bytes.len();
 
-        files_uploaded += 1;
-        bytes_uploaded += snapshot_bytes.len();
+    // 2. Salin database Local Cache fisik menggunakan SQLite Online Backup API agar bebas isu WAL
+    if ctx.db_path.exists() {
+        let db_dest = dest_dir.join("trading-journal-database.db");
+        let backup_ok = (|| -> Result<usize, rusqlite::Error> {
+            let src_conn = Connection::open(&ctx.db_path)?;
+            let mut dst_conn = Connection::open(&db_dest)?;
+            let backup = rusqlite::backup::Backup::new(&src_conn, &mut dst_conn)?;
+            backup.run_to_completion(20, Duration::from_millis(10), None)?;
+            Ok(fs::metadata(&db_dest).map(|m| m.len() as usize).unwrap_or(0))
+        })();
 
-        // Salin database fisik jika ada
-        if ctx.db_path.exists() {
-            let db_dest = dest_dir.join("trading-journal-database.db");
-            if let Ok(bytes) = fs::copy(&ctx.db_path, &db_dest) {
-                files_uploaded += 1;
-                bytes_uploaded += bytes as usize;
+        match backup_ok {
+            Ok(sz) => {
+                files_written += 1;
+                bytes_written += sz;
             }
-        }
-
-        // Salin screenshots jika ada
-        let screenshot_dir = get_screenshot_dir(&ctx.db_path);
-        if screenshot_dir.exists() {
-            let dest_screenshots = dest_dir.join("screenshots");
-            let _ = fs::create_dir_all(&dest_screenshots);
-            if let Ok(entries) = fs::read_dir(&screenshot_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_file() {
-                        let file_name = entry.file_name();
-                        let target = dest_screenshots.join(file_name);
-                        if let Ok(bytes) = fs::copy(&path, target) {
-                            files_uploaded += 1;
-                            bytes_uploaded += bytes as usize;
-                        }
-                    }
+            Err(err) => {
+                log::warn!("[snapshot] Online backup SQLite fallback ke salinan langsung: {}", err);
+                if let Ok(copied) = fs::copy(&ctx.db_path, &db_dest) {
+                    files_written += 1;
+                    bytes_written += copied as usize;
                 }
             }
         }
     }
 
-    // Mode B: Upload ke Cloud Google Drive via direct OAuth
-    if let Some(t_data) = ctx.token_data {
-        match get_valid_access_token(&ctx.client_id, t_data).await {
-            Ok((access_token, _)) => {
-                let upload_res = upload_to_gdrive(&access_token, &ctx.date_str, snapshot_bytes, &ctx.db_path).await;
-                match upload_res {
-                    Ok((cloud_files, cloud_bytes, folder_id)) => {
-                        files_uploaded += cloud_files;
-                        bytes_uploaded += cloud_bytes;
-                        cloud_folder_id = Some(folder_id);
-                    }
-                    Err(err) => {
-                        if ctx.local_folder.is_none() {
-                            return Err(err);
-                        } else {
-                            log::warn!("[backup] Upload cloud gagal tetapi lokal berhasil: {}", err);
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                if ctx.local_folder.is_none() {
-                    return Err(e);
-                } else {
-                    log::warn!("[backup] Validasi token gagal namun folder lokal aktif: {}", e);
-                }
-            }
-        }
-    }
+    // 3. Salin screenshots legacy & aset media content-addressed
+    let (s_files, s_bytes) =
+        copy_dir_files(&get_screenshot_dir(&ctx.db_path), &dest_dir.join("screenshots"));
+    files_written += s_files;
+    bytes_written += s_bytes;
 
-    let run_result = BackupRunResult {
+    let (m_files, m_bytes) =
+        copy_dir_files(&get_media_dir(&ctx.db_path), &dest_dir.join("media"));
+    files_written += m_files;
+    bytes_written += m_bytes;
+
+    Ok(BackupRunResult {
         status: "ok".to_string(),
-        files_uploaded,
-        bytes_uploaded,
+        files_uploaded: files_written,
+        bytes_uploaded: bytes_written,
         duration_ms: start.elapsed().as_millis() as i64,
         error: None,
-    };
-
-    Ok((run_result, cloud_folder_id))
-}
-
-/// Cari atau buat folder "Trading Journal Backup" di Google Drive
-async fn ensure_backup_folder(client: &reqwest::Client, access_token: &str) -> Result<String, String> {
-    let search_url = "https://www.googleapis.com/drive/v3/files?q=name%3D'Trading%20Journal%20Backup'%20and%20mimeType%3D'application%2Fvnd.google-apps.folder'%20and%20trashed%3Dfalse&fields=files(id%2Cname)";
-
-    let resp = client
-        .get(search_url)
-        .header("Authorization", format!("Bearer {}", access_token))
-        .send()
-        .await
-        .map_err(|e| format!("Gagal mencari folder backup: {}", e))?;
-
-    if resp.status().is_success() {
-        let data: Value = resp.json().await.map_err(|e| e.to_string())?;
-        if let Some(files) = data.get("files").and_then(|v| v.as_array()) {
-            if let Some(first) = files.first() {
-                if let Some(id) = first.get("id").and_then(|v| v.as_str()) {
-                    return Ok(id.to_string());
-                }
-            }
-        }
-    }
-
-    // Buat folder baru
-    let create_resp = client
-        .post("https://www.googleapis.com/drive/v3/files")
-        .header("Authorization", format!("Bearer {}", access_token))
-        .json(&json!({
-            "name": "Trading Journal Backup",
-            "mimeType": "application/vnd.google-apps.folder"
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Gagal request buat folder: {}", e))?;
-
-    if !create_resp.status().is_success() {
-        return Err("Gagal membuat folder backup di Google Drive".to_string());
-    }
-
-    let created: Value = create_resp.json().await.map_err(|e| e.to_string())?;
-    let folder_id = created
-        .get("id")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "ID folder tidak ditemukan pada respon pembuatan folder".to_string())?;
-
-    Ok(folder_id.to_string())
-}
-
-/// Upload file multipart ke Google Drive v3
-async fn upload_multipart_file(
-    client: &reqwest::Client,
-    access_token: &str,
-    folder_id: &str,
-    name: &str,
-    content: &[u8],
-    mime_type: &str,
-) -> Result<(), String> {
-    let mut boundary_bytes = [0u8; 8];
-    rand::thread_rng().fill(&mut boundary_bytes);
-    let boundary = format!("----formdata-{}", hex::encode(boundary_bytes));
-
-    let metadata = json!({
-        "name": name,
-        "parents": [folder_id]
     })
-    .to_string();
-
-    let mut body = Vec::new();
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-    body.extend_from_slice(b"Content-Type: application/json; charset=UTF-8\r\n\r\n");
-    body.extend_from_slice(metadata.as_bytes());
-    body.extend_from_slice(format!("\r\n--{}\r\n", boundary).as_bytes());
-    body.extend_from_slice(format!("Content-Type: {}\r\n\r\n", mime_type).as_bytes());
-    body.extend_from_slice(content);
-    body.extend_from_slice(format!("\r\n--{}--\r\n", boundary).as_bytes());
-
-    let url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
-    let resp = client
-        .post(url)
-        .header("Authorization", format!("Bearer {}", access_token))
-        .header(
-            "Content-Type",
-            format!("multipart/related; boundary={}", boundary),
-        )
-        .body(body)
-        .send()
-        .await
-        .map_err(|e| format!("Gagal mengunggah file {}: {}", name, e))?;
-
-    if !resp.status().is_success() {
-        let err_text = resp.text().await.unwrap_or_default();
-        return Err(format!("Gagal upload {}: {}", name, err_text));
-    }
-
-    Ok(())
 }
 
-/// Helper untuk upload snapshot JSON dan screenshot ke Google Drive Cloud
-async fn upload_to_gdrive(
-    access_token: &str,
-    date_str: &str,
-    snapshot_bytes: &[u8],
-    db_path: &Path,
-) -> Result<(usize, usize, String), String> {
-    let client = reqwest::Client::new();
-    let folder_id = ensure_backup_folder(&client, access_token).await?;
-
-    let snapshot_name = format!("trading-journal-{}.json", date_str);
-    upload_multipart_file(
-        &client,
-        access_token,
-        &folder_id,
-        &snapshot_name,
-        snapshot_bytes,
-        "application/json",
-    )
-    .await?;
-
-    let mut count = 1;
-    let mut total_bytes = snapshot_bytes.len();
-
-    let screenshot_dir = get_screenshot_dir(db_path);
-    if screenshot_dir.exists() {
-        if let Ok(entries) = fs::read_dir(&screenshot_dir) {
-            for entry in entries.flatten() {
-                let p = entry.path();
-                if p.is_file() {
-                    if let Ok(data) = fs::read(&p) {
-                        let fname = entry.file_name().to_string_lossy().to_string();
-                        let mime = if fname.ends_with(".png") {
-                            "image/png"
-                        } else if fname.ends_with(".jpg") || fname.ends_with(".jpeg") {
-                            "image/jpeg"
-                        } else if fname.ends_with(".webp") {
-                            "image/webp"
-                        } else {
-                            "application/octet-stream"
-                        };
-
-                        if upload_multipart_file(&client, access_token, &folder_id, &fname, &data, mime).await.is_ok() {
-                            count += 1;
-                            total_bytes += data.len();
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Ok((count, total_bytes, folder_id))
-}
-
-/// Pulihkan database dan screenshot dari folder cadangan lokal atau file cadangan (.db / .json)
+/// Pulihkan database dan aset media dari folder Local Snapshot atau file cadangan (.db / .sqlite / .json)
 pub fn restore_backup_from_path(
     dest_conn: &mut Connection,
     dest_db_path: &Path,
@@ -764,51 +305,71 @@ pub fn restore_backup_from_path(
     let chosen_path = match source_path_opt {
         Some(p) => p.to_path_buf(),
         None => {
-            let dialog = rfd::FileDialog::new().set_title("Pilih Folder Cadangan nitirekso");
-            match dialog.pick_folder() {
-                Some(p) => p,
-                None => return Err("Pemilihan folder cadangan dibatalkan oleh pengguna.".to_string()),
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            {
+                let dialog =
+                    rfd::FileDialog::new().set_title("Pilih Folder Local Snapshot nitirekso");
+                match dialog.pick_folder() {
+                    Some(p) => p,
+                    None => {
+                        return Err("Pemilihan folder cadangan dibatalkan oleh pengguna.".to_string())
+                    }
+                }
+            }
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            {
+                return Err("Path folder Local Snapshot harus diberikan secara eksplisit.".to_string());
             }
         }
     };
 
     if !chosen_path.exists() {
-        return Err(format!("Jalur sumber cadangan tidak ditemukan: {}", chosen_path.display()));
+        return Err(format!(
+            "Jalur sumber cadangan tidak ditemukan: {}",
+            chosen_path.display()
+        ));
     }
 
     let mut db_file = None;
     let mut json_file = None;
 
     if chosen_path.is_file() {
-        let ext = chosen_path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+        let ext = chosen_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
         if ext == "db" || ext == "sqlite" {
             db_file = Some(chosen_path.clone());
         } else if ext == "json" {
             json_file = Some(chosen_path.clone());
         } else {
-            return Err(format!("Format file tidak didukung (.db, .sqlite, atau .json): {}", chosen_path.display()));
+            return Err(format!(
+                "Format file tidak didukung (.db, .sqlite, atau .json): {}",
+                chosen_path.display()
+            ));
         }
     } else if chosen_path.is_dir() {
         let default_db = chosen_path.join("trading-journal-database.db");
         if default_db.exists() {
             db_file = Some(default_db);
-        } else {
-            // Cari file *.db atau *.sqlite di dalam folder
-            if let Ok(entries) = fs::read_dir(&chosen_path) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if p.is_file() {
-                        let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-                        if ext == "db" || ext == "sqlite" {
-                            db_file = Some(p);
-                            break;
-                        }
+        } else if let Ok(entries) = fs::read_dir(&chosen_path) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_file() {
+                    let ext = p
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    if ext == "db" || ext == "sqlite" {
+                        db_file = Some(p);
+                        break;
                     }
                 }
             }
         }
 
-        // Jika tidak ada DB fisik, cari trading-journal-*.json
         if db_file.is_none() {
             if let Ok(entries) = fs::read_dir(&chosen_path) {
                 let mut json_candidates = Vec::new();
@@ -832,11 +393,15 @@ pub fn restore_backup_from_path(
     let mut trades_restored: usize = 0;
 
     if let Some(src_db) = db_file {
-        log::info!("[backup] Memulihkan data dari database fisik: {}", src_db.display());
-        let src_conn = Connection::open(&src_db)
-            .map_err(|e| format!("Gagal membuka file database cadangan ({}): {}", src_db.display(), e))?;
+        log::info!("[snapshot] Memulihkan data dari database fisik: {}", src_db.display());
+        let src_conn = Connection::open(&src_db).map_err(|e| {
+            format!(
+                "Gagal membuka file database cadangan ({}): {}",
+                src_db.display(),
+                e
+            )
+        })?;
 
-        // Validasi keberadaan tabel trades
         let has_trades_table: bool = src_conn
             .query_row(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='trades'",
@@ -849,27 +414,76 @@ pub fn restore_backup_from_path(
             return Err("Database cadangan tidak valid: tabel 'trades' tidak ditemukan.".to_string());
         }
 
-        // Jalankan SQLite Online Backup API langsung ke dest_conn
+        // Lindungi identitas & state Sync Vault perangkat ini sebelum DB ditimpa oleh arsip snapshot
+        let preserved_device_meta: Vec<(String, String)> = dest_conn
+            .prepare("SELECT key, value FROM local_device_meta")
+            .and_then(|mut s| {
+                let rows = s.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+                Ok(rows.filter_map(Result::ok).collect())
+            })
+            .unwrap_or_default();
+
+        let preserved_sync_cursors: Vec<(String, String, i64, i64)> = dest_conn
+            .prepare("SELECT device_id, file_name, last_line, updated_at FROM device_sync_cursors")
+            .and_then(|mut s| {
+                let rows = s.query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, i64>(2)?,
+                        r.get::<_, i64>(3)?,
+                    ))
+                })?;
+                Ok(rows.filter_map(Result::ok).collect())
+            })
+            .unwrap_or_default();
+
         {
-            let backup = rusqlite::backup::Backup::new(&src_conn, dest_conn)
-                .map_err(|e| format!("Gagal menginisialisasi proses restore database: {}", e))?;
+            let backup = rusqlite::backup::Backup::new(&src_conn, dest_conn).map_err(|e| {
+                format!("Gagal menginisialisasi proses restore database: {}", e)
+            })?;
             backup
                 .run_to_completion(10, Duration::from_millis(100), None)
                 .map_err(|e| format!("Gagal memulihkan database: {}", e))?;
         }
 
-        // Jalankan migrasi jika cadangan berasal dari versi skema lebih lama
+        // Pastikan skema terbaru terpasang apabila cadangan berasal dari versi lebih lama
         let _ = crate::db::migrations::run_migrations(dest_conn);
 
+        // Pulihkan kembali identitas & state perangkat lokal agar Sync Vault tidak rusak
+        let _ = dest_conn.execute("DELETE FROM local_device_meta", []);
+        for (k, v) in preserved_device_meta {
+            let _ = dest_conn.execute(
+                "INSERT INTO local_device_meta (key, value) VALUES (?1, ?2)",
+                params![k, v],
+            );
+        }
+        let _ = dest_conn.execute("DELETE FROM device_sync_cursors", []);
+        for (did, fname, line, upd) in preserved_sync_cursors {
+            let _ = dest_conn.execute(
+                "INSERT INTO device_sync_cursors (device_id, file_name, last_line, updated_at) VALUES (?1, ?2, ?3, ?4)",
+                params![did, fname, line, upd],
+            );
+        }
+
         let count: i64 = dest_conn
-            .query_row("SELECT COUNT(*) FROM trades", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM trades WHERE deleted_at IS NULL",
+                [],
+                |r| r.get(0),
+            )
             .unwrap_or(0);
         trades_restored = count as usize;
     } else if let Some(src_json) = json_file {
-        log::info!("[backup] Memulihkan data dari snapshot JSON: {}", src_json.display());
-        let content = fs::read_to_string(&src_json)
-            .map_err(|e| format!("Gagal membaca file JSON ({}): {}", src_json.display(), e))?;
-        let json_val: Value = serde_json::from_str(&content)
+        log::info!("[snapshot] Memulihkan data dari snapshot JSON: {}", src_json.display());
+        let content = fs::read_to_string(&src_json).map_err(|e| {
+            format!(
+                "Gagal membaca file JSON ({}): {}",
+                src_json.display(),
+                e
+            )
+        })?;
+        let json_val: serde_json::Value = serde_json::from_str(&content)
             .map_err(|e| format!("Format JSON cadangan tidak valid: {}", e))?;
 
         if let Some(trades_arr) = json_val.get("trades").and_then(|v| v.as_array()) {
@@ -880,12 +494,24 @@ pub fn restore_backup_from_path(
             for t_val in trades_arr {
                 if let Ok(trade_detail) = serde_json::from_value::<TradeDetail>(t_val.clone()) {
                     let trade = &trade_detail.trade;
+                    let trade_uuid = match trade
+                        .external_id
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                    {
+                        Some(ext) => {
+                            crate::db::migrations::deterministic_trade_uuid(&trade.exchange, ext)
+                        }
+                        None => crate::db::migrations::random_uuid(),
+                    };
+
                     let _ = tx.execute(
                         "INSERT INTO trades (
                             id, exchange, external_id, symbol, direction, entry_price, exit_price,
                             entry_time, exit_time, size, leverage, margin_mode, realized_pnl,
-                            fee_open, fee_close, funding_fee, created_at, updated_at
-                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+                            pnl_source, fee_open, fee_close, funding_fee, created_at, updated_at, uuid
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
                         ON CONFLICT(id) DO UPDATE SET
                             exchange = excluded.exchange,
                             external_id = excluded.external_id,
@@ -902,8 +528,9 @@ pub fn restore_backup_from_path(
                             fee_open = excluded.fee_open,
                             fee_close = excluded.fee_close,
                             funding_fee = excluded.funding_fee,
-                            updated_at = excluded.updated_at",
-                        rusqlite::params![
+                            updated_at = excluded.updated_at,
+                            deleted_at = NULL",
+                        params![
                             trade.id,
                             trade.exchange,
                             trade.external_id,
@@ -917,11 +544,13 @@ pub fn restore_backup_from_path(
                             trade.leverage,
                             trade.margin_mode,
                             trade.realized_pnl,
+                            trade.pnl_source,
                             trade.fee_open,
                             trade.fee_close,
                             trade.funding_fee,
                             trade.created_at,
                             trade.updated_at,
+                            trade_uuid,
                         ],
                     );
 
@@ -939,7 +568,7 @@ pub fn restore_backup_from_path(
                                 execution_grade = excluded.execution_grade,
                                 screenshot_path = excluded.screenshot_path,
                                 updated_at = excluded.updated_at",
-                            rusqlite::params![
+                            params![
                                 trade.id,
                                 j.setup_tag,
                                 j.pre_trade_thesis,
@@ -962,7 +591,7 @@ pub fn restore_backup_from_path(
                                 planned_target = excluded.planned_target,
                                 risk_amount = excluded.risk_amount,
                                 planned_rr = excluded.planned_rr",
-                            rusqlite::params![
+                            params![
                                 trade.id,
                                 pr.planned_stop,
                                 pr.planned_target,
@@ -976,34 +605,44 @@ pub fn restore_backup_from_path(
                         let _ = tx.execute(
                             "INSERT OR IGNORE INTO journal_checklist (trade_id, label, checked, sort_order)
                              VALUES (?1, ?2, ?3, ?4)",
-                            rusqlite::params![trade.id, item.label, if item.checked { 1 } else { 0 }, idx as i64],
+                            params![
+                                trade.id,
+                                item.label,
+                                if item.checked { 1 } else { 0 },
+                                idx as i64
+                            ],
                         );
                     }
 
                     for tag in &trade_detail.tags {
                         let _ = tx.execute(
-                            "INSERT OR IGNORE INTO journal_tags (name) VALUES (?1)",
-                            rusqlite::params![tag.name],
+                            "INSERT OR IGNORE INTO journal_tags (name, created_at) VALUES (?1, ?2)",
+                            params![tag.name, trade.created_at],
                         );
                         if let Ok(tag_id) = tx.query_row(
                             "SELECT id FROM journal_tags WHERE name = ?1 COLLATE NOCASE",
-                            rusqlite::params![tag.name],
+                            params![tag.name],
                             |r| r.get::<_, i64>(0),
                         ) {
                             let _ = tx.execute(
                                 "INSERT OR IGNORE INTO trade_journal_tags (trade_id, tag_id) VALUES (?1, ?2)",
-                                rusqlite::params![trade.id, tag_id],
+                                params![trade.id, tag_id],
                             );
                         }
                     }
                 }
             }
 
-            tx.commit()
-                .map_err(|e| format!("Gagal menyimpan transaksi dari snapshot JSON: {}", e))?;
+            tx.commit().map_err(|e| {
+                format!("Gagal menyimpan transaksi dari snapshot JSON: {}", e)
+            })?;
 
             let count: i64 = dest_conn
-                .query_row("SELECT COUNT(*) FROM trades", [], |r| r.get(0))
+                .query_row(
+                    "SELECT COUNT(*) FROM trades WHERE deleted_at IS NULL",
+                    [],
+                    |r| r.get(0),
+                )
                 .unwrap_or(0);
             trades_restored = count as usize;
         }
@@ -1014,45 +653,32 @@ pub fn restore_backup_from_path(
         ));
     }
 
-    // Salin screenshot jika ada
-    let screenshot_source = if chosen_path.is_dir() {
-        Some(chosen_path.join("screenshots"))
+    // Salin screenshot legacy & aset media jika tersedia
+    let base_src = if chosen_path.is_dir() {
+        Some(chosen_path.as_path())
     } else {
-        chosen_path.parent().map(|p| p.join("screenshots"))
+        chosen_path.parent()
     };
 
-    let mut screenshots_restored = 0;
-    if let Some(s_src) = screenshot_source {
-        if s_src.exists() && s_src.is_dir() {
-            let dest_screenshots = get_screenshot_dir(dest_db_path);
-            let _ = fs::create_dir_all(&dest_screenshots);
-            if let Ok(entries) = fs::read_dir(&s_src) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if p.is_file() {
-                        let fname = entry.file_name();
-                        let target = dest_screenshots.join(fname);
-                        if fs::copy(&p, target).is_ok() {
-                            screenshots_restored += 1;
-                        }
-                    }
-                }
-            }
-        }
+    let mut media_restored = 0;
+    if let Some(src_root) = base_src {
+        let (s_files, _) = copy_dir_files(&src_root.join("screenshots"), &get_screenshot_dir(dest_db_path));
+        let (m_files, _) = copy_dir_files(&src_root.join("media"), &get_media_dir(dest_db_path));
+        media_restored = s_files + m_files;
     }
 
     let source_path_display = chosen_path.to_string_lossy().to_string();
     let message = format!(
-        "Berhasil memulihkan {} transaksi dan {} screenshot dari cadangan ({}).",
-        trades_restored, screenshots_restored, source_path_display
+        "Berhasil memulihkan {} transaksi dan {} berkas media dari Local Snapshot ({}).",
+        trades_restored, media_restored, source_path_display
     );
-    log::info!("[backup] {}", message);
+    log::info!("[snapshot] {}", message);
 
     Ok(BackupRestoreResult {
         success: true,
         source_path: source_path_display,
         trades_count: trades_restored,
-        screenshots_restored,
+        screenshots_restored: media_restored,
         message,
     })
 }
@@ -1068,20 +694,15 @@ mod tests {
     }
 
     #[test]
-    fn test_pkce_generation() {
-        let (verifier, challenge) = generate_pkce();
-        assert!(!verifier.is_empty());
-        assert!(!challenge.is_empty());
-        assert_ne!(verifier, challenge);
-    }
-
-    #[test]
     fn test_restore_backup_physical_and_json() {
         use crate::db::migrations::run_migrations;
         use crate::db::repositories::trades::create_trade;
         use crate::models::TradeInput;
 
-        let temp_dir = std::env::temp_dir().join(format!("nitirekso-test-backup-{}", rand::random::<u64>()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "nitirekso-test-snapshot-{}",
+            rand::random::<u64>()
+        ));
         let _ = fs::create_dir_all(&temp_dir);
 
         let src_db_path = temp_dir.join("source.sqlite");
@@ -1107,26 +728,29 @@ mod tests {
         };
         let _ = create_trade(&mut src_conn, &trade_in, None, None).unwrap();
 
-        let backup_folder = temp_dir.join("backup_folder");
+        let backup_folder = temp_dir.join("snapshot_folder");
         let _ = fs::create_dir_all(&backup_folder);
 
-        // Simpan physical DB cadangan
         fs::copy(&src_db_path, backup_folder.join("trading-journal-database.db")).unwrap();
 
-        // Target database kosong
         let target_db_path = temp_dir.join("target.sqlite");
         let mut target_conn = Connection::open(&target_db_path).unwrap();
         run_migrations(&mut target_conn).unwrap();
 
-        let count_before: i64 = target_conn.query_row("SELECT COUNT(*) FROM trades", [], |r| r.get(0)).unwrap();
+        let count_before: i64 = target_conn
+            .query_row("SELECT COUNT(*) FROM trades", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(count_before, 0);
 
-        // Eksekusi restore
-        let restore_res = restore_backup_from_path(&mut target_conn, &target_db_path, Some(&backup_folder)).unwrap();
+        let restore_res =
+            restore_backup_from_path(&mut target_conn, &target_db_path, Some(&backup_folder))
+                .unwrap();
         assert_eq!(restore_res.trades_count, 1);
         assert!(restore_res.success);
 
-        let count_after: i64 = target_conn.query_row("SELECT COUNT(*) FROM trades", [], |r| r.get(0)).unwrap();
+        let count_after: i64 = target_conn
+            .query_row("SELECT COUNT(*) FROM trades", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(count_after, 1);
 
         let _ = fs::remove_dir_all(&temp_dir);

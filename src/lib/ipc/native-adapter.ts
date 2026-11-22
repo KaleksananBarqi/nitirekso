@@ -19,12 +19,17 @@ import type {
     BtcKlinePoint,
     CredentialSavePayload,
     CredentialStatusPayload,
+    DeviceSyncConnectPayload,
+    DeviceSyncRunResult,
+    DeviceSyncStatusPayload,
     InstallEnvironment,
     InstallKind,
     JournalAnalysisResult,
     LinuxDownloadVerificationResult,
     LinuxInstallResult,
     LogEntry,
+    MediaAssetInfo,
+    MediaUploadPayload,
     MutationResult,
     ReleaseMetadataResult,
     ScreenshotUploadPayload,
@@ -47,6 +52,7 @@ import {
     type AiClient,
     type AppResult,
     type BackupClient,
+    type DeviceSyncClient,
     type IpcClient,
     type MediaClient,
     type SettingsClient,
@@ -254,6 +260,30 @@ export class NativeTauriAdapter implements IpcClient {
             )
         },
 
+        saveMediaAsset: async (payload: MediaUploadPayload): Promise<AppResult<MediaAssetInfo>> => {
+            return await invokeMutation<MediaAssetInfo>(
+                'save_media_asset',
+                { payload },
+                'MEDIA_SAVE_FAILED'
+            )
+        },
+
+        getMediaAsset: async (sha256: string): Promise<AppResult<string>> => {
+            return await invokeMutation<string>(
+                'get_media_asset',
+                { sha256 },
+                'MEDIA_GET_FAILED'
+            )
+        },
+
+        deleteMediaAsset: async (sha256: string): Promise<AppResult<void>> => {
+            return await invokeMutation<void>(
+                'delete_media_asset',
+                { sha256 },
+                'MEDIA_DELETE_FAILED'
+            )
+        },
+
         remuxVideoMp4: async (
             data: Uint8Array,
             audioData?: Uint8Array
@@ -311,7 +341,7 @@ export class NativeTauriAdapter implements IpcClient {
     }
 
     // -----------------------------------------------------------------------
-    // Domain Backup
+    // Domain Backup (Local Snapshot)
     // -----------------------------------------------------------------------
 
     public readonly backup: BackupClient = {
@@ -347,20 +377,86 @@ export class NativeTauriAdapter implements IpcClient {
             )
         },
 
-        startOAuth: async (clientId?: string): Promise<AppResult<void>> => {
-            return await invokeMutation<void>(
-                'start_backup_oauth',
-                { clientId },
-                'BACKUP_OAUTH_FAILED'
-            )
-        },
-
         selectFolder: async (): Promise<AppResult<string | null>> => {
             return await invokeMutation<string | null>(
                 'select_backup_folder',
                 undefined,
                 'BACKUP_SELECT_FOLDER_FAILED'
             )
+        },
+    }
+
+    // -----------------------------------------------------------------------
+    // Domain DeviceSync (Sync Vault)
+    // -----------------------------------------------------------------------
+
+    public readonly deviceSync: DeviceSyncClient = {
+        getStatus: async (): Promise<AppResult<DeviceSyncStatusPayload>> => {
+            return await invokeDirect<DeviceSyncStatusPayload>(
+                'get_device_sync_status',
+                undefined,
+                'DEVICE_SYNC_STATUS_ERROR'
+            )
+        },
+
+        selectFolder: async (): Promise<AppResult<string | null>> => {
+            return await invokeMutation<string | null>(
+                'select_sync_vault_folder',
+                undefined,
+                'DEVICE_SYNC_SELECT_FOLDER_FAILED'
+            )
+        },
+
+        connect: async (payload: DeviceSyncConnectPayload): Promise<AppResult<DeviceSyncRunResult>> => {
+            return await invokeMutation<DeviceSyncRunResult>(
+                'connect_sync_vault',
+                { payload },
+                'DEVICE_SYNC_CONNECT_FAILED'
+            )
+        },
+
+        disconnect: async (): Promise<AppResult<void>> => {
+            return await invokeMutation<void>(
+                'disconnect_sync_vault',
+                undefined,
+                'DEVICE_SYNC_DISCONNECT_FAILED'
+            )
+        },
+
+        run: async (): Promise<AppResult<DeviceSyncRunResult>> => {
+            return await invokeMutation<DeviceSyncRunResult>(
+                'run_device_sync',
+                undefined,
+                'DEVICE_SYNC_RUN_FAILED'
+            )
+        },
+
+        onUpdated: (callback: () => void): (() => void) => {
+            let unlistenFn: (() => void) | null = null
+            let cancelled = false
+            import('@tauri-apps/api/event')
+                .then(({ listen }) => {
+                    listen('device-sync:updated', () => {
+                        callback()
+                    }).then((unlisten) => {
+                        if (cancelled) {
+                            unlisten()
+                        } else {
+                            unlistenFn = unlisten
+                        }
+                    })
+                })
+                .catch((e) => {
+                    console.error('[NativeTauriAdapter] Gagal listen device-sync:updated:', e)
+                })
+
+            return () => {
+                cancelled = true
+                if (unlistenFn) {
+                    unlistenFn()
+                    unlistenFn = null
+                }
+            }
         },
     }
 

@@ -3,6 +3,7 @@ use crate::db::DbState;
 use crate::models::{
     CreateTradePayload, MutationResult, TradeDetail, TradeFilter, TradeMeta, UpdateTradePayload,
 };
+use crate::vault::VaultState;
 use tauri::State;
 
 #[tauri::command]
@@ -24,6 +25,7 @@ pub fn get_trade(state: State<'_, DbState>, id: i64) -> Result<Option<TradeDetai
 #[tauri::command]
 pub fn create_trade(
     state: State<'_, DbState>,
+    vault: State<'_, VaultState>,
     payload: CreateTradePayload,
 ) -> Result<MutationResult<i64>, String> {
     let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
@@ -33,7 +35,10 @@ pub fn create_trade(
         payload.journal.as_ref(),
         payload.planned_risk.as_ref(),
     ) {
-        Ok(id) => Ok(MutationResult::success(id)),
+        Ok(id) => {
+            let _ = vault.emit_trade_snapshot_if_connected(&conn, id, true);
+            Ok(MutationResult::success(id))
+        }
         Err(e) => Ok(MutationResult::fail(format!(
             "Gagal membuat transaksi: {}",
             e
@@ -44,10 +49,13 @@ pub fn create_trade(
 #[tauri::command]
 pub fn update_trade(
     state: State<'_, DbState>,
+    vault: State<'_, VaultState>,
     id: i64,
     payload: UpdateTradePayload,
 ) -> Result<MutationResult<()>, String> {
     let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let before = trades::get_trade(&conn, id).ok().flatten();
+
     match trades::update_trade(
         &mut conn,
         id,
@@ -55,7 +63,16 @@ pub fn update_trade(
         payload.journal.as_ref(),
         payload.planned_risk.as_ref(),
     ) {
-        Ok(true) => Ok(MutationResult::ok_unit()),
+        Ok(true) => {
+            let after = trades::get_trade(&conn, id).ok().flatten();
+            let _ = vault.emit_trade_update_diff_if_connected(
+                &conn,
+                id,
+                before.as_ref(),
+                after.as_ref(),
+            );
+            Ok(MutationResult::ok_unit())
+        }
         Ok(false) => Ok(MutationResult::fail(format!(
             "Transaksi dengan ID {} tidak ditemukan",
             id
@@ -68,10 +85,13 @@ pub fn update_trade(
 }
 
 #[tauri::command]
-pub fn delete_trade(state: State<'_, DbState>, id: i64) -> Result<MutationResult<()>, String> {
+pub fn delete_trade(
+    state: State<'_, DbState>,
+    vault: State<'_, VaultState>,
+    id: i64,
+) -> Result<MutationResult<()>, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
 
-    // Bersihkan file screenshot terkait jika ada sebelum trade dihapus
     if let Ok(Some(detail)) = trades::get_trade(&conn, id) {
         if let Some(journal) = detail.journal {
             if let Some(screenshot_path) = journal.screenshot_path {
@@ -81,7 +101,10 @@ pub fn delete_trade(state: State<'_, DbState>, id: i64) -> Result<MutationResult
     }
 
     match trades::delete_trade(&conn, id) {
-        Ok(true) => Ok(MutationResult::ok_unit()),
+        Ok(true) => {
+            let _ = vault.emit_trade_tombstone_if_connected(&conn, id);
+            Ok(MutationResult::ok_unit())
+        }
         Ok(false) => Ok(MutationResult::fail(format!(
             "Transaksi dengan ID {} tidak ditemukan",
             id

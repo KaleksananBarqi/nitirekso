@@ -142,7 +142,7 @@ pub fn get_sync_state_with_flag(
 
     let positions_count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM trades WHERE exchange = ?1",
+            "SELECT COUNT(*) FROM trades WHERE exchange = ?1 AND deleted_at IS NULL",
             params![exchange],
             |r| r.get(0),
         )
@@ -341,7 +341,7 @@ pub fn upsert_positions_tx(
         .as_millis() as i64;
 
     let mut find_stmt = conn.prepare(
-        "SELECT id, realized_pnl, exit_price, size, fee_close
+        "SELECT id, realized_pnl, exit_price, size, fee_close, deleted_at
          FROM trades WHERE exchange = ?1 AND external_id = ?2",
     )?;
 
@@ -350,9 +350,9 @@ pub fn upsert_positions_tx(
          (exchange, external_id, symbol, direction, entry_price, exit_price,
           entry_time, exit_time, size, leverage, margin_mode, realized_pnl,
           pnl_source, fee_open, fee_close, fee_open_maker, fee_close_maker,
-          funding_fee, created_at, updated_at)
+          funding_fee, created_at, updated_at, uuid)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'exchange_reported',
-                 ?13, ?14, NULL, NULL, ?15, ?16, ?17)",
+                 ?13, ?14, NULL, NULL, ?15, ?16, ?17, ?18)",
     )?;
 
     let mut update_stmt = conn.prepare(
@@ -372,11 +372,17 @@ pub fn upsert_positions_tx(
                     row.get::<_, f64>(2)?,
                     row.get::<_, f64>(3)?,
                     row.get::<_, f64>(4)?,
+                    row.get::<_, Option<i64>>(5)?,
                 ))
             })
             .optional()?;
 
-        if let Some((id, old_pnl, old_exit, old_size, old_fee)) = existing {
+        if let Some((id, old_pnl, old_exit, old_size, old_fee, deleted_at)) = existing {
+            if deleted_at.is_some() {
+                // Hormati tombstone: trade yang sudah dihapus pengguna tidak dihidupkan ulang oleh Exchange Sync
+                result.unchanged += 1;
+                continue;
+            }
             let changed = (old_pnl - pos.realized_pnl).abs() > 1e-6
                 || (old_exit - pos.exit_price).abs() > 1e-6
                 || (old_size - pos.size).abs() > 1e-6
@@ -405,6 +411,8 @@ pub fn upsert_positions_tx(
             ])?;
             result.updated += 1;
         } else {
+            let trade_uuid =
+                crate::db::migrations::deterministic_trade_uuid(exchange, &pos.external_id);
             insert_stmt.execute(params![
                 exchange,
                 pos.external_id,
@@ -422,7 +430,8 @@ pub fn upsert_positions_tx(
                 pos.fee_close,
                 pos.funding_fee,
                 now,
-                now
+                now,
+                trade_uuid
             ])?;
             result.inserted += 1;
         }

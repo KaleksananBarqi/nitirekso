@@ -43,7 +43,27 @@ const MIGRATIONS: &[Migration] = &[
         name: "007_sync_stream_cursors",
         sql: include_str!("../../migrations/007_sync_stream_cursors.sql"),
     },
+    Migration {
+        version: 8,
+        name: "008_sync_vault_foundation",
+        sql: include_str!("../../migrations/008_sync_vault_foundation.sql"),
+    },
 ];
+
+/// Namespace tetap untuk menurunkan UUIDv5 deterministik transaksi hasil Exchange Sync.
+pub const TRADE_UUID_NAMESPACE: uuid::Uuid =
+    uuid::Uuid::from_u128(0x9f2c7b1e_8a44_4d3e_9c12_6e5f4a3b2c1d);
+
+/// Menghasilkan UUIDv5 deterministik dari pasangan (exchange, external_id) agar tidak duplikat lintas perangkat.
+pub fn deterministic_trade_uuid(exchange: &str, external_id: &str) -> String {
+    let key = format!("{}:{}", exchange.trim().to_lowercase(), external_id.trim());
+    uuid::Uuid::new_v5(&TRADE_UUID_NAMESPACE, key.as_bytes()).to_string()
+}
+
+/// Menghasilkan UUIDv4 acak untuk entitas manual maupun device_id.
+pub fn random_uuid() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
 
 pub fn run_migrations(conn: &mut Connection) -> Result<Vec<i64>> {
     conn.execute_batch(
@@ -88,7 +108,89 @@ pub fn run_migrations(conn: &mut Connection) -> Result<Vec<i64>> {
         applied_now.push(migration.version);
     }
 
+    backfill_sync_metadata(conn)?;
+
     Ok(applied_now)
+}
+
+/// Mengisi UUID lintas-perangkat untuk trade lama yang belum memiliki `uuid` serta memastikan `device_id` lokal tersedia.
+pub fn backfill_sync_metadata(conn: &mut Connection) -> Result<()> {
+    // 1. Pastikan device_id lokal tersedia di local_device_meta
+    let has_meta_table: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='local_device_meta'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if has_meta_table {
+        let existing_device_id: Option<String> = conn
+            .query_row(
+                "SELECT value FROM local_device_meta WHERE key = 'device_id'",
+                [],
+                |r| r.get(0),
+            )
+            .ok();
+
+        if existing_device_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .is_none()
+        {
+            let dev_id = random_uuid();
+            conn.execute(
+                "INSERT INTO local_device_meta (key, value) VALUES ('device_id', ?1)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![dev_id],
+            )?;
+        }
+    }
+
+    // 2. Backfill UUID pada trades yang belum memilikinya
+    let has_uuid_col: bool = conn
+        .query_row(
+            "SELECT 1 FROM pragma_table_info('trades') WHERE name = 'uuid'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if has_uuid_col {
+        let pending: Vec<(i64, String, Option<String>)> = {
+            let mut stmt = conn.prepare(
+                "SELECT id, exchange, external_id FROM trades WHERE uuid IS NULL OR TRIM(uuid) = ''",
+            )?;
+            let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+            let mut out = Vec::new();
+            for r in rows {
+                out.push(r?);
+            }
+            out
+        };
+
+        if !pending.is_empty() {
+            let tx = conn.transaction()?;
+            {
+                let mut upd = tx.prepare("UPDATE trades SET uuid = ?1 WHERE id = ?2")?;
+                for (id, exchange, external_id) in pending {
+                    let generated = match external_id
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                    {
+                        Some(ext) => deterministic_trade_uuid(&exchange, ext),
+                        None => random_uuid(),
+                    };
+                    upd.execute(params![generated, id])?;
+                }
+            }
+            tx.commit()?;
+        }
+    }
+
+    Ok(())
 }
 
 fn execute_migration_sql(conn: &Connection, sql: &str, migration_name: &str) -> Result<()> {

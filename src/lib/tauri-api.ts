@@ -92,9 +92,12 @@ export function createTauriApi(customClient?: IpcClient): PreloadApi {
         runSync: async () => toMutation(await client.sync.run()),
         onSyncProgress: (callback) => client.sync.onProgress(callback),
 
-        // --- Domain Media (Screenshot & Video) ---
+        // --- Domain Media (Screenshot, Asset, & Video) ---
         uploadScreenshot: async (payload) => toMutation(await client.media.uploadScreenshot(payload)),
         getScreenshot: async (relPath) => toMutation(await client.media.getScreenshot(relPath)),
+        saveMediaAsset: async (payload) => toMutation(await client.media.saveMediaAsset(payload)),
+        getMediaAsset: async (sha256) => toMutation(await client.media.getMediaAsset(sha256)),
+        deleteMediaAsset: async (sha256) => toMutation(await client.media.deleteMediaAsset(sha256)),
         remuxVideoMp4: async (data: Uint8Array, audioData?: Uint8Array) => {
             const res = await client.media.remuxVideoMp4(data, audioData)
             return toMutation(res, data)
@@ -102,13 +105,20 @@ export function createTauriApi(customClient?: IpcClient): PreloadApi {
         saveVideoFile: async (defaultName: string, data: Uint8Array) =>
             toMutation(await client.media.saveVideoFile(defaultName, data)),
 
-        // --- Domain Backup ---
+        // --- Domain Backup (Local Snapshot) ---
         getBackupStatus: async () => unwrapAppResult(await client.backup.getStatus()),
         runBackup: async () => toMutation(await client.backup.run()),
         restoreBackup: async (folderPath) => toMutation(await client.backup.restore(folderPath)),
         disconnectBackup: async () => toMutation(await client.backup.disconnect()),
-        startBackupOAuth: async (clientId) => toMutation(await client.backup.startOAuth(clientId)),
         selectBackupFolder: async () => toMutation(await client.backup.selectFolder()),
+
+        // --- Domain DeviceSync (Sync Vault) ---
+        getDeviceSyncStatus: async () => unwrapAppResult(await client.deviceSync.getStatus()),
+        selectSyncVaultFolder: async () => toMutation(await client.deviceSync.selectFolder()),
+        connectSyncVault: async (payload) => toMutation(await client.deviceSync.connect(payload)),
+        disconnectSyncVault: async () => toMutation(await client.deviceSync.disconnect()),
+        runDeviceSync: async () => toMutation(await client.deviceSync.run()),
+        onDeviceSyncUpdated: (callback) => client.deviceSync.onUpdated(callback),
 
         // --- Domain AI ---
         getAiConfig: async () => unwrapAppResult(await client.ai.getConfig()),

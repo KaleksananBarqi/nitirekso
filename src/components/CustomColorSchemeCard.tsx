@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardHeader, Field, Button, Badge } from './ui'
 import {
     loadAllColorSchemes,
@@ -13,6 +13,15 @@ import {
 export function CustomColorSchemeCard(): React.JSX.Element {
     const [schemes, setSchemes] = useState<CustomColorScheme[]>(loadAllColorSchemes)
     const [activeId, setActiveId] = useState<string | null>(getActiveCustomSchemeId)
+
+    useEffect(() => {
+        const refresh = () => {
+            setSchemes(loadAllColorSchemes())
+            setActiveId(getActiveCustomSchemeId())
+        }
+        window.addEventListener('custom-themes:updated', refresh)
+        return () => window.removeEventListener('custom-themes:updated', refresh)
+    }, [])
 
     // Form state untuk skema baru atau edit
     const [isCreating, setIsCreating] = useState(false)

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { PageHeader } from '../components/AppShell'
 import { AiConfigPanel } from '../components/AiConfigPanel'
 import { BackupPanel } from '../components/BackupPanel'
+import { DeviceSyncPanel } from '../components/DeviceSyncPanel'
 import { ExchangeCredentials } from '../components/ExchangeCredentials'
 import { SyncPanel } from '../components/SyncPanel'
 import { ShareBrandingSettings } from '../components/ShareBrandingSettings'
@@ -197,13 +198,15 @@ export function Settings({
 
                     <Card>
                         <CardHeader
-                            title="Sinkronisasi"
-                            description="Tarik histori dari exchange secara manual"
+                            title="Exchange Sync"
+                            description="Tarik histori posisi, fills, dan funding dari API exchange secara manual"
                         />
                         <div className="p-4">
                             <SyncPanel onSyncComplete={onDataChanged} variant="full" />
                         </div>
                     </Card>
+
+                    <DeviceSyncPanel onSynced={onDataChanged} />
 
                     <BackupPanel onSyncComplete={onDataChanged} />
 

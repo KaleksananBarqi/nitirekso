@@ -4,14 +4,8 @@ import { Badge, Button, Card, CardHeader, ErrorNote } from './ui'
 import { formatDateTime } from '../lib/format'
 
 /**
- * Panel backup Google Drive (fitur 4 & 5).
- *
- * Mendukung 2 mode sinkronisasi:
- * 1. FOLDER LOKAL GOOGLE DRIVE (Sangat Mudah / 1-Klik)
- *    Memanfaatkan aplikasi Google Drive for Desktop. File snapshot otomatis
- *    disimpan ke folder Google Drive lokal dan disinkronkan langsung ke cloud.
- * 2. CLOUD OAUTH DIRECT
- *    Koneksi langsung via OAuth Google Drive API dengan Client ID kustom.
+ * Panel Local Snapshot — pencadangan dan pemulihan point-in-time ke folder lokal perangkat.
+ * Sepenuhnya luring tanpa integrasi cloud pihak ketiga.
  */
 
 interface BackupPanelProps {
@@ -20,30 +14,19 @@ interface BackupPanelProps {
 
 export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Element {
     const [status, setStatus] = useState<BackupStatusPayload | null>(null)
-    const [syncMode, setSyncMode] = useState<'folder' | 'oauth'>('folder')
-    const [localFolder, setLocalFolder] = useState<string>('')
-    const [clientId, setClientId] = useState<string>('')
-    const [savingSettings, setSavingSettings] = useState(false)
     const [running, setRunning] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [result, setResult] = useState<BackupRunResult | null>(null)
     const [restoreResult, setRestoreResult] = useState<BackupRestoreResult | null>(null)
 
     useEffect(() => {
-        void loadAll()
+        void loadStatus()
     }, [])
 
-    async function loadAll(): Promise<void> {
+    async function loadStatus(): Promise<void> {
         try {
-            const [s, settings] = await Promise.all([
-                window.api.getBackupStatus(),
-                window.api.getSettings()
-            ])
+            const s = await window.api.getBackupStatus()
             setStatus(s)
-            const mode = settings.gdriveSyncMode || 'folder'
-            setSyncMode(mode)
-            setLocalFolder(settings.gdriveLocalFolder || '')
-            setClientId(settings.gdriveClientId || '')
         } catch {
             // Status gagal dimuat — tidak fatal.
         }
@@ -53,50 +36,15 @@ export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Ele
         setError(null)
         try {
             const res = await window.api.selectBackupFolder()
-            if (res.ok && res.data) {
-                setLocalFolder(res.data)
-                await window.api.setSettings({
-                    gdriveLocalFolder: res.data,
-                    gdriveSyncMode: 'folder'
-                })
-                setSyncMode('folder')
-                await loadAll()
-            }
-        } catch (err) {
-            setError(err instanceof Error ? err.message : String(err))
-        }
-    }
-
-    async function handleSaveOAuthClientId(): Promise<void> {
-        setSavingSettings(true)
-        setError(null)
-        try {
-            await window.api.setSettings({
-                gdriveClientId: clientId.trim(),
-                gdriveSyncMode: 'oauth'
-            })
-            await loadAll()
-        } catch (err) {
-            setError(err instanceof Error ? err.message : String(err))
-        } finally {
-            setSavingSettings(false)
-        }
-    }
-
-    async function handleStartOAuth(): Promise<void> {
-        setError(null)
-        setRunning(true)
-        try {
-            const res = await window.api.startBackupOAuth()
             if (!res.ok) {
-                setError(res.error ?? 'Gagal memulai proses OAuth Google Drive.')
+                setError(res.error ?? 'Gagal memilih folder Local Snapshot.')
                 return
             }
-            await loadAll()
+            if (res.data) {
+                await loadStatus()
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
-        } finally {
-            setRunning(false)
         }
     }
 
@@ -107,11 +55,11 @@ export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Ele
         try {
             const res = await window.api.runBackup()
             if (!res.ok || !res.data) {
-                setError(res.error ?? 'Gagal menjalankan backup.')
+                setError(res.error ?? 'Gagal membuat Local Snapshot.')
                 return
             }
             setResult(res.data)
-            await loadAll()
+            await loadStatus()
             onSyncComplete()
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
@@ -122,8 +70,8 @@ export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Ele
 
     async function handleRestoreBackup(folderPath?: string): Promise<void> {
         const confirmMsg = folderPath
-            ? `Pulihkan data dari folder cadangan berikut?\n\n${folderPath}\n\n⚠️ PERINGATAN: Database saat ini akan digantikan dengan data dari cadangan tersebut. Riwayat trade yang belum dicadangkan dapat tertimpa.`
-            : 'Pilih folder cadangan nitirekso untuk dipulihkan.\n\n⚠️ PERINGATAN: Database saat ini akan digantikan dengan data dari cadangan tersebut. Lanjutkan?'
+            ? `Pulihkan Local Cache dari folder snapshot berikut?\n\n${folderPath}\n\nPERINGATAN: Data lokal saat ini akan digantikan oleh arsip snapshot tersebut.`
+            : 'Pilih folder Local Snapshot nitirekso untuk dipulihkan.\n\nPERINGATAN: Data lokal saat ini akan digantikan oleh arsip snapshot tersebut. Lanjutkan?'
 
         if (!window.confirm(confirmMsg)) {
             return
@@ -136,11 +84,11 @@ export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Ele
         try {
             const res = await window.api.restoreBackup(folderPath)
             if (!res.ok || !res.data) {
-                setError(res.error ?? 'Gagal memulihkan cadangan data.')
+                setError(res.error ?? 'Gagal memulihkan Local Snapshot.')
                 return
             }
             setRestoreResult(res.data)
-            await loadAll()
+            await loadStatus()
             onSyncComplete()
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
@@ -155,10 +103,11 @@ export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Ele
         try {
             const res = await window.api.disconnectBackup()
             if (!res.ok) {
-                setError(res.error ?? 'Gagal memutus koneksi.')
+                setError(res.error ?? 'Gagal melepas folder Local Snapshot.')
                 return
             }
-            await loadAll()
+            setResult(null)
+            await loadStatus()
             onSyncComplete()
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
@@ -168,26 +117,25 @@ export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Ele
     }
 
     const connected = status?.connected ?? false
+    const localFolder = status?.localFolder ?? ''
     const lastBackup = status?.lastBackupAt
 
     return (
         <Card>
             <CardHeader
-                title="Sinkronisasi & Backup Google Drive"
-                description="Simpan snapshot JSON semua riwayat trade dan gambar jurnal ke Google Drive secara mudah dan aman."
+                title="Local Snapshot (Cadangan Offline)"
+                description="Simpan arsip point-in-time Local Cache (SQLite), JSON portabel, dan berkas media ke folder lokal atau drive eksternal."
             />
             <div className="flex flex-col gap-4 p-4">
                 {error && <ErrorNote message={error} />}
 
-                {/* Status Bar */}
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                     <Badge tone={connected ? 'profit' : 'muted'}>
-                        {connected ? 'Siap Sinkron' : 'Belum Terhubung'}
+                        {connected ? 'Folder Siap' : 'Belum Diatur'}
                     </Badge>
                     <span className="text-muted-foreground">
-                        Mode aktif: <strong className="text-foreground">{syncMode === 'folder' ? 'Folder Google Drive Lokal' : 'Cloud OAuth Direct'}</strong>
+                        Mode: <strong className="text-foreground">100% Luring (Folder Lokal)</strong>
                     </span>
-                    {status?.email && <span className="text-muted-foreground">({status.email})</span>}
                     {lastBackup && (
                         <span className="text-muted-foreground">
                             · Terakhir: {formatDateTime(lastBackup)}
@@ -197,182 +145,89 @@ export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Ele
 
                 {result && (
                     <div className="rounded-md border border-profit/40 bg-profit/10 px-3 py-2 text-[11px]">
-                        <p className="font-medium text-profit">Backup berhasil disinkronkan!</p>
+                        <p className="font-medium text-profit">Local Snapshot berhasil dibuat!</p>
                         <p className="mt-0.5 text-muted-foreground">
-                            {result.filesUploaded} file · {(result.bytesUploaded / 1024).toFixed(1)} KB · {(result.durationMs / 1000).toFixed(1)}s
+                            {result.filesUploaded} berkas · {(result.bytesUploaded / 1024).toFixed(1)} KB · {(result.durationMs / 1000).toFixed(1)}s
                         </p>
                     </div>
                 )}
 
                 {restoreResult && (
                     <div className="rounded-md border border-profit/40 bg-profit/10 px-3 py-2 text-[11px]">
-                        <p className="font-medium text-profit">✅ Pemulihan Data Cadangan Berhasil!</p>
+                        <p className="font-medium text-profit">Pemulihan Local Snapshot berhasil!</p>
                         <p className="mt-0.5 text-muted-foreground">{restoreResult.message}</p>
                     </div>
                 )}
 
-                {/* Pilihan Metode Sinkronisasi */}
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    {/* Metode 1: Folder Lokal Google Drive */}
-                    <div
-                        className={`flex flex-col justify-between rounded-lg border p-3.5 transition-all ${
-                            syncMode === 'folder'
-                                ? 'border-primary bg-primary/5 shadow-sm'
-                                : 'border-border bg-card hover:border-border/80'
-                        }`}
-                    >
-                        <div>
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-foreground">
-                                    📁 Folder Google Drive Lokal
-                                </span>
-                                <Badge tone="profit">Rekomendasi (Termudah)</Badge>
-                            </div>
-                            <p className="mt-1.5 text-[11px] text-muted-foreground">
-                                Cukup pilih folder di dalam Google Drive Anda (misal <code>G:\My Drive\TradingBackup</code>). Aplikasi akan otomatis menyalin backup ke sana, dan Google Drive for Desktop akan mengunggahnya secara instan. <strong>Tanpa perlu API key!</strong>
-                            </p>
-                            {localFolder ? (
-                                <div className="mt-2.5 rounded bg-muted/60 p-2 font-mono text-[11px] text-foreground truncate">
-                                    {localFolder}
-                                </div>
-                            ) : (
-                                <p className="mt-2 text-[11px] text-amber-500 font-medium">
-                                    ⚠️ Belum ada folder yang dipilih
-                                </p>
-                            )}
-                        </div>
-
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <Button size="sm" variant="outline" onClick={() => void handleSelectFolder()} disabled={running}>
-                                {localFolder ? 'Ganti Folder' : '📂 Pilih Folder'}
-                            </Button>
-                            {localFolder && (
-                                <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    onClick={() => void handleRestoreBackup(localFolder)}
-                                    disabled={running}
-                                    title="Pulihkan seluruh data dari folder aktif ini"
-                                >
-                                    📥 Pulihkan dari Folder Ini
-                                </Button>
-                            )}
+                <div className="rounded-lg border border-border bg-card p-3.5">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-foreground">
+                            Folder Tujuan Local Snapshot
+                        </span>
+                        {connected && (
                             <Button
                                 size="sm"
-                                variant="outline"
-                                onClick={() => void handleRestoreBackup()}
+                                variant="ghost"
+                                onClick={() => void handleDisconnect()}
                                 disabled={running}
-                                title="Pilih folder cadangan lain dari flashdisk atau komputer"
                             >
-                                📂 Pulihkan Folder Lain…
+                                Lepas Folder
                             </Button>
-                            {syncMode !== 'folder' && localFolder && (
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => {
-                                        setSyncMode('folder')
-                                        void window.api.setSettings({ gdriveSyncMode: 'folder' })
-                                    }}
-                                >
-                                    Gunakan Mode Ini
-                                </Button>
-                            )}
-                        </div>
+                        )}
                     </div>
-
-                    {/* Metode 2: Cloud OAuth Direct */}
-                    <div
-                        className={`flex flex-col justify-between rounded-lg border p-3.5 transition-all ${
-                            syncMode === 'oauth'
-                                ? 'border-primary bg-primary/5 shadow-sm'
-                                : 'border-border bg-card hover:border-border/80'
-                        }`}
-                    >
-                        <div>
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-foreground">
-                                    ☁️ Cloud OAuth Direct (GCP)
-                                </span>
-                                <Badge tone="muted">Advanced</Badge>
-                            </div>
-                            <p className="mt-1.5 text-[11px] text-muted-foreground">
-                                Hubungkan langsung dengan akun Google Anda menggunakan Google OAuth Client ID tanpa aplikasi desktop.
-                            </p>
-                            <div className="mt-2">
-                                <label className="text-[10px] font-medium text-muted-foreground">
-                                    Google OAuth Client ID
-                                </label>
-                                <div className="mt-1 flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={clientId}
-                                        onChange={(e) => setClientId(e.target.value)}
-                                        placeholder="...apps.googleusercontent.com"
-                                        className="h-8 flex-1 rounded border border-input bg-background px-2 text-xs font-mono"
-                                    />
-                                    <Button
-                                        size="sm"
-                                        variant="secondary"
-                                        onClick={() => void handleSaveOAuthClientId()}
-                                        disabled={savingSettings || !clientId.trim()}
-                                    >
-                                        Simpan
-                                    </Button>
-                                </div>
-                            </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                        Berbeda dari <strong>Sync Vault</strong> (yang menyinkronkan perubahan harian), Local Snapshot membekukan kondisi penuh database saat ini untuk arsip darurat di disk atau flashdisk Anda.
+                    </p>
+                    {localFolder ? (
+                        <div className="mt-2.5 truncate rounded bg-muted/60 p-2 font-mono text-[11px] text-foreground">
+                            {localFolder}
                         </div>
+                    ) : (
+                        <p className="mt-2 text-[11px] font-medium text-amber-500">
+                            Belum ada folder Local Snapshot yang dipilih.
+                        </p>
+                    )}
 
-                        <div className="mt-3 flex items-center gap-2">
-                            {!connected || syncMode !== 'oauth' ? (
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => void handleStartOAuth()}
-                                    disabled={running || !clientId.trim()}
-                                >
-                                    {running ? 'Menghubungkan...' : '🔑 Hubungkan Akun Google'}
-                                </Button>
-                            ) : (
-                                <Button size="sm" variant="ghost" onClick={() => void handleDisconnect()} disabled={running}>
-                                    Putuskan
-                                </Button>
-                            )}
-                            {syncMode !== 'oauth' && (
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => {
-                                        setSyncMode('oauth')
-                                        void window.api.setSettings({ gdriveSyncMode: 'oauth' })
-                                    }}
-                                >
-                                    Gunakan Mode Ini
-                                </Button>
-                            )}
-                        </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void handleSelectFolder()}
+                            disabled={running}
+                        >
+                            {localFolder ? 'Ganti Folder' : 'Pilih Folder'}
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void handleRestoreBackup()}
+                            disabled={running}
+                        >
+                            Pulihkan dari Folder Lain…
+                        </Button>
                     </div>
                 </div>
 
-                {/* Tombol Eksekusi Backup & Restore Utama */}
                 <div className="mt-1 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
                     <p className="text-[11px] text-muted-foreground">
-                        Semua data tetap privat di komputer Anda. Database SQLite fisik dan screenshot dicadangkan dan dipulihkan secara instan.
+                        Seluruh arsip ditulis langsung ke penyimpanan lokal Anda tanpa koneksi internet.
                     </p>
                     <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            onClick={() => void handleRestoreBackup(localFolder || undefined)}
-                            disabled={running}
-                        >
-                            {running ? 'Memproses…' : '📥 Pulihkan Cadangan'}
-                        </Button>
+                        {localFolder && (
+                            <Button
+                                variant="outline"
+                                onClick={() => void handleRestoreBackup(localFolder)}
+                                disabled={running}
+                            >
+                                {running ? 'Memproses…' : 'Pulihkan Snapshot'}
+                            </Button>
+                        )}
                         <Button
                             variant="primary"
                             onClick={() => void handleRunBackup()}
                             disabled={running || !connected}
                         >
-                            {running ? 'Sedang Menyinkronkan…' : '🚀 Backup Sekarang'}
+                            {running ? 'Menyimpan…' : 'Buat Snapshot Sekarang'}
                         </Button>
                     </div>
                 </div>

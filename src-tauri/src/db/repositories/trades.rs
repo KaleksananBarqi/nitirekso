@@ -194,7 +194,7 @@ fn assemble_detail(trade: Trade, related: &mut RelatedData) -> TradeDetail {
 }
 
 pub fn list_trades(conn: &Connection, filter: &TradeFilter) -> Result<Vec<TradeDetail>> {
-    let mut conditions = Vec::new();
+    let mut conditions = vec!["t.deleted_at IS NULL".to_string()];
     let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
     if let Some(ref ex) = filter.exchange {
@@ -221,7 +221,15 @@ pub fn list_trades(conn: &Connection, filter: &TradeFilter) -> Result<Vec<TradeD
         params_vec.push(Box::new(st.clone()));
     }
 
-    let mut sql = format!("SELECT t.* FROM trades t {}", join_clause);
+    let mut sql = format!(
+        "SELECT t.id, t.exchange, t.external_id, t.symbol, t.direction,
+                t.entry_price, t.exit_price, t.entry_time, t.exit_time,
+                t.size, t.leverage, t.margin_mode, t.realized_pnl, t.pnl_source,
+                t.fee_open, t.fee_close, t.fee_open_maker, t.fee_close_maker,
+                t.funding_fee, t.created_at, t.updated_at
+         FROM trades t {}",
+        join_clause
+    );
     if !conditions.is_empty() {
         sql.push_str(" WHERE ");
         sql.push_str(&conditions.join(" AND "));
@@ -283,7 +291,14 @@ pub fn list_trades(conn: &Connection, filter: &TradeFilter) -> Result<Vec<TradeD
 }
 
 pub fn get_trade(conn: &Connection, id: i64) -> Result<Option<TradeDetail>> {
-    let mut stmt = conn.prepare("SELECT * FROM trades WHERE id = ?")?;
+    let mut stmt = conn.prepare(
+        "SELECT id, exchange, external_id, symbol, direction,
+                entry_price, exit_price, entry_time, exit_time,
+                size, leverage, margin_mode, realized_pnl, pnl_source,
+                fee_open, fee_close, fee_open_maker, fee_close_maker,
+                funding_fee, created_at, updated_at
+         FROM trades WHERE id = ? AND deleted_at IS NULL",
+    )?;
     let mut rows = stmt.query_map(params![id], |row| {
         Ok(Trade {
             id: row.get(0)?,
@@ -330,6 +345,12 @@ pub fn create_trade(
         .unwrap_or_default()
         .as_millis() as i64;
 
+    let clean_external_id = normalize_text(trade_input.external_id.clone());
+    let trade_uuid = match clean_external_id.as_deref() {
+        Some(ext) => crate::db::migrations::deterministic_trade_uuid(&trade_input.exchange, ext),
+        None => crate::db::migrations::random_uuid(),
+    };
+
     let tx = conn.transaction()?;
 
     tx.execute(
@@ -337,11 +358,11 @@ pub fn create_trade(
          (exchange, external_id, symbol, direction, entry_price, exit_price,
           entry_time, exit_time, size, leverage, margin_mode, realized_pnl,
           pnl_source, fee_open, fee_close, fee_open_maker, fee_close_maker,
-          funding_fee, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          funding_fee, created_at, updated_at, uuid)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params![
             trade_input.exchange,
-            normalize_text(trade_input.external_id.clone()),
+            clean_external_id,
             trade_input.symbol.trim(),
             trade_input.direction,
             trade_input.entry_price,
@@ -359,7 +380,8 @@ pub fn create_trade(
             Option::<f64>::None,
             trade_input.funding_fee,
             now,
-            now
+            now,
+            trade_uuid
         ],
     )?;
 
@@ -428,7 +450,14 @@ pub fn update_trade(
 }
 
 pub fn delete_trade(conn: &Connection, id: i64) -> Result<bool> {
-    let rows_affected = conn.execute("DELETE FROM trades WHERE id = ?", params![id])?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    let rows_affected = conn.execute(
+        "UPDATE trades SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL",
+        params![now, now, id],
+    )?;
     Ok(rows_affected > 0)
 }
 
@@ -560,7 +589,9 @@ fn write_planned_risk_tx(
 
 pub fn get_trade_meta(conn: &Connection) -> Result<TradeMeta> {
     // 1. Symbols
-    let mut stmt = conn.prepare("SELECT DISTINCT symbol FROM trades ORDER BY symbol ASC")?;
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT symbol FROM trades WHERE deleted_at IS NULL ORDER BY symbol ASC",
+    )?;
     let symbols = stmt
         .query_map([], |r| r.get::<_, String>(0))?
         .filter_map(Result::ok)
@@ -568,9 +599,10 @@ pub fn get_trade_meta(conn: &Connection) -> Result<TradeMeta> {
 
     // 2. Setup Tags
     let mut stmt = conn.prepare(
-        "SELECT DISTINCT setup_tag FROM trade_journal
-         WHERE setup_tag IS NOT NULL AND TRIM(setup_tag) <> ''
-         ORDER BY setup_tag COLLATE NOCASE",
+        "SELECT DISTINCT j.setup_tag FROM trade_journal j
+         JOIN trades t ON t.id = j.trade_id
+         WHERE t.deleted_at IS NULL AND j.setup_tag IS NOT NULL AND TRIM(j.setup_tag) <> ''
+         ORDER BY j.setup_tag COLLATE NOCASE",
     )?;
     let setup_tags = stmt
         .query_map([], |r| r.get::<_, String>(0))?
@@ -579,9 +611,10 @@ pub fn get_trade_meta(conn: &Connection) -> Result<TradeMeta> {
 
     // 3. Emotion Tags
     let mut stmt = conn.prepare(
-        "SELECT DISTINCT emotion_tag FROM trade_journal
-         WHERE emotion_tag IS NOT NULL AND TRIM(emotion_tag) <> ''
-         ORDER BY emotion_tag COLLATE NOCASE",
+        "SELECT DISTINCT j.emotion_tag FROM trade_journal j
+         JOIN trades t ON t.id = j.trade_id
+         WHERE t.deleted_at IS NULL AND j.emotion_tag IS NOT NULL AND TRIM(j.emotion_tag) <> ''
+         ORDER BY j.emotion_tag COLLATE NOCASE",
     )?;
     let emotion_tags = stmt
         .query_map([], |r| r.get::<_, String>(0))?
@@ -589,15 +622,24 @@ pub fn get_trade_meta(conn: &Connection) -> Result<TradeMeta> {
         .collect();
 
     // 4. Custom Tags
-    let mut stmt =
-        conn.prepare("SELECT DISTINCT name FROM journal_tags ORDER BY name COLLATE NOCASE")?;
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT jt2.name FROM journal_tags jt2
+         JOIN trade_journal_tags jt ON jt.tag_id = jt2.id
+         JOIN trades t ON t.id = jt.trade_id
+         WHERE t.deleted_at IS NULL
+         ORDER BY jt2.name COLLATE NOCASE",
+    )?;
     let tags = stmt
         .query_map([], |r| r.get::<_, String>(0))?
         .filter_map(Result::ok)
         .collect();
 
     // 5. Total Trades
-    let total_trades: i64 = conn.query_row("SELECT COUNT(*) FROM trades", [], |r| r.get(0))?;
+    let total_trades: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM trades WHERE deleted_at IS NULL",
+        [],
+        |r| r.get(0),
+    )?;
 
     let checklist_template = DEFAULT_CHECKLIST_TEMPLATE
         .iter()

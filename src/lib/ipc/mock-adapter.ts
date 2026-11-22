@@ -19,12 +19,17 @@ import type {
     ChecklistItem,
     CredentialSavePayload,
     CredentialStatusPayload,
+    DeviceSyncConnectPayload,
+    DeviceSyncRunResult,
+    DeviceSyncStatusPayload,
     InstallEnvironment,
     InstallKind,
     JournalAnalysisResult,
     LinuxDownloadVerificationResult,
     LinuxInstallResult,
     LogEntry,
+    MediaAssetInfo,
+    MediaUploadPayload,
     ReleaseMetadataResult,
     ScreenshotUploadPayload,
     SettingsPayload,
@@ -51,6 +56,7 @@ import {
     type AiClient,
     type AppResult,
     type BackupClient,
+    type DeviceSyncClient,
     type IpcClient,
     type MediaClient,
     type SettingsClient,
@@ -84,14 +90,21 @@ export class InMemoryMockAdapter implements IpcClient {
     }
     private backupStatusState: BackupStatusPayload = {
         connected: false,
-        email: null,
-        folder: null,
         lastBackupAt: null,
-        nextBackupAt: null,
-        syncMode: 'folder',
         localFolder: null,
-        clientIdConfigured: false,
     }
+    private deviceSyncStatusState: DeviceSyncStatusPayload = {
+        connected: false,
+        vaultPath: null,
+        deviceId: 'mock-device-id',
+        hasPassphrase: false,
+        lastSyncAt: null,
+        lastRemoteSyncAt: null,
+        pendingOpsCount: 0,
+        lastError: null,
+    }
+    private mediaAssetsState: Map<string, { info: MediaAssetInfo; dataUrl: string }> = new Map()
+    private deviceSyncListeners: Set<() => void> = new Set()
     private logsState: LogEntry[] = []
     private screenshotsState: Map<string, Uint8Array> = new Map()
     private savedVideosState: Map<string, Uint8Array> = new Map()
@@ -150,14 +163,21 @@ export class InMemoryMockAdapter implements IpcClient {
         }
         this.backupStatusState = {
             connected: false,
-            email: null,
-            folder: null,
             lastBackupAt: null,
-            nextBackupAt: null,
-            syncMode: 'folder',
             localFolder: null,
-            clientIdConfigured: false,
         }
+        this.deviceSyncStatusState = {
+            connected: false,
+            vaultPath: null,
+            deviceId: 'mock-device-id',
+            hasPassphrase: false,
+            lastSyncAt: null,
+            lastRemoteSyncAt: null,
+            pendingOpsCount: 0,
+            lastError: null,
+        }
+        this.mediaAssetsState.clear()
+        this.deviceSyncListeners.clear()
         this.logsState = []
         this.screenshotsState.clear()
         this.savedVideosState.clear()
@@ -570,6 +590,37 @@ export class InMemoryMockAdapter implements IpcClient {
             return ok('data:image/png;base64,mockScreenshotBase64')
         },
 
+        saveMediaAsset: async (payload: MediaUploadPayload): Promise<AppResult<MediaAssetInfo>> => {
+            const sha256 = `mock_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+            const ext = payload.fileName.split('.').pop()?.toLowerCase() || 'png'
+            const mime = ext === 'mp4' ? 'video/mp4' : ext === 'webm' ? 'video/webm' : `image/${ext === 'jpg' ? 'jpeg' : ext}`
+            const info: MediaAssetInfo = {
+                sha256,
+                kind: payload.kind,
+                ext,
+                mime,
+                sizeBytes: payload.data.byteLength,
+            }
+            this.mediaAssetsState.set(sha256, {
+                info,
+                dataUrl: `data:${mime};base64,bW9jay1tZWRpYS1hc3NldA==`,
+            })
+            return ok(info)
+        },
+
+        getMediaAsset: async (sha256: string): Promise<AppResult<string>> => {
+            const entry = this.mediaAssetsState.get(sha256)
+            if (!entry) {
+                return err(createAppError('MEDIA_NOT_FOUND', `Media '${sha256}' tidak ditemukan`))
+            }
+            return ok(entry.dataUrl)
+        },
+
+        deleteMediaAsset: async (sha256: string): Promise<AppResult<void>> => {
+            this.mediaAssetsState.delete(sha256)
+            return ok(undefined)
+        },
+
         remuxVideoMp4: async (
             data: Uint8Array,
             _audioData?: Uint8Array
@@ -588,7 +639,7 @@ export class InMemoryMockAdapter implements IpcClient {
     }
 
     // -----------------------------------------------------------------------
-    // Domain Backup
+    // Domain Backup (Local Snapshot)
     // -----------------------------------------------------------------------
 
     public readonly backup: BackupClient = {
@@ -610,31 +661,88 @@ export class InMemoryMockAdapter implements IpcClient {
         restore: async (folderPath?: string): Promise<AppResult<BackupRestoreResult>> => {
             return ok({
                 success: true,
-                sourcePath: folderPath ?? '/mock/backup-folder',
+                sourcePath: folderPath ?? '/mock/local-snapshot',
                 tradesCount: this.tradesState.length,
                 screenshotsRestored: this.screenshotsState.size,
-                message: 'Data cadangan berhasil dipulihkan di memori mock.',
+                message: 'Data Local Snapshot berhasil dipulihkan di memori mock.',
             })
         },
 
         disconnect: async (): Promise<AppResult<void>> => {
             this.backupStatusState.connected = false
-            this.backupStatusState.email = null
-            this.backupStatusState.folder = null
-            return ok(undefined)
-        },
-
-        startOAuth: async (_clientId?: string): Promise<AppResult<void>> => {
-            this.backupStatusState.connected = true
-            this.backupStatusState.email = 'trader@example.com'
-            this.backupStatusState.folder = 'Nitirekso Backups'
+            this.backupStatusState.localFolder = null
             return ok(undefined)
         },
 
         selectFolder: async (): Promise<AppResult<string | null>> => {
-            const selected = '/mock/google-drive-sync-folder'
+            const selected = '/mock/local-snapshot-folder'
+            this.backupStatusState.connected = true
             this.backupStatusState.localFolder = selected
             return ok(selected)
+        },
+    }
+
+    // -----------------------------------------------------------------------
+    // Domain DeviceSync (Sync Vault)
+    // -----------------------------------------------------------------------
+
+    public readonly deviceSync: DeviceSyncClient = {
+        getStatus: async (): Promise<AppResult<DeviceSyncStatusPayload>> => {
+            return ok({ ...this.deviceSyncStatusState })
+        },
+
+        selectFolder: async (): Promise<AppResult<string | null>> => {
+            return ok('/mock/nitirekso-sync-vault')
+        },
+
+        connect: async (payload: DeviceSyncConnectPayload): Promise<AppResult<DeviceSyncRunResult>> => {
+            const now = Date.now()
+            this.deviceSyncStatusState = {
+                ...this.deviceSyncStatusState,
+                connected: true,
+                vaultPath: payload.folderPath,
+                hasPassphrase: payload.passphrase.trim().length > 0,
+                lastSyncAt: now,
+                lastError: null,
+            }
+            return ok({
+                status: 'ok',
+                appliedOps: 0,
+                emittedOps: 1,
+                mediaSynced: 0,
+                credentialsSynced: 0,
+                durationMs: 25,
+            })
+        },
+
+        disconnect: async (): Promise<AppResult<void>> => {
+            this.deviceSyncStatusState = {
+                ...this.deviceSyncStatusState,
+                connected: false,
+                vaultPath: null,
+                hasPassphrase: false,
+            }
+            return ok(undefined)
+        },
+
+        run: async (): Promise<AppResult<DeviceSyncRunResult>> => {
+            const now = Date.now()
+            this.deviceSyncStatusState.lastSyncAt = now
+            return ok({
+                status: 'ok',
+                appliedOps: 0,
+                emittedOps: 0,
+                mediaSynced: 0,
+                credentialsSynced: 0,
+                durationMs: 15,
+            })
+        },
+
+        onUpdated: (callback: () => void): (() => void) => {
+            this.deviceSyncListeners.add(callback)
+            return () => {
+                this.deviceSyncListeners.delete(callback)
+            }
         },
     }
 

@@ -7,19 +7,23 @@ pub mod db;
 pub mod exchanges;
 pub mod export;
 pub mod logging;
+pub mod media;
 pub mod models;
 pub mod screenshots;
 pub mod sync;
 pub mod updater;
+pub mod vault;
 pub mod video;
 
 use commands::{
     ai::*, app_utils::*, backup::*, balances::*, credentials::*, export::*, health::*, logging::*,
-    screenshots::*, settings::*, sync::*, trades::*, video::*,
+    media::*, screenshots::*, settings::*, sync::*, trades::*, vault::*, video::*,
 };
 use db::{get_db_path, initialize_db, DbState};
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+use vault::watcher::start_watcher;
+use vault::VaultState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -51,13 +55,31 @@ pub fn run() {
 
             let db_path = get_db_path();
             log::info!("[db:init] Membuka database di: {:?}", db_path);
-            let conn = initialize_db(&db_path)
+            let mut conn = initialize_db(&db_path)
                 .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
+
+            let vault_state = VaultState::from_db(&conn, &db_path);
+            let vault_status = vault_state.get_status();
+            if vault_status.connected {
+                if let Err(err) = vault_state.run_device_sync_now(&mut conn, &db_path) {
+                    log::warn!("[device-sync] Sinkronisasi startup gagal: {}", err);
+                }
+                if let Some(vp) = vault_status.vault_path.as_deref() {
+                    let handle = start_watcher(
+                        app.handle().clone(),
+                        std::path::PathBuf::from(vp),
+                        vault_status.device_id,
+                    );
+                    *vault_state.watcher.lock().unwrap() = handle;
+                    let _ = app.handle().emit("device-sync:updated", ());
+                }
+            }
 
             app.manage(DbState {
                 conn: Mutex::new(conn),
                 db_path,
             });
+            app.manage(vault_state);
 
             log::info!("[db:init] SQLite database terinisialisasi dan siap digunakan");
             Ok(())
@@ -83,8 +105,15 @@ pub fn run() {
             run_backup,
             restore_backup,
             disconnect_backup,
-            start_backup_oauth,
             select_backup_folder,
+            get_device_sync_status,
+            select_sync_vault_folder,
+            connect_sync_vault,
+            disconnect_sync_vault,
+            run_device_sync,
+            save_media_asset,
+            get_media_asset,
+            delete_media_asset,
             get_ai_config,
             save_ai_config,
             delete_ai_config,

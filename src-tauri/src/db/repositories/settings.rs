@@ -2,7 +2,7 @@ use rusqlite::{params, Connection, Result};
 use serde_json::Value;
 
 pub fn get_all_settings(conn: &Connection) -> Result<serde_json::Map<String, Value>> {
-    let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
+    let mut stmt = conn.prepare("SELECT key, value FROM settings WHERE deleted_at IS NULL")?;
     let rows = stmt.query_map([], |row| {
         let key: String = row.get(0)?;
         let val_str: String = row.get(1)?;
@@ -21,7 +21,7 @@ pub fn get_all_settings(conn: &Connection) -> Result<serde_json::Map<String, Val
 }
 
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<Value>> {
-    let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?")?;
+    let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ? AND deleted_at IS NULL")?;
     let mut rows = stmt.query(params![key])?;
     if let Some(row) = rows.next()? {
         let val_str: String = row.get(0)?;
@@ -35,8 +35,8 @@ pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<Value>> {
 pub fn set_setting(conn: &Connection, key: &str, value: &Value) -> Result<()> {
     let val_str = serde_json::to_string(value).unwrap_or_else(|_| "null".to_string());
     conn.execute(
-        "INSERT INTO settings (key, value) VALUES (?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        "INSERT INTO settings (key, value, deleted_at) VALUES (?, ?, NULL)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, deleted_at = NULL",
         params![key, val_str],
     )?;
     Ok(())

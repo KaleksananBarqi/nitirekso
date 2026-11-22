@@ -76,7 +76,7 @@ export function ShareBrandingSettings(): React.JSX.Element {
 
     const currentTemplate = colorSchemes.find((t) => t.id === settings.bgPresetId) || colorSchemes[0]!
 
-    // Sinkronkan ke localStorage setiap ada perubahan state
+    // Sinkronkan ke Local Cache SQLite dan Sync Vault setiap ada perubahan state
     const updateSettings = (partial: Partial<ShareSettings>) => {
         setSettings((prev) => {
             const next = { ...prev, ...partial }
@@ -85,9 +85,19 @@ export function ShareBrandingSettings(): React.JSX.Element {
         })
     }
 
-    // Rehidrasi galeri wallpaper dari IndexedDB saat Settings dibuka
+    // Rehidrasi galeri wallpaper dan dengarkan pembaruan dari hidrasi / Device Sync
     useEffect(() => {
         let active = true
+        const refreshFromStore = () => {
+            if (!active) return
+            setSettings(loadShareSettings())
+            setCustomBgList(loadCustomBgList())
+            setColorSchemes(getAllBgTemplates())
+            setTemplates(getAllShareTemplates())
+            setActiveTemplateIdState(getActiveTemplateId())
+        }
+
+        window.addEventListener('share-settings:updated', refreshFromStore)
         void initIndexedDbCustomBg().then((items) => {
             if (!active) return
             setCustomBgList(items)
@@ -108,6 +118,7 @@ export function ShareBrandingSettings(): React.JSX.Element {
         })
         return () => {
             active = false
+            window.removeEventListener('share-settings:updated', refreshFromStore)
         }
     }, [])
 
@@ -214,8 +225,8 @@ export function ShareBrandingSettings(): React.JSX.Element {
             setBgFileError('Harap pilih berkas gambar (PNG, JPG, SVG, WebP) atau video (MP4, WebM).')
             return
         }
-        if (file.size > 25 * 1024 * 1024) {
-            setBgFileError('Ukuran berkas maksimal 25MB.')
+        if (file.size > 15 * 1024 * 1024) {
+            setBgFileError('Ukuran berkas maksimal 15MB.')
             return
         }
 

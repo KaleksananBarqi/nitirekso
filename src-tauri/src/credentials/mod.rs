@@ -292,83 +292,26 @@ pub fn get_ai_key_hint() -> Option<String> {
     Some(stored.key_hint)
 }
 
-// ---------------------------------------------------------------------------
-// Google Drive Token Keystore (OAuth token)
-// ---------------------------------------------------------------------------
-
-const GDRIVE_CREDENTIAL_NAME: &str = "gdrive_oauth";
-
-pub fn save_gdrive_token(token_json: &str) -> Result<(), String> {
-    let trimmed = token_json.trim();
-    if trimmed.is_empty() {
-        return Err("Token Google Drive tidak boleh kosong".to_string());
-    }
-
-    let cipher_key = derive_key();
-    let cipher = Aes256Gcm::new_from_slice(&cipher_key)
-        .map_err(|e| format!("Inisialisasi AES gagal: {}", e))?;
-
-    let mut nonce_bytes = [0u8; 12];
-    rand::thread_rng().fill(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
-
-    let ciphertext = cipher
-        .encrypt(nonce, trimmed.as_bytes())
-        .map_err(|e| format!("Enkripsi gagal: {}", e))?;
-
-    let mut combined = nonce_bytes.to_vec();
-    combined.extend_from_slice(&ciphertext);
-    let payload = BASE64.encode(combined);
-
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as i64;
-
-    let stored = StoredCredentialFile {
-        payload,
-        updated_at: now,
-        key_hint: "gdrive_token".to_string(),
-    };
-
-    let json_content = serde_json::to_string_pretty(&stored)
-        .map_err(|e| format!("Serialisasi file gagal: {}", e))?;
-
-    let path = credential_path(GDRIVE_CREDENTIAL_NAME);
-    fs::write(&path, json_content)
-        .map_err(|e| format!("Gagal menyimpan token Google Drive: {}", e))?;
-
-    log::info!("[keystore] Token Google Drive berhasil disimpan");
-    Ok(())
-}
-
-pub fn load_gdrive_token() -> Option<String> {
-    let path = credential_path(GDRIVE_CREDENTIAL_NAME);
+/// Membaca kredensial exchange beserta timestamp pembaruannya untuk kebutuhan bootstrap Device Sync.
+pub fn load_credentials_with_meta(exchange: &str) -> Option<(ExchangeCredentials, i64, String)> {
+    let path = credential_path(exchange);
     if !path.exists() {
         return None;
     }
-
     let content = fs::read_to_string(&path).ok()?;
     let stored = serde_json::from_str::<StoredCredentialFile>(&content).ok()?;
-    let raw_bytes = BASE64.decode(stored.payload).ok()?;
-
-    if raw_bytes.len() < 12 {
-        return None;
-    }
-
-    let (nonce_bytes, ciphertext) = raw_bytes.split_at(12);
-    let cipher_key = derive_key();
-    let cipher = Aes256Gcm::new_from_slice(&cipher_key).ok()?;
-    let nonce = Nonce::from_slice(nonce_bytes);
-
-    let decrypted = cipher.decrypt(nonce, ciphertext).ok()?;
-    String::from_utf8(decrypted).ok()
+    let creds = load_credentials(exchange)?;
+    Some((creds, stored.updated_at, stored.key_hint))
 }
 
-pub fn delete_gdrive_token() -> Result<(), String> {
-    let path = credential_path(GDRIVE_CREDENTIAL_NAME);
-    if path.exists() {
-        fs::remove_file(path).map_err(|e| format!("Gagal menghapus token Google Drive: {}", e))?;
+/// Membaca AI API key beserta timestamp pembaruannya untuk kebutuhan bootstrap Device Sync.
+pub fn load_ai_api_key_with_meta() -> Option<(String, i64, String)> {
+    let path = credential_path(AI_CREDENTIAL_NAME);
+    if !path.exists() {
+        return None;
     }
-    Ok(())
+    let content = fs::read_to_string(&path).ok()?;
+    let stored = serde_json::from_str::<StoredCredentialFile>(&content).ok()?;
+    let key = load_ai_api_key()?;
+    Some((key, stored.updated_at, stored.key_hint))
 }

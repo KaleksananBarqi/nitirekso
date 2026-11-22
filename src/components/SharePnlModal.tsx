@@ -284,18 +284,18 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
             )
             return
         }
-        if (file.size > 25 * 1024 * 1024) {
+        if (file.size > 15 * 1024 * 1024) {
             const sizeMb = (file.size / (1024 * 1024)).toFixed(2)
             logSharePnlError(
                 SharePnlErrorCode.UPLOAD_FILE_SIZE_EXCEEDED,
-                `Ukuran berkas "${file.name}" sebesar ${sizeMb}MB melebihi batas 25MB`,
+                `Ukuran berkas "${file.name}" sebesar ${sizeMb}MB melebihi batas 15MB`,
                 { name: file.name, size: file.size },
                 'WARN'
             )
             setUploadBgError(
                 getSharePnlUserMessage(
                     SharePnlErrorCode.UPLOAD_FILE_SIZE_EXCEEDED,
-                    `Ukuran berkas (${sizeMb}MB) melebihi batas maksimal 25MB.`
+                    `Ukuran berkas (${sizeMb}MB) melebihi batas maksimal 15MB.`
                 )
             )
             return

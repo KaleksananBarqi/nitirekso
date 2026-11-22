@@ -303,7 +303,7 @@ describe('InMemoryMockAdapter', () => {
             expect(mock.getSavedVideo('export.mp4')).toEqual(testBytes)
         })
 
-        it('menguji alur backup dan pemulihan', async () => {
+        it('menguji alur Local Snapshot dan Device Sync', async () => {
             const status = await mock.backup.getStatus()
             expect(status.ok).toBe(true)
 
@@ -314,6 +314,18 @@ describe('InMemoryMockAdapter', () => {
             expect(restore.ok).toBe(true)
             if (restore.ok) {
                 expect(restore.data.success).toBe(true)
+            }
+
+            const vaultConnect = await mock.deviceSync.connect({
+                folderPath: '/mock/sync-vault',
+                passphrase: 'vault-passphrase-aman',
+            })
+            expect(vaultConnect.ok).toBe(true)
+            const vaultStatus = await mock.deviceSync.getStatus()
+            expect(vaultStatus.ok).toBe(true)
+            if (vaultStatus.ok) {
+                expect(vaultStatus.data.connected).toBe(true)
+                expect(vaultStatus.data.hasPassphrase).toBe(true)
             }
         })
 

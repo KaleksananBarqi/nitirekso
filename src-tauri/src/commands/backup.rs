@@ -1,12 +1,10 @@
 use crate::backup::{
     disconnect_backup as bk_disconnect, execute_backup, get_backup_status as bk_get_status,
-    prepare_backup_context, restore_backup_from_path, select_local_folder,
-    start_backup_oauth as bk_start_oauth, BackupRestoreResult, BackupRunResult, BackupStatusPayload,
+    prepare_backup_context, record_last_snapshot_at, restore_backup_from_path,
+    save_local_snapshot_folder, BackupRestoreResult, BackupRunResult, BackupStatusPayload,
 };
-use crate::db::repositories::settings::set_setting;
 use crate::db::DbState;
 use crate::models::MutationResult;
-use serde_json::json;
 use tauri::State;
 
 #[tauri::command]
@@ -26,22 +24,24 @@ pub fn disconnect_backup(db: State<'_, DbState>) -> MutationResult<()> {
 
 #[tauri::command]
 pub fn select_backup_folder(db: State<'_, DbState>) -> MutationResult<Option<String>> {
-    let conn = db.conn.lock().unwrap();
-    match select_local_folder(&conn) {
-        Ok(opt) => MutationResult::success(opt),
-        Err(e) => MutationResult::fail(e),
-    }
-}
+    // Dialog pemilih folder dijalankan di luar kunci mutex database
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let picked = rfd::FileDialog::new()
+        .set_title("Pilih Folder Local Snapshot nitirekso")
+        .pick_folder();
 
-#[tauri::command]
-pub async fn start_backup_oauth(
-    db: State<'_, DbState>,
-    client_id: Option<String>,
-) -> Result<MutationResult<()>, ()> {
-    let db_path = db.db_path.clone();
-    match bk_start_oauth(db_path, client_id).await {
-        Ok(_) => Ok(MutationResult::ok_unit()),
-        Err(e) => Ok(MutationResult::fail(e)),
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let picked: Option<std::path::PathBuf> = None;
+
+    if let Some(folder_path) = picked {
+        let chosen = folder_path.to_string_lossy().to_string();
+        let conn = db.conn.lock().unwrap();
+        match save_local_snapshot_folder(&conn, &chosen) {
+            Ok(_) => MutationResult::success(Some(chosen)),
+            Err(e) => MutationResult::fail(e),
+        }
+    } else {
+        MutationResult::success(None)
     }
 }
 
@@ -49,7 +49,6 @@ pub async fn start_backup_oauth(
 pub async fn run_backup(
     db: State<'_, DbState>,
 ) -> Result<MutationResult<BackupRunResult>, ()> {
-    // 1. Ekstrak snapshot & kredensial secara synchronous tanpa menahan database lock lama-lama
     let ctx = {
         let conn = db.conn.lock().unwrap();
         match prepare_backup_context(&conn, &db.db_path) {
@@ -59,20 +58,14 @@ pub async fn run_backup(
     };
 
     let now_ms = ctx.now_ms;
-
-    // 2. Jalankan proses upload file / Google Drive secara async
-    let (run_result, cloud_folder_id) = match execute_backup(ctx).await {
+    let run_result = match execute_backup(ctx).await {
         Ok(res) => res,
         Err(e) => return Ok(MutationResult::fail(e)),
     };
 
-    // 3. Simpan timestamp backup terakhir dan folder ID ke database
     {
         let conn = db.conn.lock().unwrap();
-        let _ = set_setting(&conn, "gdriveLastBackupAt", &json!(now_ms));
-        if let Some(folder_id) = cloud_folder_id {
-            let _ = set_setting(&conn, "gdriveFolderId", &json!(folder_id));
-        }
+        let _ = record_last_snapshot_at(&conn, now_ms);
     }
 
     Ok(MutationResult::success(run_result))
@@ -86,10 +79,24 @@ pub fn restore_backup(
     let chosen_path = match folder_path {
         Some(s) if !s.trim().is_empty() => std::path::PathBuf::from(s.trim()),
         _ => {
-            let dialog = rfd::FileDialog::new().set_title("Pilih Folder Cadangan nitirekso");
-            match dialog.pick_folder() {
-                Some(p) => p,
-                None => return MutationResult::fail("Pemilihan folder cadangan dibatalkan oleh pengguna.".to_string()),
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            {
+                let dialog =
+                    rfd::FileDialog::new().set_title("Pilih Folder Local Snapshot nitirekso");
+                match dialog.pick_folder() {
+                    Some(p) => p,
+                    None => {
+                        return MutationResult::fail(
+                            "Pemilihan folder cadangan dibatalkan oleh pengguna.".to_string(),
+                        )
+                    }
+                }
+            }
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            {
+                return MutationResult::fail(
+                    "Path folder cadangan harus disediakan pada platform mobile.".to_string(),
+                );
             }
         }
     };

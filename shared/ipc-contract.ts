@@ -42,12 +42,23 @@ export const IPC_CHANNELS = {
     // --- Ekspor (fitur 4) ---
     exportJournal: 'journal:export',
 
-    // --- Backup Google Drive (fitur 5) ---
+    // --- Local Snapshot (Cadangan Folder Lokal) ---
     backupStatus: 'backup:status',
     backupRun: 'backup:run',
     backupDisconnect: 'backup:disconnect',
-    backupStartOAuth: 'backup:startOAuth',
     backupSelectFolder: 'backup:selectFolder',
+
+    // --- Device Sync (Sync Vault) ---
+    deviceSyncStatus: 'deviceSync:status',
+    deviceSyncSelectFolder: 'deviceSync:selectFolder',
+    deviceSyncConnect: 'deviceSync:connect',
+    deviceSyncDisconnect: 'deviceSync:disconnect',
+    deviceSyncRun: 'deviceSync:run',
+
+    // --- Media Content-Addressed ---
+    mediaSaveAsset: 'media:saveAsset',
+    mediaGetAsset: 'media:getAsset',
+    mediaDeleteAsset: 'media:deleteAsset',
 
     // --- Saldo Exchange ---
     balanceGet: 'balance:get',
@@ -78,20 +89,57 @@ export const IPC_CHANNELS = {
 /** Exchange yang bisa disinkronkan. */
 export type SyncableExchange = 'mexc' | 'bitunix' | 'bybit' | 'binance' | 'bingx'
 
-// --- Backup Google Drive (fitur 5) ---
+// --- Local Snapshot (Cadangan Folder Lokal) ---
 
 export interface BackupStatusPayload {
     connected: boolean
-    email: string | null
-    folder: string | null
     lastBackupAt: number | null
-    nextBackupAt: number | null
-    /** Mode backup yang aktif: 'folder' (Google Drive desktop) atau 'oauth' (direct cloud). */
-    syncMode?: 'folder' | 'oauth'
-    /** Lokasi folder sinkronisasi lokal Google Drive (jika ada). */
-    localFolder?: string | null
-    /** Apakah Client ID OAuth sudah terisi di konfigurasi. */
-    clientIdConfigured?: boolean
+    /** Lokasi folder Local Snapshot lokal (jika ada). */
+    localFolder: string | null
+}
+
+// --- Device Sync (Sync Vault) ---
+
+export interface DeviceSyncStatusPayload {
+    connected: boolean
+    vaultPath: string | null
+    deviceId: string
+    hasPassphrase: boolean
+    lastSyncAt: number | null
+    lastRemoteSyncAt: number | null
+    pendingOpsCount: number
+    lastError: string | null
+}
+
+export interface DeviceSyncConnectPayload {
+    folderPath: string
+    passphrase: string
+}
+
+export interface DeviceSyncRunResult {
+    status: 'ok' | 'skipped' | 'error'
+    appliedOps: number
+    emittedOps: number
+    mediaSynced: number
+    credentialsSynced: number
+    durationMs: number
+    error?: string
+}
+
+export type MediaAssetKind = 'screenshot' | 'share_media' | 'exchange_logo'
+
+export interface MediaUploadPayload {
+    kind: MediaAssetKind
+    fileName: string
+    data: Uint8Array
+}
+
+export interface MediaAssetInfo {
+    sha256: string
+    kind: MediaAssetKind
+    ext: string
+    mime: string
+    sizeBytes: number
 }
 
 export interface BackupRunResult {
@@ -263,12 +311,6 @@ export interface SettingsPayload {
     aiModel?: string
     /** Base URL provider OpenAI-compatible (fitur 6). */
     aiBaseUrl?: string
-    /** Client ID Google Cloud OAuth (fitur 5). */
-    gdriveClientId?: string
-    /** Path folder lokal Google Drive (fitur 5). */
-    gdriveLocalFolder?: string
-    /** Mode sinkronisasi Google Drive: 'folder' | 'oauth' */
-    gdriveSyncMode?: 'folder' | 'oauth'
     /** Versi rilis pembaruan yang diabaikan pengguna (disimpan di SQLite). */
     dismissedUpdateVersion?: string | null
     [key: string]: unknown
@@ -399,17 +441,27 @@ export interface PreloadApi {
     // --- Ekspor (fitur 4) ---
     exportJournal(format: 'csv' | 'json' | 'pdf', filter?: TradeFilterPayload): Promise<MutationResult<string>>
 
-    // --- Backup Google Drive (fitur 5) ---
+    // --- Local Snapshot (Cadangan Folder Lokal) ---
     getBackupStatus(): Promise<BackupStatusPayload>
     runBackup(): Promise<MutationResult<BackupRunResult>>
     restoreBackup(folderPath?: string): Promise<MutationResult<BackupRestoreResult>>
     disconnectBackup(): Promise<MutationResult<void>>
-    startBackupOAuth(clientId?: string): Promise<MutationResult<void>>
     selectBackupFolder(): Promise<MutationResult<string | null>>
 
-    // --- Screenshot (fitur 1) ---
+    // --- Device Sync (Sync Vault) ---
+    getDeviceSyncStatus(): Promise<DeviceSyncStatusPayload>
+    selectSyncVaultFolder(): Promise<MutationResult<string | null>>
+    connectSyncVault(payload: DeviceSyncConnectPayload): Promise<MutationResult<DeviceSyncRunResult>>
+    disconnectSyncVault(): Promise<MutationResult<void>>
+    runDeviceSync(): Promise<MutationResult<DeviceSyncRunResult>>
+    onDeviceSyncUpdated(callback: () => void): () => void
+
+    // --- Screenshot & Media Content-Addressed ---
     uploadScreenshot(payload: ScreenshotUploadPayload): Promise<MutationResult<string>>
     getScreenshot(relPath: string): Promise<MutationResult<string>>
+    saveMediaAsset(payload: MediaUploadPayload): Promise<MutationResult<MediaAssetInfo>>
+    getMediaAsset(sha256: string): Promise<MutationResult<string>>
+    deleteMediaAsset(sha256: string): Promise<MutationResult<void>>
 
     // --- AI Insights (fitur 6) ---
     getAiConfig(): Promise<AiConfigStatus>

@@ -1,8 +1,9 @@
 /**
  * Pengelola Skema Warna Kustom (Personalized Color Scheme).
  *
- * Mengizinkan pengguna membuat, menamai, menyimpan, dan menerapkan skema warna
- * kustom (Primary, Profit, Loss, Background, Card) secara dinamis ke variabel CSS.
+ * Menyimpan state skema warna ke SQLite `settings` via IPC (key: `customColorSchemes`
+ * dan `activeCustomColorSchemeId`) agar ikut tersinkron melalui Sync Vault,
+ * dengan cache in-memory untuk akses sinkron dari komponen UI.
  */
 
 export interface CustomColorScheme {
@@ -17,8 +18,11 @@ export interface CustomColorScheme {
     isBuiltin?: boolean
 }
 
-const STORAGE_KEY = 'nitirekso_custom_color_schemes'
-const ACTIVE_SCHEME_KEY = 'nitirekso_active_custom_color_scheme_id'
+export const LEGACY_CUSTOM_SCHEMES_KEY = 'nitirekso_custom_color_schemes'
+export const LEGACY_ACTIVE_SCHEME_KEY = 'nitirekso_active_custom_color_scheme_id'
+
+let memoryCustomSchemes: CustomColorScheme[] = []
+let memoryActiveSchemeId: string | null = null
 
 export const BUILTIN_SCHEMES: CustomColorScheme[] = [
     {
@@ -67,25 +71,73 @@ export const BUILTIN_SCHEMES: CustomColorScheme[] = [
     }
 ]
 
-/**
- * Muat semua skema warna (preset bawaan + kustom buatan user).
- */
-export function loadAllColorSchemes(): CustomColorScheme[] {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY)
-        const custom: CustomColorScheme[] = raw ? JSON.parse(raw) : []
-        return [...BUILTIN_SCHEMES, ...custom]
-    } catch {
-        return [...BUILTIN_SCHEMES]
+function persistThemesToBackend(payload: {
+    customColorSchemes?: CustomColorScheme[]
+    activeCustomColorSchemeId?: string | null
+}): void {
+    if (typeof window !== 'undefined' && window.api?.setSettings) {
+        void window.api.setSettings(payload).catch(() => {
+            // Abaikan error IPC sementara agar interaksi UI tetap responsif
+        })
+    }
+}
+
+function notifyThemesUpdated(): void {
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        try {
+            window.dispatchEvent(new CustomEvent('custom-themes:updated'))
+        } catch {
+            // Abaikan pada environment non-DOM
+        }
     }
 }
 
 /**
- * Simpan daftar skema kustom buatan user.
+ * Menghidrasi cache skema warna dari objek `settings` SQLite dan menerapkannya ke DOM.
+ */
+export function hydrateCustomThemesFromSettings(settings: Record<string, unknown>): void {
+    if (Array.isArray(settings.customColorSchemes)) {
+        memoryCustomSchemes = (settings.customColorSchemes as CustomColorScheme[]).filter(
+            (s) => s && !s.isBuiltin && typeof s.id === 'string'
+        )
+    }
+
+    if (typeof settings.activeCustomColorSchemeId === 'string' && settings.activeCustomColorSchemeId) {
+        memoryActiveSchemeId = settings.activeCustomColorSchemeId
+    } else if (settings.activeCustomColorSchemeId === null) {
+        memoryActiveSchemeId = null
+    }
+
+    if (typeof document !== 'undefined') {
+        const active = memoryActiveSchemeId
+            ? loadAllColorSchemes().find((s) => s.id === memoryActiveSchemeId) || null
+            : null
+        applyColorSchemeToDom(active)
+    }
+    notifyThemesUpdated()
+}
+
+/** Reset state memori khusus pengujian unit. */
+export function _resetCustomThemesForTesting(): void {
+    memoryCustomSchemes = []
+    memoryActiveSchemeId = null
+}
+
+/**
+ * Muat semua skema warna (preset bawaan + kustom buatan user).
+ */
+export function loadAllColorSchemes(): CustomColorScheme[] {
+    return [...BUILTIN_SCHEMES, ...memoryCustomSchemes]
+}
+
+/**
+ * Simpan daftar skema kustom buatan user ke Local Cache SQLite.
  */
 export function saveCustomSchemes(customSchemes: CustomColorScheme[]): void {
     const onlyCustom = customSchemes.filter((s) => !s.isBuiltin)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(onlyCustom))
+    memoryCustomSchemes = onlyCustom
+    persistThemesToBackend({ customColorSchemes: onlyCustom })
+    notifyThemesUpdated()
 }
 
 /**
@@ -102,8 +154,7 @@ export function addCustomColorScheme(
         isBuiltin: false
     }
 
-    const all = loadAllColorSchemes()
-    const nextCustom = [...all.filter((s) => !s.isBuiltin), newScheme]
+    const nextCustom = [...memoryCustomSchemes, newScheme]
     saveCustomSchemes(nextCustom)
     return newScheme
 }
@@ -112,8 +163,7 @@ export function addCustomColorScheme(
  * Hapus skema kustom buatan user berdasarkan ID.
  */
 export function deleteCustomColorScheme(id: string): void {
-    const all = loadAllColorSchemes()
-    const nextCustom = all.filter((s) => !s.isBuiltin && s.id !== id)
+    const nextCustom = memoryCustomSchemes.filter((s) => s.id !== id)
     saveCustomSchemes(nextCustom)
 
     if (getActiveCustomSchemeId() === id) {
@@ -128,8 +178,8 @@ export function updateCustomColorScheme(
     id: string,
     data: Partial<Omit<CustomColorScheme, 'id' | 'createdAt' | 'isBuiltin'>>
 ): CustomColorScheme | null {
-    const all = loadAllColorSchemes()
-    const target = all.find((s) => !s.isBuiltin && s.id === id)
+    const nextList = memoryCustomSchemes.map((s) => ({ ...s }))
+    const target = nextList.find((s) => !s.isBuiltin && s.id === id)
     if (!target) return null
 
     if (data.name !== undefined) target.name = data.name.trim() || target.name
@@ -139,9 +189,9 @@ export function updateCustomColorScheme(
     if (data.background !== undefined) target.background = data.background
     if (data.card !== undefined) target.card = data.card
 
-    saveCustomSchemes(all.filter((s) => !s.isBuiltin))
+    saveCustomSchemes(nextList)
 
-    if (getActiveCustomSchemeId() === id) {
+    if (getActiveCustomSchemeId() === id && typeof document !== 'undefined') {
         applyColorSchemeToDom(target)
     }
     return target
@@ -151,27 +201,30 @@ export function updateCustomColorScheme(
  * Ambil ID skema kustom yang sedang aktif.
  */
 export function getActiveCustomSchemeId(): string | null {
-    return localStorage.getItem(ACTIVE_SCHEME_KEY) || null
+    return memoryActiveSchemeId
 }
 
 /**
  * Simpan ID skema aktif dan terapkan ke DOM.
  */
 export function setActiveCustomSchemeId(id: string | null): void {
-    if (id) {
-        localStorage.setItem(ACTIVE_SCHEME_KEY, id)
-        const scheme = loadAllColorSchemes().find((s) => s.id === id) || null
+    memoryActiveSchemeId = id || null
+    persistThemesToBackend({ activeCustomColorSchemeId: memoryActiveSchemeId })
+
+    if (typeof document !== 'undefined') {
+        const scheme = memoryActiveSchemeId
+            ? loadAllColorSchemes().find((s) => s.id === memoryActiveSchemeId) || null
+            : null
         applyColorSchemeToDom(scheme)
-    } else {
-        localStorage.removeItem(ACTIVE_SCHEME_KEY)
-        applyColorSchemeToDom(null)
     }
+    notifyThemesUpdated()
 }
 
 /**
  * Injeksi variabel CSS langsung ke root document.
  */
 export function applyColorSchemeToDom(scheme: CustomColorScheme | null): void {
+    if (typeof document === 'undefined') return
     const root = document.documentElement
 
     if (!scheme) {

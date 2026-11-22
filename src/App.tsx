@@ -8,7 +8,9 @@ import { useTheme } from './hooks/useTheme'
 import { useTrades } from './hooks/useTrades'
 import { useHidePnl } from './hooks/useHidePnl'
 import { useAppUpdater } from './hooks/useAppUpdater'
-import { initIndexedDbCustomBg } from './lib/shareSettings'
+import { hydrateCustomThemesFromSettings } from './lib/customThemes'
+import { hydrateShareSettingsFromBackend } from './lib/shareSettings'
+import { migrateLegacyWebStorageIfNeeded } from './lib/storageMigration'
 import { getUpdatePillContent } from './lib/update/updateHelpers'
 import { updateService } from './lib/update/updateService'
 import { Analytics } from './routes/Analytics'
@@ -43,10 +45,24 @@ export default function App(): React.JSX.Element {
     const updaterState = useAppUpdater()
     const updatePill = useMemo(() => getUpdatePillContent(updaterState), [updaterState])
 
-    // Ambil path DB, pasang listener error global, dan jalankan sinkron otomatis saat buka app.
+    // Hidrasi pengaturan & media dari Local Cache SQLite, migrasi satu kali, dan dengarkan Device Sync.
     useEffect(() => {
-        // Warm-up rehidrasi galeri background PnL dari IndexedDB sejak awal aplikasi dibuka
-        void initIndexedDbCustomBg()
+        let isMounted = true
+
+        const hydrateAllSettings = async () => {
+            try {
+                if (!window.api?.getSettings) return
+                const rawSettings = await window.api.getSettings()
+                const migratedSettings = await migrateLegacyWebStorageIfNeeded(rawSettings)
+                if (!isMounted) return
+                hydrateCustomThemesFromSettings(migratedSettings)
+                await hydrateShareSettingsFromBackend(migratedSettings)
+            } catch {
+                // Tidak fatal bila IPC belum siap
+            }
+        }
+
+        void hydrateAllSettings()
 
         // Inisialisasi Hybrid In-App Updater: silent check setelah 3 detik + berkala tiap 6 jam
         void updateService.init()
@@ -56,6 +72,7 @@ export default function App(): React.JSX.Element {
         const periodicUpdateTimer = window.setInterval(() => {
             void updateService.checkForUpdates({ silent: true })
         }, 6 * 60 * 60 * 1000)
+
         window.api
             .getAppHealth()
             .then((health) => {
@@ -74,8 +91,33 @@ export default function App(): React.JSX.Element {
         window.addEventListener('error', handleGlobalError)
         window.addEventListener('unhandledrejection', handleUnhandledRejection)
 
-        // --- Sinkron Otomatis Saat Pertama Kali Buka App ---
-        let isMounted = true
+        // Dengarkan pembaruan dari Sync Vault (file watcher / manual sync / connect)
+        const unlistenDeviceSync = window.api.onDeviceSyncUpdated?.(() => {
+            void reload()
+            void hydrateAllSettings()
+        })
+
+        // Pull ringan saat jendela kembali aktif (throttled minimal 5 detik)
+        let lastFocusSyncAt = 0
+        const handleWindowFocus = () => {
+            const now = Date.now()
+            if (now - lastFocusSyncAt < 5000) return
+            lastFocusSyncAt = now
+            if (!window.api?.runDeviceSync) return
+            void window.api.runDeviceSync().then((res) => {
+                if (
+                    res.ok &&
+                    res.data &&
+                    (res.data.appliedOps > 0 || res.data.mediaSynced > 0 || res.data.credentialsSynced > 0)
+                ) {
+                    void reload()
+                    void hydrateAllSettings()
+                }
+            })
+        }
+        window.addEventListener('focus', handleWindowFocus)
+
+        // --- Sinkron Exchange Otomatis Saat Pertama Kali Buka App ---
         const triggerStartupSync = async () => {
             try {
                 const statuses = await window.api.getCredentialStatuses()
@@ -110,10 +152,12 @@ export default function App(): React.JSX.Element {
 
         return () => {
             isMounted = false
+            if (unlistenDeviceSync) unlistenDeviceSync()
             window.clearTimeout(initialUpdateTimer)
             window.clearInterval(periodicUpdateTimer)
             window.removeEventListener('error', handleGlobalError)
             window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+            window.removeEventListener('focus', handleWindowFocus)
             window.removeEventListener('app:sync-complete', handleGlobalSyncComplete)
         }
     }, [reload])
@@ -123,7 +167,6 @@ export default function App(): React.JSX.Element {
     // Shortcut Navigasi Keyboard (Ctrl+1 s/d Ctrl+6)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Hindari memicu shortcut saat user sedang mengetik di input / textarea
             const target = e.target as HTMLElement | null
             if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
                 return
@@ -224,8 +267,6 @@ export default function App(): React.JSX.Element {
                         {error ? 'error' : loading ? 'memuat' : 'siap'}
                     </span>
                 </div>
-                {/* Tombol sync tersedia dari mana saja, bukan hanya di Settings —
-              supaya user tidak perlu berpindah halaman untuk menarik data baru. */}
                 <div className="my-1">
                     <SyncPanel variant="compact" onSyncComplete={reload} />
                 </div>

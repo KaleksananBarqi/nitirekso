@@ -18,12 +18,17 @@ import type {
     BtcKlinePoint,
     CredentialSavePayload,
     CredentialStatusPayload,
+    DeviceSyncConnectPayload,
+    DeviceSyncRunResult,
+    DeviceSyncStatusPayload,
     InstallEnvironment,
     InstallKind,
     JournalAnalysisResult,
     LinuxDownloadVerificationResult,
     LinuxInstallResult,
     LogEntry,
+    MediaAssetInfo,
+    MediaUploadPayload,
     ReleaseMetadataResult,
     ScreenshotUploadPayload,
     SettingsPayload,
@@ -51,12 +56,17 @@ export type {
     BtcKlinePoint,
     CredentialSavePayload,
     CredentialStatusPayload,
+    DeviceSyncConnectPayload,
+    DeviceSyncRunResult,
+    DeviceSyncStatusPayload,
     InstallEnvironment,
     InstallKind,
     JournalAnalysisResult,
     LinuxDownloadVerificationResult,
     LinuxInstallResult,
     LogEntry,
+    MediaAssetInfo,
+    MediaUploadPayload,
     ReleaseMetadataResult,
     ScreenshotUploadPayload,
     SettingsPayload,
@@ -206,6 +216,12 @@ export interface MediaClient {
     uploadScreenshot(payload: ScreenshotUploadPayload): Promise<AppResult<string>>
     /** Mengambil tangkapan layar sebagai Data URL / Blob URL berdasarkan path relatif. */
     getScreenshot(relPath: string): Promise<AppResult<string>>
+    /** Menyimpan aset media content-addressed ke Local Cache dan Sync Vault. */
+    saveMediaAsset(payload: MediaUploadPayload): Promise<AppResult<MediaAssetInfo>>
+    /** Membaca aset media berdasarkan hash SHA-256 sebagai Data URL. */
+    getMediaAsset(sha256: string): Promise<AppResult<string>>
+    /** Menghapus aset media (soft-delete) berdasarkan hash SHA-256. */
+    deleteMediaAsset(sha256: string): Promise<AppResult<void>>
     /** Remuxing fragmen MP4 menjadi format MP4 linier standar dengan faststart. */
     remuxVideoMp4(data: Uint8Array, audioData?: Uint8Array): Promise<AppResult<Uint8Array>>
     /** Menampilkan dialog penyimpanan berkas native untuk menyimpan file video ke disk pengguna. */
@@ -213,21 +229,37 @@ export interface MediaClient {
 }
 
 /**
- * Domain Backup: Pencadangan otomatis dan pemulihan data ke folder lokal / Google Drive.
+ * Domain Backup: Pencadangan dan pemulihan Local Snapshot ke folder lokal perangkat.
  */
 export interface BackupClient {
-    /** Mengambil status koneksi cadangan dan jadwal sinkronisasi. */
+    /** Mengambil status folder Local Snapshot dan waktu pencadangan terakhir. */
     getStatus(): Promise<AppResult<BackupStatusPayload>>
-    /** Menjalankan pencadangan data ke penyimpanan cadangan aktif. */
+    /** Menjalankan pencadangan Local Snapshot ke folder lokal aktif. */
     run(): Promise<AppResult<BackupRunResult>>
-    /** Memulihkan data dari folder cadangan lokal. */
+    /** Memulihkan data dari folder Local Snapshot lokal. */
     restore(folderPath?: string): Promise<AppResult<BackupRestoreResult>>
-    /** Memutus integrasi cadangan cloud. */
+    /** Melepas tautan folder Local Snapshot lokal. */
     disconnect(): Promise<AppResult<void>>
-    /** Memulai alur autentikasi OAuth Google Drive. */
-    startOAuth(clientId?: string): Promise<AppResult<void>>
-    /** Menampilkan dialog pemilih folder direktori cadangan lokal. */
+    /** Menampilkan dialog pemilih folder direktori Local Snapshot lokal. */
     selectFolder(): Promise<AppResult<string | null>>
+}
+
+/**
+ * Domain DeviceSync: Sinkronisasi antar-perangkat melalui Sync Vault lokal (Syncthing-ready).
+ */
+export interface DeviceSyncClient {
+    /** Mengambil status Sync Vault saat ini. */
+    getStatus(): Promise<AppResult<DeviceSyncStatusPayload>>
+    /** Menampilkan dialog pemilih folder untuk Sync Vault. */
+    selectFolder(): Promise<AppResult<string | null>>
+    /** Menghubungkan Sync Vault beserta Vault Passphrase. */
+    connect(payload: DeviceSyncConnectPayload): Promise<AppResult<DeviceSyncRunResult>>
+    /** Memutus koneksi Sync Vault pada perangkat ini. */
+    disconnect(): Promise<AppResult<void>>
+    /** Menjalankan sinkronisasi Sync Vault secara manual. */
+    run(): Promise<AppResult<DeviceSyncRunResult>>
+    /** Mendengarkan event pembaruan data dari Sync Vault. */
+    onUpdated(callback: () => void): () => void
 }
 
 /**
@@ -302,6 +334,7 @@ export interface IpcClient {
     readonly sync: SyncClient
     readonly media: MediaClient
     readonly backup: BackupClient
+    readonly deviceSync: DeviceSyncClient
     readonly ai: AiClient
     readonly system: SystemClient
 }

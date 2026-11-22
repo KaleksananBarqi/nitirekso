@@ -205,8 +205,8 @@ function ShareAnalyticsModalContent({
             setUploadBgError('Harap pilih berkas gambar (PNG, JPG, WebP, atau SVG).')
             return
         }
-        if (file.size > 25 * 1024 * 1024) {
-            setUploadBgError('Ukuran gambar maksimal 25MB.')
+        if (file.size > 15 * 1024 * 1024) {
+            setUploadBgError('Ukuran gambar maksimal 15MB.')
             return
         }
         try {
