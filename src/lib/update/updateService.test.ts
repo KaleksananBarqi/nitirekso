@@ -47,6 +47,11 @@ const SAMPLE_ASSETS: ReleaseAssetInfo[] = [
         downloadUrl: 'https://github.com/KaleksananBarqi/nitirekso/releases/download/v1.9.1/nitirekso_1.9.1_x64_en-US.msi',
         size: 6_800_000,
     },
+    {
+        name: 'nitirekso_1.9.1_arm64-v8a.apk',
+        downloadUrl: 'https://github.com/KaleksananBarqi/nitirekso/releases/download/v1.9.1/nitirekso_1.9.1_arm64-v8a.apk',
+        size: 24_500_000,
+    },
 ]
 
 function makeEnv(overrides: Partial<InstallEnvironment>): InstallEnvironment {
@@ -89,6 +94,12 @@ describe('updateHelpers - SemVer, Asset Matching & UI Pill', () => {
         expect(selectMatchedAsset(SAMPLE_ASSETS, makeEnv({ os: 'macos', installKind: 'mac-os' }))?.name).toBe(
             'nitirekso_1.9.1_universal.dmg'
         )
+        expect(
+            selectMatchedAsset(
+                SAMPLE_ASSETS,
+                makeEnv({ os: 'android', arch: 'aarch64', installKind: 'android-apk', canSelfUpdate: false })
+            )?.name
+        ).toBe('nitirekso_1.9.1_arm64-v8a.apk')
     })
 
     it('menyembunyikan ukuran 0 B dan memformat ukuran file serta pesan rate limit', () => {

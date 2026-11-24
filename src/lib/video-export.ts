@@ -215,14 +215,30 @@ async function exportViaWebCodecs(
         fastStart: 'in-memory'
     }
 
-    // 2.5 Coba siapkan Audio Encoder jika audio tersedia
+    // 2.5 Coba siapkan Audio Encoder jika audio tersedia DAN didukung oleh WebCodecs browser/WebView
     let audioEncoder: any = null
     let framesToEncode = 0
     let startFrame = 0
 
     if (hasAudio && audioBuffer && typeof (window as any).AudioEncoder !== 'undefined') {
         try {
-            audioEncoder = new (window as any).AudioEncoder({
+            const AudioEncoderClass = (window as any).AudioEncoder
+            const audioConfig = {
+                codec: 'mp4a.40.2',
+                sampleRate: audioSampleRate,
+                numberOfChannels: audioChannels,
+                bitrate: 128_000
+            }
+            let audioSupported = true
+            if (typeof AudioEncoderClass.isConfigSupported === 'function') {
+                const sup = await AudioEncoderClass.isConfigSupported(audioConfig)
+                audioSupported = Boolean(sup?.supported)
+            }
+            if (!audioSupported) {
+                throw new Error('AudioEncoder mp4a.40.2 tidak didukung')
+            }
+
+            audioEncoder = new AudioEncoderClass({
                 output: (chunk: any, meta: any) => {
                     try {
                         muxer.addAudioChunk(chunk, meta)
@@ -240,12 +256,7 @@ async function exportViaWebCodecs(
                     audioEncoder = null
                 }
             })
-            audioEncoder.configure({
-                codec: 'mp4a.40.2',
-                sampleRate: audioSampleRate,
-                numberOfChannels: audioChannels,
-                bitrate: 128_000
-            })
+            audioEncoder.configure(audioConfig)
 
             const startTime = options.audioSourceVideo?.currentTime || 0
             startFrame = Math.floor(startTime * audioSampleRate)
@@ -260,7 +271,7 @@ async function exportViaWebCodecs(
         } catch (aeErr) {
             logSharePnlError(
                 SharePnlErrorCode.AUDIO_PROCESS_FAILED,
-                'AudioEncoder AAC tidak didukung oleh browser ini, audio akan dilewati',
+                'AudioEncoder AAC tidak didukung oleh browser ini, audio akan dilewati (akan di-mux backend jika tersedia)',
                 aeErr,
                 'WARN'
             )
@@ -271,9 +282,74 @@ async function exportViaWebCodecs(
         hasAudio = false
     }
 
+    // 3. Tentukan resolusi dan profil H.264 yang benar-benar didukung (adaptif untuk Android & Desktop)
+    const resolutionTiers: Array<{ w: number; h: number; bitrate: number }> = [
+        { w: exportW, h: exportH, bitrate: videoBitsPerSecond }
+    ]
+    if (exportW > 720 || exportH > 1280) {
+        const scale = Math.min(720 / exportW, 1280 / exportH)
+        const scaledW = Math.max(360, Math.round((exportW * scale) / 2) * 2)
+        const scaledH = Math.max(360, Math.round((exportH * scale) / 2) * 2)
+        resolutionTiers.push({ w: scaledW, h: scaledH, bitrate: Math.min(videoBitsPerSecond, 4_000_000) })
+    }
+
+    const candidateProfiles: Array<{ codec: string; hardwareAcceleration: 'prefer-hardware' | 'no-preference' }> = [
+        { codec: 'avc1.640033', hardwareAcceleration: 'prefer-hardware' },
+        { codec: 'avc1.4d0032', hardwareAcceleration: 'prefer-hardware' },
+        { codec: 'avc1.4d002a', hardwareAcceleration: 'prefer-hardware' },
+        { codec: 'avc1.420028', hardwareAcceleration: 'prefer-hardware' },
+        { codec: 'avc1.640033', hardwareAcceleration: 'no-preference' },
+        { codec: 'avc1.4d0032', hardwareAcceleration: 'no-preference' },
+        { codec: 'avc1.4d0028', hardwareAcceleration: 'no-preference' },
+        { codec: 'avc1.420028', hardwareAcceleration: 'no-preference' },
+        { codec: 'avc1.42e01f', hardwareAcceleration: 'no-preference' },
+        { codec: 'avc1.42e01e', hardwareAcceleration: 'no-preference' },
+    ]
+
+    let chosenConfig: VideoEncoderConfig | null = null
+    let targetW = exportW
+    let targetH = exportH
+
+    for (const tier of resolutionTiers) {
+        for (const profile of candidateProfiles) {
+            const testConfig: VideoEncoderConfig = {
+                codec: profile.codec,
+                width: tier.w,
+                height: tier.h,
+                bitrate: tier.bitrate,
+                framerate: fps,
+                hardwareAcceleration: profile.hardwareAcceleration,
+            }
+            try {
+                if (typeof VideoEncoder.isConfigSupported === 'function') {
+                    const support = await VideoEncoder.isConfigSupported(testConfig)
+                    if (support && support.supported) {
+                        chosenConfig = testConfig
+                        targetW = tier.w
+                        targetH = tier.h
+                        break
+                    }
+                } else {
+                    chosenConfig = testConfig
+                    targetW = tier.w
+                    targetH = tier.h
+                    break
+                }
+            } catch {
+                // Lanjut ke kandidat profil berikutnya
+            }
+        }
+        if (chosenConfig) break
+    }
+
+    if (!chosenConfig) {
+        throw new Error(`Encoder H.264 WebCodecs tidak tersedia untuk ${exportW}x${exportH}`)
+    }
+
+    muxerOptions.video.width = targetW
+    muxerOptions.video.height = targetH
     const muxer = new Muxer(muxerOptions)
 
-    // 3. Siapkan WebCodecs VideoEncoder
     let encoderError: Error | null = null
     const encoder = new VideoEncoder({
         output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
@@ -282,64 +358,11 @@ async function exportViaWebCodecs(
             encoderError = e
         }
     })
-
-    const candidateProfiles: Array<{ codec: string; hardwareAcceleration: 'prefer-hardware' | 'no-preference' }> = [
-        { codec: 'avc1.640033', hardwareAcceleration: 'prefer-hardware' }, // High Profile Level 5.1 (Cocok untuk 1080p, 1080x1920 & 4K)
-        { codec: 'avc1.4d0032', hardwareAcceleration: 'prefer-hardware' }, // Main Profile Level 5.0
-        { codec: 'avc1.4d002a', hardwareAcceleration: 'prefer-hardware' }, // Main Profile Level 4.2
-        { codec: 'avc1.640033', hardwareAcceleration: 'no-preference' },
-        { codec: 'avc1.4d0032', hardwareAcceleration: 'no-preference' },
-        { codec: 'avc1.420032', hardwareAcceleration: 'no-preference' },   // Baseline Profile Level 5.0
-        { codec: 'avc1.42e01e', hardwareAcceleration: 'no-preference' },   // Baseline Profile Level 3.0
-    ]
-
-    let isConfigured = false
-    for (const profile of candidateProfiles) {
-        const testConfig: VideoEncoderConfig = {
-            codec: profile.codec,
-            width: exportW,
-            height: exportH,
-            bitrate: videoBitsPerSecond,
-            hardwareAcceleration: profile.hardwareAcceleration,
-        }
-        try {
-            if (typeof VideoEncoder.isConfigSupported === 'function') {
-                const support = await VideoEncoder.isConfigSupported(testConfig)
-                if (support && support.supported) {
-                    encoder.configure(testConfig)
-                    isConfigured = true
-                    console.log(`[video-export] Menggunakan WebCodecs konfigurasi: ${profile.codec} (${profile.hardwareAcceleration})`)
-                    break
-                }
-            } else {
-                encoder.configure(testConfig)
-                isConfigured = true
-                break
-            }
-        } catch {
-            // Lanjut ke kandidat profil berikutnya
-        }
-    }
-
-    if (!isConfigured) {
-        logSharePnlError(
-            SharePnlErrorCode.VIDEO_ENCODER_INIT_FAILED,
-            `Profil hardware H.264 tidak tersedia untuk ${exportW}x${exportH}, menggunakan baseline avc1.420032`,
-            null,
-            'WARN'
-        )
-        encoder.configure({
-            codec: 'avc1.420032',
-            width: exportW,
-            height: exportH,
-            bitrate: videoBitsPerSecond,
-            hardwareAcceleration: 'no-preference'
-        })
-    }
+    encoder.configure(chosenConfig)
 
     const frameCanvas = document.createElement('canvas')
-    frameCanvas.width = exportW
-    frameCanvas.height = exportH
+    frameCanvas.width = targetW
+    frameCanvas.height = targetH
     const ctx = frameCanvas.getContext('2d', { alpha: false })!
 
     const renderFullCanvas = document.createElement('canvas')
@@ -360,8 +383,8 @@ async function exportViaWebCodecs(
             fps
         })
 
-        // Skalakan ke resolusi genap export
-        ctx.drawImage(renderFullCanvas, 0, 0, exportW, exportH)
+        // Skalakan ke resolusi genap export (targetW x targetH)
+        ctx.drawImage(renderFullCanvas, 0, 0, targetW, targetH)
 
         // Hitung timestamp frame integer yang tepat (dalam microseconds bulat)
         const timestampMicroseconds = Math.round((i * 1_000_000) / fps)
@@ -428,6 +451,9 @@ async function exportViaWebCodecs(
 
     // 5. Finalisasi file MP4
     await encoder.flush()
+    try {
+        encoder.close()
+    } catch {}
     if (audioEncoder) {
         try {
             await audioEncoder.flush()
@@ -456,9 +482,21 @@ async function exportViaMediaRecorder(
     exportW: number,
     exportH: number
 ): Promise<VideoExportResult> {
+    if (typeof MediaRecorder === 'undefined') {
+        logSharePnlError(
+            SharePnlErrorCode.RECORDER_FALLBACK_FAILED,
+            'WebView/browser ini tidak mendukung WebCodecs maupun MediaRecorder untuk ekspor video',
+            null,
+            'ERROR'
+        )
+        throw new Error(
+            'Perangkat/WebView ini belum mendukung encoder video kanvas (WebCodecs & MediaRecorder tidak tersedia). Gunakan ekspor GIF atau PNG.'
+        )
+    }
+
     const durationMs = options.durationMs ?? 15_000
     const fps = options.fps ?? 30
-    const videoBitsPerSecond = options.videoBitsPerSecond ?? 7_500_000
+    const videoBitsPerSecond = options.videoBitsPerSecond ?? 6_000_000
     const totalFrames = Math.ceil((durationMs / 1000) * fps)
     const frameIntervalMs = 1000 / fps
 
@@ -475,29 +513,40 @@ async function exportViaMediaRecorder(
             null,
             'ERROR'
         )
-        throw new Error('captureStream tidak didukung di lingkungan ini.')
+        throw new Error(
+            'WebView ini belum mendukung perekaman kanvas (captureStream tidak tersedia). Gunakan ekspor GIF atau PNG.'
+        )
     }
 
     const mimeCandidates = [
         'video/mp4;codecs=avc1',
         'video/mp4',
         'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
         'video/webm'
     ]
-    let chosenMime = 'video/webm'
+    let chosenMime: string | undefined
     let chosenExt: 'mp4' | 'webm' = 'webm'
     for (const cand of mimeCandidates) {
-        if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(cand)) {
-            chosenMime = cand
-            chosenExt = cand.includes('mp4') ? 'mp4' : 'webm'
-            break
+        try {
+            if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(cand)) {
+                chosenMime = cand
+                chosenExt = cand.includes('mp4') ? 'mp4' : 'webm'
+                break
+            }
+        } catch {
+            // Abaikan kandidat tidak valid
         }
     }
 
-    const recorder = new MediaRecorder(stream, {
-        mimeType: chosenMime,
-        videoBitsPerSecond
-    })
+    const recorder = new MediaRecorder(
+        stream,
+        chosenMime ? { mimeType: chosenMime, videoBitsPerSecond } : { videoBitsPerSecond }
+    )
+    const effectiveMime = chosenMime || recorder.mimeType || 'video/webm'
+    if (effectiveMime.includes('mp4')) {
+        chosenExt = 'mp4'
+    }
 
     const chunks: BlobPart[] = []
     recorder.ondataavailable = (e) => {
@@ -506,6 +555,7 @@ async function exportViaMediaRecorder(
 
     return new Promise((resolve, reject) => {
         let isAborted = false
+        let isRendering = false
         let currentFrame = 0
         const fullCanvas = document.createElement('canvas')
 
@@ -517,17 +567,21 @@ async function exportViaMediaRecorder(
                 e,
                 'ERROR'
             )
-            reject(e)
+            reject(new Error('Gagal merekam video pada perangkat ini. Coba gunakan format GIF atau PNG.'))
         }
 
         recorder.onstop = () => {
             stream.getTracks().forEach((t: MediaStreamTrack) => t.stop())
             options.onProgress?.(100)
-            const finalBlob = new Blob(chunks, { type: chosenMime })
+            const finalBlob = new Blob(chunks, { type: effectiveMime })
+            if (finalBlob.size === 0) {
+                reject(new Error('Hasil rekaman video kosong. Coba gunakan format GIF atau PNG.'))
+                return
+            }
             resolve({
                 blob: finalBlob,
                 extension: chosenExt,
-                mimeType: chosenMime,
+                mimeType: effectiveMime,
                 codecName: chosenExt === 'mp4' ? 'MP4 (MediaRecorder)' : 'WebM (MediaRecorder)'
             })
         }
@@ -540,6 +594,7 @@ async function exportViaMediaRecorder(
                 clearInterval(intervalId)
                 return
             }
+            if (isRendering) return
             if (currentFrame >= totalFrames) {
                 clearInterval(intervalId)
                 if (recorder.state === 'recording') {
@@ -548,6 +603,7 @@ async function exportViaMediaRecorder(
                 return
             }
 
+            isRendering = true
             const currentTimeSec = currentFrame / fps
             try {
                 await renderFrameToCanvas(fullCanvas, {
@@ -559,6 +615,8 @@ async function exportViaMediaRecorder(
                 recordCtx.drawImage(fullCanvas, 0, 0, exportW, exportH)
             } catch (err) {
                 console.warn('Frame render error non-fatal:', err)
+            } finally {
+                isRendering = false
             }
 
             currentFrame++

@@ -19,6 +19,7 @@ import {
 } from '../video-export'
 import { captureAndExportGif } from '../gif-export'
 import { SharePnlErrorCode, logSharePnlError } from '../shareErrorCodes'
+import { isAndroidApp } from '../platform'
 import type {
     CardRenderSpec,
     MediaExportOptions,
@@ -132,16 +133,56 @@ function triggerBrowserDownload(blob: Blob, filename: string): void {
     }
 }
 
+function inferMediaMime(filename: string, fallbackType?: string): string {
+    if (fallbackType && fallbackType.trim() !== '') return fallbackType
+    const lower = filename.toLowerCase()
+    if (lower.endsWith('.mp4')) return 'video/mp4'
+    if (lower.endsWith('.gif')) return 'image/gif'
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
+    if (lower.endsWith('.webp')) return 'image/webp'
+    return 'image/png'
+}
+
 /**
- * Menyimpan berkas media menggunakan dialog native sistem (Tauri) atau fallback ke browser download.
- *
- * @param filename Nama berkas target
- * @param blob Data biner media
- * @returns Path berkas tersimpan jika dipilih via dialog native, atau null jika dibatalkan/via browser.
+ * Menyimpan berkas media menggunakan dialog native sistem (Tauri Desktop),
+ * MediaStore Android (Pictures/Movies), atau fallback ke browser download.
  */
 export async function saveMediaFile(filename: string, blob: Blob): Promise<string | null> {
     const isMp4 = filename.toLowerCase().endsWith('.mp4')
+    const mime = inferMediaMime(filename, blob.type)
 
+    // 1. Prioritas utama lintas platform (Desktop Tauri native dialog & Android MediaStore):
+    //    `save_media_export` mendukung PNG, GIF, MP4, WebM, dan JPEG secara seragam.
+    if (typeof window !== 'undefined' && window.api?.saveMediaExport) {
+        try {
+            const arrayBuffer = await blob.arrayBuffer()
+            const saveRes = await window.api.saveMediaExport(filename, mime, new Uint8Array(arrayBuffer))
+            if (saveRes?.ok && saveRes.data) {
+                return saveRes.data
+            }
+            if (saveRes?.ok && saveRes.data === null) {
+                // Pemilihan folder penyimpanan dibatalkan oleh pengguna
+                return null
+            }
+            if (saveRes && !saveRes.ok) {
+                logSharePnlError(
+                    SharePnlErrorCode.FILE_SAVE_FAILED,
+                    `Penyimpanan media native gagal: ${saveRes.error || 'Unknown error'}`,
+                    saveRes,
+                    'WARN'
+                )
+            }
+        } catch (saveErr) {
+            logSharePnlError(
+                SharePnlErrorCode.FILE_SAVE_FAILED,
+                'Gagal menyimpan berkas media melalui IPC native',
+                saveErr,
+                'WARN'
+            )
+        }
+    }
+
+    // 2. Jalur kompatibilitas mundur khusus MP4 jika hanya saveVideoFile yang tersedia
     if (isMp4 && typeof window !== 'undefined' && window.api?.saveVideoFile) {
         try {
             const arrayBuffer = await blob.arrayBuffer()
@@ -150,7 +191,6 @@ export async function saveMediaFile(filename: string, blob: Blob): Promise<strin
                 return saveRes.data
             }
             if (saveRes?.ok && saveRes.data === null) {
-                // Pemilihan folder penyimpanan dibatalkan oleh pengguna
                 return null
             }
             if (saveRes && !saveRes.ok) {
@@ -175,9 +215,33 @@ export async function saveMediaFile(filename: string, blob: Blob): Promise<strin
         }
     }
 
-    // Default fallback untuk lingkungan web atau format PNG / GIF
+    // 3. Fallback untuk lingkungan web browser murni (tanpa Tauri)
     triggerBrowserDownload(blob, filename)
     return null
+}
+
+/**
+ * Membagikan berkas media langsung via Android Share Sheet (Intent.ACTION_SEND),
+ * atau fallback ke penyimpanan lokal pada Desktop.
+ */
+export async function shareMediaFile(filename: string, title: string, blob: Blob): Promise<boolean> {
+    const mime = inferMediaMime(filename, blob.type)
+    if (typeof window !== 'undefined' && window.api?.shareMediaExport) {
+        const arrayBuffer = await blob.arrayBuffer()
+        const res = await window.api.shareMediaExport(filename, mime, title, new Uint8Array(arrayBuffer))
+        if (res.ok) return true
+    }
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function' && typeof File !== 'undefined') {
+        try {
+            const file = new File([blob], filename, { type: mime })
+            await navigator.share({ title, files: [file] })
+            return true
+        } catch {
+            // Fallback ke simpan lokal
+        }
+    }
+    await saveMediaFile(filename, blob)
+    return false
 }
 
 /**
@@ -291,13 +355,13 @@ export async function exportCardMedia(options: MediaExportOptions): Promise<Medi
             const blob = await canvasToBlob(finalCanvas, 'image/png')
             options.onProgress?.(80)
 
-            triggerBrowserDownload(blob, filename)
+            const savedFilePath = await saveMediaFile(filename, blob)
             options.onProgress?.(100)
 
             return {
                 blob,
                 filename,
-                savedFilePath: null,
+                savedFilePath,
                 extension: 'png'
             }
         }
@@ -318,13 +382,13 @@ export async function exportCardMedia(options: MediaExportOptions): Promise<Medi
                 onProgress: options.onProgress
             })
 
-            triggerBrowserDownload(blob, filename)
+            const savedFilePath = await saveMediaFile(filename, blob)
             options.onProgress?.(100)
 
             return {
                 blob,
                 filename,
-                savedFilePath: null,
+                savedFilePath,
                 extension: 'gif'
             }
         }
@@ -345,8 +409,10 @@ export async function exportCardMedia(options: MediaExportOptions): Promise<Medi
         })
 
         let finalBlob = videoResult.blob
+        let finalExt: 'mp4' | 'webm' = videoResult.extension
+        let finalFilename = filename
 
-        // 3.1 Penyiapan data biner audio latar belakang untuk remuxing FFmpeg
+        // 3.1 Penyiapan data biner audio latar belakang untuk remuxing FFmpeg / MediaMuxer
         let bgAudioData = options.wallpaperAudioData
         if (!bgAudioData && options.wallpaperAudioUrl) {
             try {
@@ -365,17 +431,28 @@ export async function exportCardMedia(options: MediaExportOptions): Promise<Medi
             }
         }
 
-        // 3.2 Remuxing MP4 via backend Rust / FFmpeg (faststart atom & audio AAC)
-        if (videoResult.extension === 'mp4' && typeof window !== 'undefined' && window.api?.remuxVideoMp4) {
+        // 3.2 Remuxing / Transcode via backend Rust (FFmpeg di Desktop, MediaMuxer di Android)
+        if (typeof window !== 'undefined' && window.api?.remuxVideoMp4) {
             try {
                 const arrayBuffer = await videoResult.blob.arrayBuffer()
                 const remuxRes = await window.api.remuxVideoMp4(new Uint8Array(arrayBuffer), bgAudioData)
                 if (remuxRes?.ok && remuxRes.data && remuxRes.data.length > 0) {
-                    finalBlob = new Blob([remuxRes.data as unknown as BlobPart], { type: 'video/mp4' })
+                    // Jika sumbernya WebM, pastikan backend benar-benar mengubahnya ke MP4 (header 'ftyp')
+                    const bytes = remuxRes.data
+                    const looksLikeMp4 =
+                        bytes.length >= 8 &&
+                        bytes[4] === 0x66 &&
+                        bytes[5] === 0x74 &&
+                        bytes[6] === 0x79 &&
+                        bytes[7] === 0x70
+                    if (videoResult.extension === 'mp4' || looksLikeMp4) {
+                        finalBlob = new Blob([bytes as unknown as BlobPart], { type: 'video/mp4' })
+                        finalExt = 'mp4'
+                    }
                 } else if (remuxRes && !remuxRes.ok) {
                     logSharePnlError(
                         SharePnlErrorCode.BACKEND_REMUX_FAILED,
-                        `Remuxing backend FFmpeg gagal: ${remuxRes.error || 'Unknown error'}`,
+                        `Remuxing backend gagal: ${remuxRes.error || 'Unknown error'}`,
                         remuxRes,
                         'WARN'
                     )
@@ -390,15 +467,19 @@ export async function exportCardMedia(options: MediaExportOptions): Promise<Medi
             }
         }
 
-        // 3.3 Simpan berkas melalui native dialog atau fallback unduhan browser
-        const savedFilePath = await saveMediaFile(filename, finalBlob)
+        if (finalExt === 'webm' && finalFilename.toLowerCase().endsWith('.mp4')) {
+            finalFilename = finalFilename.slice(0, -4) + '.webm'
+        }
+
+        // 3.3 Simpan berkas melalui native dialog atau MediaStore
+        const savedFilePath = await saveMediaFile(finalFilename, finalBlob)
         options.onProgress?.(100)
 
         return {
             blob: finalBlob,
-            filename,
+            filename: finalFilename,
             savedFilePath,
-            extension: 'mp4'
+            extension: finalExt
         }
     } finally {
         // Kembalikan status pemutaran live preview agar tidak macet di UI
@@ -433,4 +514,25 @@ export class MediaExportService {
      * Susun nama berkas deterministik sesuai opsi ekspor.
      */
     static resolveFilename = resolveFilename
+}
+
+/**
+ * Menyalin gambar PNG ke clipboard sistem:
+ * - Android: menggunakan native ClipboardManager + FileProvider URI via `window.api.copyMediaImage`
+ * - Desktop: menggunakan Web Clipboard API (`navigator.clipboard.write`)
+ */
+export async function copyImageBlobToClipboard(blob: Blob, fileName = 'nitirekso-card.png'): Promise<boolean> {
+    if (typeof window !== 'undefined' && isAndroidApp() && window.api?.copyMediaImage) {
+        const bytes = new Uint8Array(await blob.arrayBuffer())
+        const res = await window.api.copyMediaImage(fileName, blob.type || 'image/png', bytes)
+        if (!res?.ok) {
+            throw new Error(res?.error || 'Gagal menyalin gambar ke clipboard Android')
+        }
+        return true
+    }
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+        await navigator.clipboard.write([new ClipboardItem({ [blob.type || 'image/png']: blob })])
+        return true
+    }
+    throw new Error('Clipboard gambar tidak didukung pada lingkungan ini')
 }

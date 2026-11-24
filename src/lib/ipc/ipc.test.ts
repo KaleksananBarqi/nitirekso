@@ -360,7 +360,7 @@ describe('InMemoryMockAdapter', () => {
             const version = await mock.system.getAppVersion()
             expect(version.ok).toBe(true)
             if (version.ok) {
-                expect(version.data).toBe('1.11.0-mock')
+                expect(version.data).toBe('1.12.0-mock')
             }
 
             await mock.system.logInfo('Pesan info pengujian')

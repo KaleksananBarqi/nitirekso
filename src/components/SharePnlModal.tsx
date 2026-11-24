@@ -46,8 +46,11 @@ import {
     CardCanvasEngine,
     buildPnlCardSpec,
     exportCardMedia,
-    saveMediaFile
+    saveMediaFile,
+    copyImageBlobToClipboard,
+    shareMediaFile
 } from '../lib/share'
+import { isAndroidApp } from '../lib/platform'
 
 // ---------------------------------------------------------------------------
 // Tipe Props
@@ -1082,7 +1085,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                     return
                 }
                 try {
-                    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+                    await copyImageBlobToClipboard(blob, `nitirekso-${trade.trade.symbol}.png`)
                     setCopySuccess(true)
                     setTimeout(() => setCopySuccess(false), 2500)
                 } catch (err) {
@@ -1918,7 +1921,7 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                             </span>
                         )}
                     </div>
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center sm:justify-between">
                     {[
                         {
                             icon: (
@@ -1942,8 +1945,8 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                             label: exportingVideo
                                 ? `Proses (${videoProgress}%)`
                                 : exportAspect === '9:16'
-                                    ? `Save Video 9:16 (${getEffectiveDurationSec()}s 📱)`
-                                    : `Save Video (${getEffectiveDurationSec()}s${activeCustomBgMediaType === 'video' ? ' 🎬' : ''})`,
+                                    ? `Save Video 9:16 (${getEffectiveDurationSec()}s)`
+                                    : `Save Video (${getEffectiveDurationSec()}s)`,
                             onClick: () => void handleExportVideo(),
                             disabled: exportingVideo || downloading || exportingGif,
                         },
@@ -1967,10 +1970,45 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                                 </svg>
                             ),
-                            label: copySuccess ? 'Tersalin ke Clipboard!' : 'Copy Image',
-                            onClick: () => void handleCopy(),
+                            label: copySuccess ? 'Tersalin!' : 'Copy Image',
+                            onClick: () => {
+                                void handleCopy()
+                            },
                             disabled: false,
                         },
+                        ...(isAndroidApp()
+                            ? [
+                                  {
+                                      icon: (
+                                          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                              <circle cx="18" cy="5" r="3" />
+                                              <circle cx="6" cy="12" r="3" />
+                                              <circle cx="18" cy="19" r="3" />
+                                              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                                              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                                          </svg>
+                                      ),
+                                      label: 'Bagikan PNG',
+                                      onClick: () => {
+                                          void (async () => {
+                                              const spec = buildCurrentSpec()
+                                              const activeWp = getActiveWallpaperMedia()
+                                              const res = await exportCardMedia({
+                                                  spec,
+                                                  format: 'png',
+                                                  aspect: exportAspect,
+                                                  frameBgSource,
+                                                  frameBlur,
+                                                  frameDim,
+                                                  wallpaperMediaElement: isCustomBgActive ? activeWp : null,
+                                              })
+                                              await shareMediaFile(res.filename, `PnL Card ${trade.trade.symbol}`, res.blob)
+                                          })()
+                                      },
+                                      disabled: false,
+                                  },
+                              ]
+                            : []),
                         {
                             icon: (
                                 <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
@@ -2070,16 +2108,26 @@ function SharePnlModalContent({ trade, onClose }: { trade: TradeDetail; onClose:
                                         </span>
                                     )}
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => void handleSaveExportedAgain()}
-                                    disabled={isSavingExportedAgain}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground font-bold hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-xs ml-auto"
-                                    title="Buka dialog pemilihan folder untuk menyimpan berkas video ini"
-                                >
-                                    <span>📂</span>
-                                    <span>{exportedVideoResult.savedPath ? 'Simpan ke Folder Lain...' : 'Pilih Folder & Simpan...'}</span>
-                                </button>
+                                <div className="flex flex-wrap items-center gap-2 ml-auto">
+                                    {isAndroidApp() && (
+                                        <button
+                                            type="button"
+                                            onClick={() => void shareMediaFile(exportedVideoResult.filename, `PnL Video ${trade.trade.symbol}`, exportedVideoResult.blob)}
+                                            className="flex min-h-11 sm:min-h-8 items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-secondary text-foreground font-semibold hover:bg-accent transition-colors"
+                                        >
+                                            <span>Bagikan Video</span>
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleSaveExportedAgain()}
+                                        disabled={isSavingExportedAgain}
+                                        className="flex min-h-11 sm:min-h-8 items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground font-bold hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-xs"
+                                        title="Simpan ulang berkas video ini"
+                                    >
+                                        <span>{exportedVideoResult.savedPath ? 'Simpan Salinan' : 'Simpan Video'}</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}

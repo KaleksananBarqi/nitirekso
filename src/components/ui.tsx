@@ -192,13 +192,74 @@ export function CardHeader({
     action?: ReactNode
 }): React.JSX.Element {
     return (
-        <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-3">
-            <div>
-                <h2 className="text-sm font-semibold">{title}</h2>
-                {description && <p className="text-xs text-muted-foreground">{description}</p>}
+        <div className="flex items-start justify-between gap-4 border-b border-border/45 px-4 py-3.5">
+            <div className="min-w-0">
+                <h2 className="text-sm font-semibold tracking-tight text-foreground">{title}</h2>
+                {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
             </div>
             {action}
         </div>
+    )
+}
+
+/**
+ * Modern Toggle Switch (Neo-Quant Bento Shell).
+ * Menggantikan checkbox/tombol kotak jadul dengan kontrol sakelar aksesibel ramah sentuh.
+ */
+export function ToggleSwitch({
+    checked,
+    onChange,
+    label,
+    description,
+    disabled = false,
+    id
+}: {
+    checked: boolean
+    onChange: (next: boolean) => void
+    label?: string
+    description?: string
+    disabled?: boolean
+    id?: string
+}): React.JSX.Element {
+    return (
+        <button
+            id={id}
+            type="button"
+            role="switch"
+            aria-checked={checked}
+            disabled={disabled}
+            onClick={() => !disabled && onChange(!checked)}
+            className={cn(
+                'group flex min-h-11 w-full items-center justify-between gap-3 rounded-lg bg-muted/60 px-3.5 py-2 text-left transition-colors',
+                !disabled && 'hover:bg-muted',
+                disabled && 'opacity-50 cursor-not-allowed'
+            )}
+        >
+            {(label || description) && (
+                <div className="min-w-0">
+                    {label && <span className="block text-xs font-semibold text-foreground">{label}</span>}
+                    {description && (
+                        <span className="block text-[11px] text-muted-foreground leading-snug">
+                            {description}
+                        </span>
+                    )}
+                </div>
+            )}
+            <span
+                aria-hidden="true"
+                className={cn(
+                    'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
+                    checked ? 'bg-primary' : 'bg-border'
+                )}
+            >
+                <span
+                    className={cn(
+                        'inline-block h-4 w-4 rounded-full bg-primary-foreground shadow-xs transition-transform',
+                        checked ? 'translate-x-6' : 'translate-x-1'
+                    )}
+                />
+            </span>
+        </button>
     )
 }
 
@@ -283,7 +344,7 @@ export function Modal({
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-stretch justify-center p-0 sm:items-center sm:p-4"
             role="dialog"
             aria-modal="true"
             aria-label={title}
@@ -295,35 +356,37 @@ export function Modal({
                 aria-hidden="true"
             />
 
-            {/* Modal Dialog Box */}
+            {/* Modal Dialog Box (full-screen sheet di mobile, dialog terpusat di tablet/desktop) */}
             <div
                 className={cn(
-                    'relative z-50 flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl animate-in fade-in-0 zoom-in-95',
+                    'relative z-50 flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden bg-card shadow-2xl animate-in fade-in-0 zoom-in-95',
+                    'pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] sm:pt-0 sm:pb-0',
+                    'sm:h-auto sm:max-h-[90vh] sm:rounded-xl sm:border sm:border-border',
                     maxWidthClass
                 )}
             >
                 {/* Modal Header */}
-                <div className="flex items-center justify-between border-b border-border px-6 py-4">
-                    <div>
-                        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+                <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-6 sm:py-4">
+                    <div className="min-w-0">
+                        <h2 className="text-base font-semibold text-foreground truncate">{title}</h2>
                         {description && <p className="text-xs text-muted-foreground">{description}</p>}
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
                         aria-label="Tutup dialog"
-                        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md p-2 text-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground shrink-0 sm:min-h-8 sm:min-w-8 sm:p-1.5"
                     >
                         <span aria-hidden="true">×</span>
                     </button>
                 </div>
 
                 {/* Modal Body */}
-                <div className="flex-1 overflow-y-auto p-6">{children}</div>
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</div>
 
                 {/* Modal Footer */}
                 {footer && (
-                    <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 px-6 py-3">
+                    <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-muted/30 px-4 py-3 sm:px-6">
                         {footer}
                     </div>
                 )}

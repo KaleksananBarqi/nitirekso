@@ -23,6 +23,7 @@ pub enum InstallKind {
     WindowsNsis,
     WindowsMsi,
     MacOs,
+    AndroidApk,
     Dev,
     Unknown,
 }
@@ -228,6 +229,19 @@ pub fn detect_install_environment() -> InstallEnvironment {
             os,
             arch,
             install_kind: InstallKind::Unknown,
+            package_manager: PackageManagerKind::None,
+            can_self_update: false,
+            store_managed: false,
+            is_dev,
+            executable_path,
+        };
+    }
+
+    if os == "android" {
+        return InstallEnvironment {
+            os,
+            arch,
+            install_kind: InstallKind::AndroidApk,
             package_manager: PackageManagerKind::None,
             can_self_update: false,
             store_managed: false,

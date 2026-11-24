@@ -245,7 +245,11 @@ export function EquityChart({
                     </span>
                 </div>
             )}
-            <div ref={containerRef} className={cn('w-full', className)} style={{ height }} />
+            <div
+                ref={containerRef}
+                className={cn('w-full', className)}
+                style={{ height, touchAction: 'pan-y' }}
+            />
         </div>
     )
 }

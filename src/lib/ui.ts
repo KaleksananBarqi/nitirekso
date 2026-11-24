@@ -19,7 +19,7 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outl
 export type ButtonSize = 'sm' | 'md' | 'icon'
 
 const buttonBase =
-    'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors ' +
+    'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ' +
     'disabled:opacity-50 select-none whitespace-nowrap'
 
@@ -88,7 +88,7 @@ export function selectClass(className?: string): string {
 // ---------------------------------------------------------------------------
 
 export function cardClass(className?: string): string {
-    return cn('rounded-lg border border-border bg-card text-card-foreground', className)
+    return cn('rounded-xl bg-card text-card-foreground ring-1 ring-border/45', className)
 }
 
 export function badgeClass(

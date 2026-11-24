@@ -11,6 +11,7 @@ const INSTALLER_EXTENSIONS = [
     '.exe',
     '.msi',
     '.dmg',
+    '.apk',
 ]
 
 function isInstallerAsset(filename) {

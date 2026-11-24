@@ -96,6 +96,33 @@ async function invokeMutation<T>(
     }
 }
 
+/**
+ * Helper internal untuk mengeksekusi invoke biner mentah (`InvokeBody::Raw`)
+ * dengan header ter-encode URL dan normalisasi ke `AppResult<T>`.
+ */
+async function invokeRawMedia<T>(
+    cmd: string,
+    data: Uint8Array,
+    headers: Record<string, string>,
+    failedCode: string,
+    errorCode: string,
+    fallbackMsg: string
+): Promise<AppResult<T>> {
+    try {
+        const encodedHeaders: Record<string, string> = {}
+        for (const [k, v] of Object.entries(headers)) {
+            encodedHeaders[k] = encodeURIComponent(v)
+        }
+        const res = await invoke<MutationResult<T>>(cmd, data, { headers: encodedHeaders })
+        if (res.ok) {
+            return ok((res.data ?? undefined) as T)
+        }
+        return err(createAppError(failedCode, res.error ?? fallbackMsg))
+    } catch (e) {
+        return err(normalizeAppError(e, errorCode))
+    }
+}
+
 export class NativeTauriAdapter implements IpcClient {
     // -----------------------------------------------------------------------
     // Domain Trades
@@ -245,9 +272,14 @@ export class NativeTauriAdapter implements IpcClient {
 
     public readonly media: MediaClient = {
         uploadScreenshot: async (payload: ScreenshotUploadPayload): Promise<AppResult<string>> => {
+            // Konversi Uint8Array ke array angka standar agar tidak terserialisasi sebagai objek {"0":...} di JSON
+            const serializablePayload = {
+                ...payload,
+                data: Array.from(payload.data),
+            }
             return await invokeMutation<string>(
                 'upload_screenshot',
-                { payload },
+                { payload: serializablePayload },
                 'SCREENSHOT_UPLOAD_FAILED'
             )
         },
@@ -261,10 +293,13 @@ export class NativeTauriAdapter implements IpcClient {
         },
 
         saveMediaAsset: async (payload: MediaUploadPayload): Promise<AppResult<MediaAssetInfo>> => {
-            return await invokeMutation<MediaAssetInfo>(
+            return await invokeRawMedia<MediaAssetInfo>(
                 'save_media_asset',
-                { payload },
-                'MEDIA_SAVE_FAILED'
+                payload.data,
+                { 'x-media-kind': payload.kind, 'x-file-name': payload.fileName },
+                'MEDIA_SAVE_FAILED',
+                'MEDIA_SAVE_FAILED',
+                'Gagal menyimpan berkas media ke backend'
             )
         },
 
@@ -317,26 +352,62 @@ export class NativeTauriAdapter implements IpcClient {
             defaultName: string,
             data: Uint8Array
         ): Promise<AppResult<string | null>> => {
-            try {
-                // Kirim buffer biner mentah langsung ke backend tanpa overhead JSON [u8; N].
-                // Nama berkas bawaan disisipkan secara aman melalui header IPC (URL-encoded).
-                const res = await invoke<MutationResult<string | null>>('save_video_file', data, {
-                    headers: {
-                        'x-file-name': encodeURIComponent(defaultName),
-                    },
-                })
-                if (res.ok) {
-                    return ok(res.data ?? null)
-                }
-                return err(
-                    createAppError(
-                        'SAVE_VIDEO_FAILED',
-                        res.error ?? 'Gagal menyimpan berkas video'
-                    )
-                )
-            } catch (e) {
-                return err(normalizeAppError(e, 'SAVE_VIDEO_ERROR'))
-            }
+            const res = await invokeRawMedia<string | null>(
+                'save_video_file',
+                data,
+                { 'x-file-name': defaultName },
+                'SAVE_VIDEO_FAILED',
+                'SAVE_VIDEO_ERROR',
+                'Gagal menyimpan berkas video'
+            )
+            return res.ok ? ok(res.data ?? null) : res
+        },
+
+        saveMediaExport: async (
+            fileName: string,
+            mimeType: string,
+            data: Uint8Array
+        ): Promise<AppResult<string | null>> => {
+            const res = await invokeRawMedia<string | null>(
+                'save_media_export',
+                data,
+                { 'x-file-name': fileName, 'x-mime-type': mimeType },
+                'SAVE_MEDIA_EXPORT_FAILED',
+                'SAVE_MEDIA_EXPORT_ERROR',
+                'Gagal menyimpan berkas media'
+            )
+            return res.ok ? ok(res.data ?? null) : res
+        },
+
+        shareMediaExport: async (
+            fileName: string,
+            mimeType: string,
+            title: string,
+            data: Uint8Array
+        ): Promise<AppResult<void>> => {
+            return await invokeRawMedia<void>(
+                'share_media_export',
+                data,
+                { 'x-file-name': fileName, 'x-mime-type': mimeType, 'x-title': title },
+                'SHARE_MEDIA_EXPORT_FAILED',
+                'SHARE_MEDIA_EXPORT_ERROR',
+                'Gagal membagikan berkas media'
+            )
+        },
+
+        copyMediaImage: async (
+            fileName: string,
+            mimeType: string,
+            data: Uint8Array
+        ): Promise<AppResult<void>> => {
+            return await invokeRawMedia<void>(
+                'copy_media_image',
+                data,
+                { 'x-file-name': fileName, 'x-mime-type': mimeType },
+                'COPY_MEDIA_IMAGE_FAILED',
+                'COPY_MEDIA_IMAGE_ERROR',
+                'Gagal menyalin gambar ke clipboard'
+            )
         },
     }
 

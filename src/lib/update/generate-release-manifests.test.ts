@@ -36,6 +36,9 @@ describe('generate-release-manifests', () => {
         writeFileSync(join(artifactsDir, 'linux', 'nitirekso-1.9.1-1.x86_64.rpm'), 'linux-rpm')
         writeFileSync(join(artifactsDir, 'linux', 'nitirekso_1.9.1_amd64.deb'), 'linux-deb')
 
+        mkdirSync(join(artifactsDir, 'android'), { recursive: true })
+        writeFileSync(join(artifactsDir, 'android', 'nitirekso_1.9.1_arm64-v8a.apk'), 'android-apk')
+
         const result = generateReleaseManifests({
             artifactsDir,
             outDir,
@@ -61,6 +64,7 @@ describe('generate-release-manifests', () => {
         expect(sumsText).toContain('nitirekso-1.9.1-1.x86_64.rpm')
         expect(sumsText).toContain('nitirekso_1.9.1_amd64.deb')
         expect(sumsText).toContain('nitirekso_1.9.1_amd64.AppImage')
+        expect(sumsText).toContain('nitirekso_1.9.1_arm64-v8a.apk')
         expect(sumsText).not.toContain('.sig')
     })
 })

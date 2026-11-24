@@ -19,3 +19,17 @@ Dokumen ini mengarahkan alur kerja agen untuk proyek desktop trading journal **n
 - Periksa skrip build, typecheck, dan pengujian unit di [package.json](package.json) (`npm run typecheck`, `npm test`, `npm run build`).
 - Untuk perubahan Rust backend di `src-tauri/`, verifikasi kompilasi dan uji melalui `cargo test` di dalam direktori `src-tauri/`.
 - Untuk perubahan landing page di `docs/index.html`, verifikasi kontras warna menggunakan skrip pemeriksa kontras `antislop-human`, validasi sintaks JS/JSON-LD, dan periksa responsivitas di breakpoint mobile, tablet, serta desktop.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues (`KaleksananBarqi/nitirekso`) via `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five canonical roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context (`GLOSSARY.md` and `docs/adr/` at the repo root). See `docs/agents/domain.md`.

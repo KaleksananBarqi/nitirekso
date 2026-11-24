@@ -124,10 +124,44 @@ function readJsonLocalStorage<T>(key: string): T | null {
 export async function migrateLegacyWebStorageIfNeeded(
     currentSettings: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
-    if (currentSettings.legacyWebStorageMigrated === true) {
+    if (typeof window === 'undefined' || !window.api?.setSettings) {
         return currentSettings
     }
-    if (typeof window === 'undefined' || !window.api?.setSettings) {
+
+    const ls = window.localStorage
+    const existingShareObj =
+        currentSettings.shareSettings && typeof currentSettings.shareSettings === 'object'
+            ? (currentSettings.shareSettings as Record<string, unknown>)
+            : null
+    const existingShaMap =
+        existingShareObj?.mediaShaByField && typeof existingShareObj.mediaShaByField === 'object'
+            ? (existingShareObj.mediaShaByField as Record<string, string>)
+            : {}
+    const existingBgList = Array.isArray(currentSettings.shareCustomBgList)
+        ? (currentSettings.shareCustomBgList as StoredCustomBgMeta[])
+        : []
+
+    const legacyMediaFieldSpecs: Array<[string, string, MediaAssetKind]> = [
+        ['avatarUrl', SHARE_STORAGE_KEYS.AVATAR, 'share_media'],
+        ['mexcLogoUrl', SHARE_STORAGE_KEYS.MEXC_LOGO, 'exchange_logo'],
+        ['bitunixLogoUrl', SHARE_STORAGE_KEYS.BITUNIX_LOGO, 'exchange_logo'],
+        ['bybitLogoUrl', SHARE_STORAGE_KEYS.BYBIT_LOGO, 'exchange_logo'],
+        ['binanceLogoUrl', SHARE_STORAGE_KEYS.BINANCE_LOGO, 'exchange_logo'],
+        ['bingxLogoUrl', SHARE_STORAGE_KEYS.BINGX_LOGO, 'exchange_logo'],
+    ]
+
+    const needsShareMediaRepair = legacyMediaFieldSpecs.some(([field, key]) => {
+        const rawVal = ls.getItem(key)
+        return Boolean(rawVal && rawVal.startsWith('data:') && !existingShaMap[field])
+    })
+
+    const hasLegacyLsBg = Boolean(
+        ls.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG) || ls.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST)
+    )
+    const needsBgRepair =
+        existingBgList.length === 0 && (hasLegacyLsBg || typeof window.indexedDB !== 'undefined')
+
+    if (currentSettings.legacyWebStorageMigrated === true && !needsShareMediaRepair && !needsBgRepair) {
         return currentSettings
     }
 
@@ -135,7 +169,6 @@ export async function migrateLegacyWebStorageIfNeeded(
     let hasMediaUploadFailure = false
 
     try {
-        const ls = window.localStorage
 
         // 1. Tema & Colorblind
         const lsTheme = ls.getItem('trading-journal-theme')
@@ -175,18 +208,11 @@ export async function migrateLegacyWebStorageIfNeeded(
             patch.shareCaptionCustomTemplates = legacyCaptionTemplates
         }
 
-        // 4. ShareSettings (ringan + upload avatar/logo ke media_assets sesuai MIME asli)
-        if (!currentSettings.shareSettings) {
-            const mediaShaByField: Record<string, string> = {}
-            const mediaFields: Array<[string, string, MediaAssetKind]> = [
-                ['avatarUrl', SHARE_STORAGE_KEYS.AVATAR, 'share_media'],
-                ['mexcLogoUrl', SHARE_STORAGE_KEYS.MEXC_LOGO, 'exchange_logo'],
-                ['bitunixLogoUrl', SHARE_STORAGE_KEYS.BITUNIX_LOGO, 'exchange_logo'],
-                ['bybitLogoUrl', SHARE_STORAGE_KEYS.BYBIT_LOGO, 'exchange_logo'],
-                ['binanceLogoUrl', SHARE_STORAGE_KEYS.BINANCE_LOGO, 'exchange_logo'],
-                ['bingxLogoUrl', SHARE_STORAGE_KEYS.BINGX_LOGO, 'exchange_logo'],
-            ]
-            for (const [field, key, kind] of mediaFields) {
+        // 4. ShareSettings (ringan + upload avatar/logo ke media_assets, termasuk jalur auto-repair)
+        if (!existingShareObj || needsShareMediaRepair) {
+            const mediaShaByField: Record<string, string> = { ...existingShaMap }
+            for (const [field, key, kind] of legacyMediaFieldSpecs) {
+                if (mediaShaByField[field]) continue
                 const rawVal = ls.getItem(key)
                 if (rawVal && rawVal.startsWith('data:')) {
                     const uploaded = await uploadMediaData(kind, field, 'png', undefined, rawVal)
@@ -198,54 +224,63 @@ export async function migrateLegacyWebStorageIfNeeded(
                 }
             }
 
-            const hasAnyLegacyShareKey = Object.values(SHARE_STORAGE_KEYS).some((k) => ls.getItem(k) !== null)
-            if (hasAnyLegacyShareKey || Object.keys(mediaShaByField).length > 0) {
-                patch.shareSettings = {
-                    traderHandle: ls.getItem(SHARE_STORAGE_KEYS.HANDLE) || '@trader',
-                    brandTitle: (() => {
-                        const b = ls.getItem(SHARE_STORAGE_KEYS.BRAND_TITLE)
-                        return !b || b === 'SHARENYA' ? 'nitirekso' : b
-                    })(),
-                    brandSubtitle: ls.getItem(SHARE_STORAGE_KEYS.BRAND_SUBTITLE) || 'JOURNAL',
-                    mexcReferralCode: ls.getItem(SHARE_STORAGE_KEYS.MEXC_REF) || '',
-                    bitunixReferralCode: ls.getItem(SHARE_STORAGE_KEYS.BITUNIX_REF) || '',
-                    bybitReferralCode: ls.getItem(SHARE_STORAGE_KEYS.BYBIT_REF) || '',
-                    binanceReferralCode: ls.getItem(SHARE_STORAGE_KEYS.BINANCE_REF) || '',
-                    bingxReferralCode: ls.getItem(SHARE_STORAGE_KEYS.BINGX_REF) || '',
-                    showReferral: ls.getItem(SHARE_STORAGE_KEYS.SHOW_REF) !== 'false',
-                    bgPresetId: ls.getItem(SHARE_STORAGE_KEYS.BG_PRESET_ID) || 'dark-navy',
-                    customBgId: ls.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID) || null,
-                    isCustomBg: ls.getItem(SHARE_STORAGE_KEYS.IS_CUSTOM_BG) === 'true',
-                    bgDimming: Number(ls.getItem(SHARE_STORAGE_KEYS.BG_DIMMING) ?? 75) || 75,
-                    bgDimmingDirection:
-                        (ls.getItem(SHARE_STORAGE_KEYS.BG_DIMMING_DIRECTION) as BgDimmingDirection) ||
-                        'uniform',
-                    customBgMediaType:
-                        (ls.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_MEDIA_TYPE) as 'image' | 'video') ||
-                        'image',
-                    bgPosX: Number(ls.getItem(SHARE_STORAGE_KEYS.BG_POS_X) ?? 50),
-                    bgPosY: Number(ls.getItem(SHARE_STORAGE_KEYS.BG_POS_Y) ?? 50),
-                    showFullText: ls.getItem(SHARE_STORAGE_KEYS.FULL_TEXT) !== 'false',
-                    showTradeTimes: ls.getItem(SHARE_STORAGE_KEYS.SHOW_TRADE_TIMES) !== 'false',
-                    exportAspect:
-                        (ls.getItem(SHARE_STORAGE_KEYS.EXPORT_ASPECT) as ExportAspect) || '9:16',
-                    frameBgSource:
-                        (ls.getItem(SHARE_STORAGE_KEYS.FRAME_BG_SOURCE) as FrameBgSource) ||
-                        'card-blur',
-                    frameBlur: Number(ls.getItem(SHARE_STORAGE_KEYS.FRAME_BLUR) ?? 25),
-                    frameDim: Number(ls.getItem(SHARE_STORAGE_KEYS.FRAME_DIM) ?? 40),
-                    captionPresetId:
-                        ls.getItem(SHARE_STORAGE_KEYS.CAPTION_PRESET_ID) || 'tiktok-jurnal',
-                    videoDurationMode:
-                        (ls.getItem(SHARE_STORAGE_KEYS.VIDEO_DURATION_MODE) as VideoDurationMode) ||
-                        'source',
-                    mediaShaByField,
+            if (existingShareObj) {
+                if (Object.keys(mediaShaByField).length > Object.keys(existingShaMap).length) {
+                    patch.shareSettings = {
+                        ...existingShareObj,
+                        mediaShaByField,
+                    }
+                }
+            } else {
+                const hasAnyLegacyShareKey = Object.values(SHARE_STORAGE_KEYS).some((k) => ls.getItem(k) !== null)
+                if (hasAnyLegacyShareKey || Object.keys(mediaShaByField).length > 0) {
+                    patch.shareSettings = {
+                        traderHandle: ls.getItem(SHARE_STORAGE_KEYS.HANDLE) || '@trader',
+                        brandTitle: (() => {
+                            const b = ls.getItem(SHARE_STORAGE_KEYS.BRAND_TITLE)
+                            return !b || b === 'SHARENYA' ? 'nitirekso' : b
+                        })(),
+                        brandSubtitle: ls.getItem(SHARE_STORAGE_KEYS.BRAND_SUBTITLE) || 'JOURNAL',
+                        mexcReferralCode: ls.getItem(SHARE_STORAGE_KEYS.MEXC_REF) || '',
+                        bitunixReferralCode: ls.getItem(SHARE_STORAGE_KEYS.BITUNIX_REF) || '',
+                        bybitReferralCode: ls.getItem(SHARE_STORAGE_KEYS.BYBIT_REF) || '',
+                        binanceReferralCode: ls.getItem(SHARE_STORAGE_KEYS.BINANCE_REF) || '',
+                        bingxReferralCode: ls.getItem(SHARE_STORAGE_KEYS.BINGX_REF) || '',
+                        showReferral: ls.getItem(SHARE_STORAGE_KEYS.SHOW_REF) !== 'false',
+                        bgPresetId: ls.getItem(SHARE_STORAGE_KEYS.BG_PRESET_ID) || 'dark-navy',
+                        customBgId: ls.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_ID) || null,
+                        isCustomBg: ls.getItem(SHARE_STORAGE_KEYS.IS_CUSTOM_BG) === 'true',
+                        bgDimming: Number(ls.getItem(SHARE_STORAGE_KEYS.BG_DIMMING) ?? 75) || 75,
+                        bgDimmingDirection:
+                            (ls.getItem(SHARE_STORAGE_KEYS.BG_DIMMING_DIRECTION) as BgDimmingDirection) ||
+                            'uniform',
+                        customBgMediaType:
+                            (ls.getItem(SHARE_STORAGE_KEYS.CUSTOM_BG_MEDIA_TYPE) as 'image' | 'video') ||
+                            'image',
+                        bgPosX: Number(ls.getItem(SHARE_STORAGE_KEYS.BG_POS_X) ?? 50),
+                        bgPosY: Number(ls.getItem(SHARE_STORAGE_KEYS.BG_POS_Y) ?? 50),
+                        showFullText: ls.getItem(SHARE_STORAGE_KEYS.FULL_TEXT) !== 'false',
+                        showTradeTimes: ls.getItem(SHARE_STORAGE_KEYS.SHOW_TRADE_TIMES) !== 'false',
+                        exportAspect:
+                            (ls.getItem(SHARE_STORAGE_KEYS.EXPORT_ASPECT) as ExportAspect) || '9:16',
+                        frameBgSource:
+                            (ls.getItem(SHARE_STORAGE_KEYS.FRAME_BG_SOURCE) as FrameBgSource) ||
+                            'card-blur',
+                        frameBlur: Number(ls.getItem(SHARE_STORAGE_KEYS.FRAME_BLUR) ?? 25),
+                        frameDim: Number(ls.getItem(SHARE_STORAGE_KEYS.FRAME_DIM) ?? 40),
+                        captionPresetId:
+                            ls.getItem(SHARE_STORAGE_KEYS.CAPTION_PRESET_ID) || 'tiktok-jurnal',
+                        videoDurationMode:
+                            (ls.getItem(SHARE_STORAGE_KEYS.VIDEO_DURATION_MODE) as VideoDurationMode) ||
+                            'source',
+                        mediaShaByField,
+                    }
                 }
             }
         }
 
-        // 5. Wallpaper & Video Custom dari IndexedDB + localStorage
-        if (!currentSettings.shareCustomBgList) {
+        // 5. Wallpaper & Video Custom dari IndexedDB + localStorage (termasuk jalur auto-repair bila kosong)
+        if (existingBgList.length === 0) {
             const idbRecords = await readLegacyIdbRecords()
             const lsBgList = readJsonLocalStorage<CustomBgItem[]>(SHARE_STORAGE_KEYS.CUSTOM_BG_LIST) || []
             const mergedMap = new Map<string, CustomBgItem>()

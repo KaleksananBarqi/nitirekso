@@ -35,15 +35,9 @@ struct StoredCredentialFile {
 }
 
 fn credentials_dir() -> PathBuf {
-    if let Some(appdata) = dirs::data_dir() {
-        let dir = appdata.join("nitirekso").join("credentials");
-        let _ = fs::create_dir_all(&dir);
-        dir
-    } else {
-        let dir = PathBuf::from("credentials");
-        let _ = fs::create_dir_all(&dir);
-        dir
-    }
+    let dir = crate::app_paths::get_app_data_dir().join("credentials");
+    let _ = fs::create_dir_all(&dir);
+    dir
 }
 
 fn credential_path(exchange: &str) -> PathBuf {
@@ -51,6 +45,18 @@ fn credential_path(exchange: &str) -> PathBuf {
 }
 
 fn derive_key() -> [u8; 32] {
+    let secret = crate::vault::crypto::load_or_create_app_device_secret();
+    let mut hasher = Sha256::new();
+    hasher.update(secret);
+    hasher.update(b"_nitirekso_credentials_key_v2_");
+    let result = hasher.finalize();
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&result);
+    key
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn derive_legacy_env_key() -> [u8; 32] {
     let mut hasher = Sha256::new();
     let user = std::env::var("USERNAME")
         .or_else(|_| std::env::var("USER"))
@@ -61,6 +67,35 @@ fn derive_key() -> [u8; 32] {
     let mut key = [0u8; 32];
     key.copy_from_slice(&result);
     key
+}
+
+fn decrypt_stored_payload_with_fallback(payload_b64: &str) -> Option<(Vec<u8>, bool)> {
+    let raw_bytes = BASE64.decode(payload_b64).ok()?;
+    if raw_bytes.len() < 12 {
+        return None;
+    }
+
+    let (nonce_bytes, ciphertext) = raw_bytes.split_at(12);
+    let nonce = Nonce::from_slice(nonce_bytes);
+
+    let cipher_key = derive_key();
+    if let Ok(cipher) = Aes256Gcm::new_from_slice(&cipher_key) {
+        if let Ok(decrypted) = cipher.decrypt(nonce, ciphertext) {
+            return Some((decrypted, false));
+        }
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let legacy_key = derive_legacy_env_key();
+        if let Ok(cipher) = Aes256Gcm::new_from_slice(&legacy_key) {
+            if let Ok(decrypted) = cipher.decrypt(nonce, ciphertext) {
+                return Some((decrypted, true));
+            }
+        }
+    }
+
+    None
 }
 
 pub fn make_key_hint(api_key: &str) -> String {
@@ -173,19 +208,12 @@ pub fn load_credentials(exchange: &str) -> Option<ExchangeCredentials> {
 
     let content = fs::read_to_string(&path).ok()?;
     let stored = serde_json::from_str::<StoredCredentialFile>(&content).ok()?;
-    let raw_bytes = BASE64.decode(stored.payload).ok()?;
-
-    if raw_bytes.len() < 12 {
-        return None;
+    let (decrypted, used_legacy) = decrypt_stored_payload_with_fallback(&stored.payload)?;
+    let creds = serde_json::from_slice::<ExchangeCredentials>(&decrypted).ok()?;
+    if used_legacy {
+        let _ = save_credentials(exchange, &creds.api_key, &creds.api_secret);
     }
-
-    let (nonce_bytes, ciphertext) = raw_bytes.split_at(12);
-    let cipher_key = derive_key();
-    let cipher = Aes256Gcm::new_from_slice(&cipher_key).ok()?;
-    let nonce = Nonce::from_slice(nonce_bytes);
-
-    let decrypted = cipher.decrypt(nonce, ciphertext).ok()?;
-    serde_json::from_slice::<ExchangeCredentials>(&decrypted).ok()
+    Some(creds)
 }
 
 pub fn delete_credentials(exchange: &str) -> Result<(), String> {
@@ -259,19 +287,12 @@ pub fn load_ai_api_key() -> Option<String> {
 
     let content = fs::read_to_string(&path).ok()?;
     let stored = serde_json::from_str::<StoredCredentialFile>(&content).ok()?;
-    let raw_bytes = BASE64.decode(stored.payload).ok()?;
-
-    if raw_bytes.len() < 12 {
-        return None;
+    let (decrypted, used_legacy) = decrypt_stored_payload_with_fallback(&stored.payload)?;
+    let key = String::from_utf8(decrypted).ok()?;
+    if used_legacy {
+        let _ = save_ai_api_key(&key);
     }
-
-    let (nonce_bytes, ciphertext) = raw_bytes.split_at(12);
-    let cipher_key = derive_key();
-    let cipher = Aes256Gcm::new_from_slice(&cipher_key).ok()?;
-    let nonce = Nonce::from_slice(nonce_bytes);
-
-    let decrypted = cipher.decrypt(nonce, ciphertext).ok()?;
-    String::from_utf8(decrypted).ok()
+    Some(key)
 }
 
 pub fn delete_ai_api_key() -> Result<(), String> {

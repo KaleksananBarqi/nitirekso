@@ -15,8 +15,8 @@ pub fn clear_logs() -> MutationResult<()> {
 }
 
 #[tauri::command]
-pub fn open_log_folder() -> MutationResult<()> {
-    match log_open() {
+pub fn open_log_folder(app: tauri::AppHandle) -> MutationResult<()> {
+    match log_open(&app) {
         Ok(_) => MutationResult::ok_unit(),
         Err(e) => MutationResult::fail(e),
     }

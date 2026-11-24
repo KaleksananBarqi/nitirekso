@@ -1,4 +1,6 @@
 pub mod ai;
+pub mod android_bridge;
+pub mod app_paths;
 pub mod app_utils;
 pub mod backup;
 pub mod commands;
@@ -27,6 +29,7 @@ use vault::VaultState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -44,6 +47,8 @@ pub fn run() {
 
     builder
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(android_bridge::init_plugin())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -53,24 +58,29 @@ pub fn run() {
                 )?;
             }
 
+            app_paths::init_app_data_dir(app.handle());
+
             let db_path = get_db_path();
             log::info!("[db:init] Membuka database di: {:?}", db_path);
             let mut conn = initialize_db(&db_path)
                 .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
 
             let vault_state = VaultState::from_db(&conn, &db_path);
+            vault_state.set_app_handle(app.handle().clone());
             let vault_status = vault_state.get_status();
             if vault_status.connected {
                 if let Err(err) = vault_state.run_device_sync_now(&mut conn, &db_path) {
                     log::warn!("[device-sync] Sinkronisasi startup gagal: {}", err);
                 }
                 if let Some(vp) = vault_status.vault_path.as_deref() {
-                    let handle = start_watcher(
-                        app.handle().clone(),
-                        std::path::PathBuf::from(vp),
-                        vault_status.device_id,
-                    );
-                    *vault_state.watcher.lock().unwrap() = handle;
+                    if !vault::storage::is_content_uri(vp) {
+                        let handle = start_watcher(
+                            app.handle().clone(),
+                            std::path::PathBuf::from(vp),
+                            vault_status.device_id,
+                        );
+                        *vault_state.watcher.lock().unwrap() = handle;
+                    }
                     let _ = app.handle().emit("device-sync:updated", ());
                 }
             }
@@ -135,7 +145,10 @@ pub fn run() {
             open_local_installer_fallback,
             get_btc_klines,
             remux_video_mp4,
-            save_video_file
+            save_video_file,
+            save_media_export,
+            share_media_export,
+            copy_media_image
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

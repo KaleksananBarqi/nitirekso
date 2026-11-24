@@ -636,6 +636,34 @@ export class InMemoryMockAdapter implements IpcClient {
             this.savedVideosState.set(defaultName, data)
             return ok(`/mock/videos/${defaultName}`)
         },
+
+        saveMediaExport: async (
+            fileName: string,
+            _mimeType: string,
+            data: Uint8Array
+        ): Promise<AppResult<string | null>> => {
+            this.savedVideosState.set(fileName, data)
+            return ok(`/mock/exports/${fileName}`)
+        },
+
+        shareMediaExport: async (
+            fileName: string,
+            _mimeType: string,
+            _title: string,
+            data: Uint8Array
+        ): Promise<AppResult<void>> => {
+            this.savedVideosState.set(fileName, data)
+            return ok(undefined)
+        },
+
+        copyMediaImage: async (
+            fileName: string,
+            _mimeType: string,
+            data: Uint8Array
+        ): Promise<AppResult<void>> => {
+            this.savedVideosState.set(fileName, data)
+            return ok(undefined)
+        },
     }
 
     // -----------------------------------------------------------------------
@@ -810,14 +838,14 @@ export class InMemoryMockAdapter implements IpcClient {
         },
 
         getAppVersion: async (): Promise<AppResult<string>> => {
-            return ok('1.11.0-mock')
+            return ok('1.12.0-mock')
         },
 
         checkForUpdates: async (): Promise<AppResult<AppUpdateInfo>> => {
             return ok({
                 hasUpdate: false,
-                currentVersion: '1.11.0-mock',
-                latestVersion: '1.11.0-mock',
+                currentVersion: '1.12.0-mock',
+                latestVersion: '1.12.0-mock',
                 releaseUrl: 'https://github.com/KaleksananBarqi/nitirekso/releases',
             })
         },
@@ -840,7 +868,7 @@ export class InMemoryMockAdapter implements IpcClient {
                 notModified: false,
                 etag: null,
                 source: 'mock',
-                latestVersion: '1.11.0',
+                latestVersion: '1.12.0',
                 releaseUrl: 'https://github.com/KaleksananBarqi/nitirekso/releases',
                 releaseNotes: null,
                 publishedAt: null,

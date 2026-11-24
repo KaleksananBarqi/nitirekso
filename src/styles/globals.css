@@ -23,101 +23,99 @@
    ============================================================ */
 
 :root {
-    /* --- Semantik dasar (mode terang) --- */
-    --background: hsl(0 0% 100%);
-    --foreground: hsl(222 47% 11%);
+    /* --- Semantik dasar (mode terang — Kertas Editorial) --- */
+    --bg-shell: #E8E8EC;
+    --background: #F5F5F7;
+    --foreground: #1D1D1F;
 
-    --card: hsl(0 0% 100%);
-    --card-foreground: hsl(222 47% 11%);
+    --card: #FFFFFF;
+    --card-foreground: #1D1D1F;
 
-    --popover: hsl(0 0% 100%);
-    --popover-foreground: hsl(222 47% 11%);
+    --popover: #FFFFFF;
+    --popover-foreground: #1D1D1F;
 
-    --primary: hsl(221 83% 53%);
-    --primary-foreground: hsl(210 40% 98%);
+    --primary: #7E22CE;
+    --primary-foreground: #FFFFFF;
 
-    --secondary: hsl(210 40% 96%);
-    --secondary-foreground: hsl(222 47% 11%);
+    --secondary: #EBEBF0;
+    --secondary-foreground: #1D1D1F;
 
-    --muted: hsl(210 40% 96%);
-    --muted-foreground: hsl(215 16% 47%);
+    --muted: #EFEFF4;
+    --muted-foreground: #5C5C62;
 
-    --accent: hsl(210 40% 96%);
-    --accent-foreground: hsl(222 47% 11%);
+    --accent: #EFE6FA;
+    --accent-foreground: #1D1D1F;
 
-    --destructive: hsl(0 72% 51%);
-    --destructive-foreground: hsl(210 40% 98%);
+    --destructive: #B91C1C;
+    --destructive-foreground: #FFFFFF;
 
-    --border: hsl(214 32% 91%);
-    --input: hsl(214 32% 91%);
-    --ring: hsl(221 83% 53%);
+    --border: #D4D4DA;
+    --input: #C6C6CE;
+    --ring: #7E22CE;
 
-    /* --- Warna trading (mode terang) ---
-     Profit/loss adalah warna SEMANTIK, bukan nama warna. Pemetaan ke
-     biru/oranye untuk mode colorblind-safe dilakukan di .colorblind-safe,
-     sehingga komponen tidak perlu tahu mode mana yang aktif. */
-    --profit: hsl(160 93% 24%);
-    --profit-foreground: hsl(0 0% 100%);
-    --loss: hsl(0 72% 45%);
-    --loss-foreground: hsl(0 0% 100%);
-    --flat: hsl(215 16% 47%);
+    /* --- Warna trading (mode terang) --- */
+    --profit: #047857;
+    --profit-foreground: #FFFFFF;
+    --loss: #B91C1C;
+    --loss-foreground: #FFFFFF;
+    --flat: #5C5C62;
 
-    /* --- Chart (Fase 4) --- */
-    --chart-1: hsl(221 83% 53%);
-    --chart-2: hsl(173 58% 39%);
-    --chart-3: hsl(27 87% 55%);
-    --chart-4: hsl(280 65% 60%);
-    --chart-5: hsl(340 75% 55%);
+    /* --- Chart --- */
+    --chart-1: #7E22CE;
+    --chart-2: #047857;
+    --chart-3: #B45309;
+    --chart-4: #0369A1;
+    --chart-5: #B91C1C;
 
-    --radius: 0.5rem;
+    --radius: 0.625rem;
 
     color-scheme: light;
 }
 
 .dark {
-    /* --- Semantik dasar nitirekso (mode gelap) ---
-     Tema Royal Amethyst & Deep Obsidian: kontras tinggi, elegan, nyaman untuk trading sesi panjang. */
-    --background: hsl(250 24% 6%);
-    --foreground: hsl(240 20% 98%);
+    /* --- Semantik dasar nitirekso (mode gelap — Obsidian Amethyst) --- */
+    --bg-shell: #07060C;
+    --background: #0C0B14;
+    --foreground: #F8F7FC;
 
-    --card: hsl(250 20% 11%);
-    --card-foreground: hsl(240 20% 98%);
+    --card: #151322;
+    --card-foreground: #F8F7FC;
 
-    --popover: hsl(250 20% 11%);
-    --popover-foreground: hsl(240 20% 98%);
+    --popover: #151322;
+    --popover-foreground: #F8F7FC;
 
-    --primary: hsl(268 85% 64%);
-    --primary-foreground: hsl(0 0% 100%);
+    --primary: #9333EA;
+    --primary-foreground: #FFFFFF;
 
-    --secondary: hsl(250 18% 16%);
-    --secondary-foreground: hsl(240 20% 96%);
+    --secondary: #1E1B2E;
+    --secondary-foreground: #F8F7FC;
 
-    --muted: hsl(250 18% 16%);
-    --muted-foreground: hsl(245 15% 65%);
+    --muted: #1A1729;
+    --muted-foreground: #A6A3BA;
 
-    --accent: hsl(250 18% 16%);
-    --accent-foreground: hsl(240 20% 96%);
+    --accent: #241C38;
+    --accent-foreground: #F8F7FC;
 
-    --destructive: hsl(350 89% 60%);
-    --destructive-foreground: hsl(0 0% 100%);
+    --destructive: #F43F5E;
+    --destructive-foreground: #FFFFFF;
 
-    --border: hsl(250 14% 18%);
-    --input: hsl(250 14% 20%);
-    --ring: hsl(268 85% 64%);
+    --border: #28243A;
+    --input: #342F4B;
+    --ring: #9333EA;
 
     /* --- Warna trading (mode gelap) --- */
-    --profit: hsl(152 69% 45%);
-    --profit-foreground: hsl(250 24% 6%);
-    --loss: hsl(350 89% 60%);
-    --loss-foreground: hsl(250 24% 6%);
-    --flat: hsl(245 15% 65%);
+    --profit: #10B981;
+    --profit-foreground: #07060C;
+    --loss: #F43F5E;
+    --loss-foreground: #07060C;
+    --flat: #A6A3BA;
 
     /* --- Chart (mode gelap) --- */
-    --chart-1: hsl(268 85% 64%);
-    --chart-2: hsl(152 69% 45%);
-    --chart-3: hsl(35 92% 58%);
-    --chart-4: hsl(200 90% 55%);
-    --chart-5: hsl(330 85% 60%);
+    --chart-1: #9333EA;
+    --chart-2: #10B981;
+    --chart-3: #F59E0B;
+    --chart-4: #38BDF8;
+    --chart-5: #F43F5E;
 
     color-scheme: dark;
 }
@@ -151,6 +149,7 @@
    ============================================================ */
 
 @theme inline {
+    --color-shell: var(--bg-shell);
     --color-background: var(--background);
     --color-foreground: var(--foreground);
 
@@ -218,6 +217,8 @@
     body,
     #root {
         height: 100%;
+        width: 100%;
+        overflow-x: clip;
     }
 
     body {
@@ -227,10 +228,19 @@
         font-size: 14px;
         line-height: 1.6;
         margin: 0;
-        /* Aplikasi desktop, bukan halaman web — teks tidak perlu bisa diseleksi
-       sembarangan di area UI, tapi angka tetap harus bisa di-copy.
-       overscroll dimatikan agar tidak ada efek bounce khas browser. */
+        /* Aplikasi desktop/mobile offline-first: matikan efek bounce browser */
         overscroll-behavior: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+        }
     }
 
     /* Angka harus rata kolom saat dibandingkan (brief §7). */

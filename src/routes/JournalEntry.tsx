@@ -75,7 +75,7 @@ export function JournalEntry({ trades, onOpen }: JournalEntryProps): React.JSX.E
                 }
             />
 
-            <div className="flex-1 overflow-y-auto px-6 py-4">
+            <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6">
                 {filtered.length === 0 ? (
                     <EmptyState
                         title={filter === 'needs-review' ? 'Semua trade sudah direview' : 'Tidak ada trade'}
@@ -95,7 +95,7 @@ export function JournalEntry({ trades, onOpen }: JournalEntryProps): React.JSX.E
                                     key={detail.trade.id}
                                     className="rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-primary/40"
                                 >
-                                    <div className="flex items-start justify-between gap-4">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                                         <div className="min-w-0 flex-1">
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <Badge tone={detail.trade.direction === 'long' ? 'profit' : 'loss'}>
@@ -147,29 +147,31 @@ export function JournalEntry({ trades, onOpen }: JournalEntryProps): React.JSX.E
                                             )}
                                         </div>
 
-                                        <div className="flex shrink-0 flex-col items-end gap-1.5">
-                                            <span
-                                                className={cn(
-                                                    'tabular text-sm font-medium',
-                                                    pnlColorClass(detail.trade.realizedPnl)
-                                                )}
-                                            >
-                                                {formatPnl(detail.trade.realizedPnl)}
-                                            </span>
-                                            <span className={cn('tabular text-[11px]', rColorClass(detail.rMultiple))}>
-                                                {formatR(detail.rMultiple)}
-                                            </span>
-                                            <GradeDisplay grade={detail.journal?.executionGrade ?? null} />
-                                            <div className="flex items-center gap-1 mt-1">
+                                        <div className="flex shrink-0 flex-row items-center justify-between gap-2 sm:flex-col sm:items-end sm:gap-1.5">
+                                            <div className="flex flex-col sm:items-end">
+                                                <span
+                                                    className={cn(
+                                                        'tabular text-sm font-medium',
+                                                        pnlColorClass(detail.trade.realizedPnl)
+                                                    )}
+                                                >
+                                                    {formatPnl(detail.trade.realizedPnl)}
+                                                </span>
+                                                <span className={cn('tabular text-[11px]', rColorClass(detail.rMultiple))}>
+                                                    {formatR(detail.rMultiple)}
+                                                </span>
+                                                <GradeDisplay grade={detail.journal?.executionGrade ?? null} />
+                                            </div>
+                                            <div className="flex items-center gap-1.5 mt-1">
                                                 <Button
                                                     size="sm"
                                                     variant="ghost"
-                                                    className="h-8 px-2 text-[11px] text-primary hover:bg-primary/10"
+                                                    className="min-h-11 sm:min-h-8 px-3 sm:px-2 text-[11px] text-primary hover:bg-primary/10"
                                                     onClick={() => setSharePnlDetail(detail)}
                                                 >
-                                                    ✨ Pamer
+                                                    Pamer
                                                 </Button>
-                                                <Button size="sm" variant="outline" onClick={() => onOpen(detail)}>
+                                                <Button size="sm" variant="outline" className="min-h-11 sm:min-h-8" onClick={() => onOpen(detail)}>
                                                     Buka Jurnal
                                                 </Button>
                                             </div>

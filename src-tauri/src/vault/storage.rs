@@ -5,6 +5,11 @@ use std::path::{Path, PathBuf};
 /// Batas ukuran berkas operation log sebelum rotasi otomatis (~1 MB)
 pub const MAX_OPLOG_FILE_BYTES: u64 = 1024 * 1024;
 
+/// Memeriksa apakah path/URI menunjuk ke Storage Access Framework Android (`content://`).
+pub fn is_content_uri(path_or_uri: &str) -> bool {
+    path_or_uri.trim().starts_with("content://")
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpFileInfo {
     pub device_id: String,

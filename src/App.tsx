@@ -9,6 +9,8 @@ import { useTrades } from './hooks/useTrades'
 import { useHidePnl } from './hooks/useHidePnl'
 import { useAppUpdater } from './hooks/useAppUpdater'
 import { hydrateCustomThemesFromSettings } from './lib/customThemes'
+import { hydrateLocaleFromSettings, useI18n } from './lib/i18n'
+import { isAndroidApp } from './lib/platform'
 import { hydrateShareSettingsFromBackend } from './lib/shareSettings'
 import { migrateLegacyWebStorageIfNeeded } from './lib/storageMigration'
 import { getUpdatePillContent } from './lib/update/updateHelpers'
@@ -39,6 +41,7 @@ export default function App(): React.JSX.Element {
     const [creating, setCreating] = useState(false)
     const [dbPath, setDbPath] = useState('')
 
+    const { t } = useI18n()
     const { theme, colorblindSafe, isDark, setTheme, setColorblindSafe } = useTheme()
     const { trades, meta, loading, error, reload } = useTrades()
     const { hidePnl, setHidePnl } = useHidePnl()
@@ -55,6 +58,7 @@ export default function App(): React.JSX.Element {
                 const rawSettings = await window.api.getSettings()
                 const migratedSettings = await migrateLegacyWebStorageIfNeeded(rawSettings)
                 if (!isMounted) return
+                hydrateLocaleFromSettings(migratedSettings)
                 hydrateCustomThemesFromSettings(migratedSettings)
                 await hydrateShareSettingsFromBackend(migratedSettings)
             } catch {
@@ -97,9 +101,9 @@ export default function App(): React.JSX.Element {
             void hydrateAllSettings()
         })
 
-        // Pull ringan saat jendela kembali aktif (throttled minimal 5 detik)
+        // Pull ringan saat jendela kembali aktif / aplikasi mobile kembali ke foreground (throttled minimal 5 detik)
         let lastFocusSyncAt = 0
-        const handleWindowFocus = () => {
+        const triggerForegroundDeviceSync = () => {
             const now = Date.now()
             if (now - lastFocusSyncAt < 5000) return
             lastFocusSyncAt = now
@@ -115,7 +119,26 @@ export default function App(): React.JSX.Element {
                 }
             })
         }
+        const handleWindowFocus = () => {
+            triggerForegroundDeviceSync()
+        }
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                triggerForegroundDeviceSync()
+            }
+        }
         window.addEventListener('focus', handleWindowFocus)
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+
+        // Di Android tidak ada file watcher OS untuk SAF; jalankan polling ringan tiap 15 detik
+        // hanya ketika aplikasi sedang aktif di layar depan (berhenti total saat di background).
+        const androidForegroundSyncTimer = isAndroidApp()
+            ? window.setInterval(() => {
+                  if (document.visibilityState === 'visible') {
+                      triggerForegroundDeviceSync()
+                  }
+              }, 15_000)
+            : null
 
         // --- Sinkron Exchange Otomatis Saat Pertama Kali Buka App ---
         const triggerStartupSync = async () => {
@@ -158,6 +181,10 @@ export default function App(): React.JSX.Element {
             window.removeEventListener('error', handleGlobalError)
             window.removeEventListener('unhandledrejection', handleUnhandledRejection)
             window.removeEventListener('focus', handleWindowFocus)
+            document.removeEventListener('visibilitychange', handleVisibilityChange)
+            if (androidForegroundSyncTimer !== null) {
+                window.clearInterval(androidForegroundSyncTimer)
+            }
             window.removeEventListener('app:sync-complete', handleGlobalSyncComplete)
         }
     }, [reload])
@@ -256,15 +283,15 @@ export default function App(): React.JSX.Element {
     /** Status ringkas + sync di kaki sidebar. */
     const statusSlot = useMemo(
         () => (
-            <div className="flex flex-col gap-1 text-[10px] text-muted-foreground">
+            <div className="flex flex-col gap-1.5 text-[10px] text-muted-foreground">
                 <div className="flex items-center justify-between">
-                    <span>Total trade</span>
-                    <span className="tabular font-medium text-foreground">{trades.length}</span>
+                    <span>{t('nav.totalTrades')}</span>
+                    <span className="tabular font-semibold text-foreground">{trades.length}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                    <span>Database</span>
-                    <span className={error ? 'text-loss' : 'text-profit'}>
-                        {error ? 'error' : loading ? 'memuat' : 'siap'}
+                    <span>{t('nav.database')}</span>
+                    <span className={error ? 'text-loss font-semibold' : 'text-profit font-semibold'}>
+                        {error ? t('nav.dbError') : loading ? t('nav.dbLoading') : t('nav.dbReady')}
                     </span>
                 </div>
                 <div className="my-1">
@@ -273,36 +300,35 @@ export default function App(): React.JSX.Element {
                 <div className="flex gap-1">
                     <Button
                         size="sm"
-                        variant="ghost"
-                        className="h-6 flex-1 px-1 text-[10px]"
+                        variant="secondary"
+                        className="h-7 flex-1 px-1.5 text-[10px]"
                         onClick={() => setTheme(isDark ? 'light' : 'dark')}
                     >
-                        {isDark ? 'Terang' : 'Gelap'}
+                        {isDark ? t('appearance.modeLight') : t('appearance.modeDark')}
                     </Button>
                     <Button
                         size="sm"
-                        variant="ghost"
-                        className="h-6 flex-1 px-1 text-[10px]"
+                        variant="secondary"
+                        className="h-7 flex-1 px-1.5 text-[10px]"
                         onClick={() => setColorblindSafe(!colorblindSafe)}
-                        title="Mode colorblind-safe: tukar hijau/merah jadi biru/oranye"
+                        title={t('appearance.colorblindHint')}
                     >
-                        {colorblindSafe ? 'Warna: CB' : 'Warna: Std'}
+                        {colorblindSafe ? 'CB: On' : 'CB: Off'}
                     </Button>
                 </div>
                 <div className="flex gap-1">
                     <Button
                         size="sm"
-                        variant="ghost"
-                        className="h-6 flex-1 px-1 text-[10px]"
+                        variant="secondary"
+                        className="h-7 flex-1 px-1.5 text-[10px]"
                         onClick={() => setHidePnl(!hidePnl)}
-                        title="Sembunyikan semua angka PnL"
                     >
-                        <PnlValue value={hidePnl ? 'PnL: Tersembunyi' : 'PnL: Terlihat'} hide={hidePnl} />
+                        <PnlValue value={hidePnl ? t('nav.showPnl') : t('nav.hidePnl')} hide={false} />
                     </Button>
                 </div>
             </div>
         ),
-        [trades.length, error, loading, isDark, colorblindSafe, setTheme, setColorblindSafe, hidePnl, setHidePnl]
+        [trades.length, error, loading, isDark, colorblindSafe, setTheme, setColorblindSafe, hidePnl, setHidePnl, t, reload]
     )
 
     return (

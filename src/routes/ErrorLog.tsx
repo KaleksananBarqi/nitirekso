@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { LogEntry } from '@shared/ipc-contract'
 import { PageHeader } from '../components/AppShell'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorNote, Select, TextInput } from '../components/ui'
+import { isAndroidApp } from '../lib/platform'
 
 export function ErrorLog(): React.JSX.Element {
     const [logs, setLogs] = useState<LogEntry[]>([])
@@ -107,7 +108,7 @@ export function ErrorLog(): React.JSX.Element {
                 title="Error Logs & Debugging"
                 description="Catatan log terpusat dari Main Process dan Renderer untuk diagnosa kendala aplikasi."
                 actions={
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <Button size="sm" variant="secondary" onClick={() => void fetchLogs()} disabled={loading}>
                             {loading ? 'Memuat...' : 'Refresh'}
                         </Button>
@@ -115,7 +116,7 @@ export function ErrorLog(): React.JSX.Element {
                             {copied ? 'Tersalin!' : 'Copy Logs'}
                         </Button>
                         <Button size="sm" variant="secondary" onClick={() => void handleOpenFolder()}>
-                            Buka Folder Log
+                            {isAndroidApp() ? 'Bagikan Log' : 'Buka Folder Log'}
                         </Button>
                         <Button size="sm" variant="danger" onClick={() => void handleClearLogs()} disabled={logs.length === 0}>
                             Clear Logs
@@ -124,11 +125,11 @@ export function ErrorLog(): React.JSX.Element {
                 }
             />
 
-            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-6">
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 md:p-6">
                 {error && <ErrorNote message={error} />}
 
                 {/* Ringkasan Statistik */}
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     <Card className="p-3">
                         <p className="text-[11px] font-medium text-muted-foreground">Total Entri</p>
                         <p className="mt-1 text-lg font-bold">{stats.total}</p>
@@ -151,14 +152,14 @@ export function ErrorLog(): React.JSX.Element {
                 <Card>
                     <CardHeader title="Filter Log" description="Cari kata kunci atau saring berdasarkan tingkat keparahan" />
                     <div className="flex flex-wrap items-center gap-3 p-4">
-                        <div className="w-64">
+                        <div className="w-full sm:w-64">
                             <TextInput
                                 placeholder="Cari pesan atau stack trace..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                         </div>
-                        <div className="w-40">
+                        <div className="w-full sm:w-40">
                             <Select
                                 value={filterLevel}
                                 onChange={(e) => setFilterLevel(e.target.value as 'ALL' | 'ERROR' | 'WARN' | 'INFO')}

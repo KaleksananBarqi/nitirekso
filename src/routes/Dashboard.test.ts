@@ -13,8 +13,7 @@ describe('Dashboard Route Integration with PerformanceReport (#30)', () => {
 
     it('menampilkan EmptyState saat daftar trades bernilai kosong', () => {
         const html = renderToString(React.createElement(Dashboard, { trades: [], hidePnl: false }))
-        expect(html).toContain('Belum ada data')
-        expect(html).toContain('Dashboard akan menampilkan metrik performa setelah ada trade tercatat')
+        expect(html).toContain('Durung ana data trade')
     })
 
     it('mengintegrasikan compilePerformanceReport untuk me-render headline metrics secara konsisten', () => {
@@ -49,8 +48,8 @@ describe('Dashboard Route Integration with PerformanceReport (#30)', () => {
 
         const html = renderToString(React.createElement(Dashboard, { trades, hidePnl: false }))
 
-        // Header menampilkan total trades
-        expect(html).toContain('Berdasarkan 2 trade')
+        // Header menampilkan total trades (default Arekan jv)
+        expect(html).toContain('Saka 2 trade')
 
         // Metric Card labels
         expect(html).toContain('Win Rate')
@@ -59,9 +58,9 @@ describe('Dashboard Route Integration with PerformanceReport (#30)', () => {
 
         expect(html).toContain('Profit Factor')
         expect(html).toContain('Expectancy')
-        expect(html).toContain('P&amp;L Bersih')
+        expect(html).toContain('P&amp;L Resik')
         expect(html).toContain('Max Drawdown')
-        expect(html).toContain('Durasi Drawdown')
+        expect(html).toContain('Suwene Drawdown')
         expect(html).toContain('Funding Fee')
         expect(html).toContain('R Valid')
         expect(html).toContain('2 / 2')
@@ -88,7 +87,7 @@ describe('Dashboard Route Integration with PerformanceReport (#30)', () => {
         const html = renderToString(React.createElement(Dashboard, { trades, hidePnl: false }))
         expect(html).toContain('Kurva Equity')
         expect(html).toContain('aria-label="Kurva equity kumulatif"')
-        expect(html).not.toContain('Butuh minimal 2 trade untuk menggambar kurva equity.')
+        expect(html).not.toContain('Butuh minimal 2 trade kanggo nggambar kurva equity.')
     })
 
     it('menampilkan pesan fallback saat trade kurang dari 2 untuk sparkline', () => {
@@ -98,7 +97,7 @@ describe('Dashboard Route Integration with PerformanceReport (#30)', () => {
 
         const html = renderToString(React.createElement(Dashboard, { trades, hidePnl: false }))
         expect(html).toContain('Kurva Equity')
-        expect(html).toContain('Butuh minimal 2 trade untuk menggambar kurva equity.')
+        expect(html).toContain('Butuh minimal 2 trade kanggo nggambar kurva equity.')
     })
 
     it('me-render daftar Trade Terakhir dengan arah posisi dan setup tag', () => {
@@ -111,7 +110,7 @@ describe('Dashboard Route Integration with PerformanceReport (#30)', () => {
         ]
 
         const html = renderToString(React.createElement(Dashboard, { trades, hidePnl: false }))
-        expect(html).toContain('Trade Terakhir')
+        expect(html).toContain('Trade Paling Anyar')
         expect(html).toContain('SOLUSDT')
         expect(html).toContain('Long')
         expect(html).toContain('breakout')
@@ -150,7 +149,7 @@ describe('Dashboard Route Integration with PerformanceReport (#30)', () => {
         expect(report.summary.winRate).toBe(1.0) // 1 win / 1 directional trade
 
         const html = renderToString(React.createElement(Dashboard, { trades, hidePnl: false }))
-        expect(html).toContain('1W / 0L · 1 flat dikecualikan')
+        expect(html).toContain('1W / 0L · 1 flat')
         expect(html).toContain('100.0%')
     })
 })

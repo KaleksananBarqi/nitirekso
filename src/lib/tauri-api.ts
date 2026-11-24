@@ -104,6 +104,12 @@ export function createTauriApi(customClient?: IpcClient): PreloadApi {
         },
         saveVideoFile: async (defaultName: string, data: Uint8Array) =>
             toMutation(await client.media.saveVideoFile(defaultName, data)),
+        saveMediaExport: async (fileName: string, mimeType: string, data: Uint8Array) =>
+            toMutation(await client.media.saveMediaExport(fileName, mimeType, data)),
+        shareMediaExport: async (fileName: string, mimeType: string, title: string, data: Uint8Array) =>
+            toMutation(await client.media.shareMediaExport(fileName, mimeType, title, data)),
+        copyMediaImage: async (fileName: string, mimeType: string, data: Uint8Array) =>
+            toMutation(await client.media.copyMediaImage(fileName, mimeType, data)),
 
         // --- Domain Backup (Local Snapshot) ---
         getBackupStatus: async () => unwrapAppResult(await client.backup.getStatus()),

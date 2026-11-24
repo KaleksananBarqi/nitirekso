@@ -11,37 +11,45 @@ pub struct DbState {
 }
 
 pub fn get_db_path() -> PathBuf {
-    // Migrasi data mundur / kompatibilitas:
-    // Jika database sudah ada di direktori nitirekso/data, gunakan langsung.
+    let target_dir = crate::app_paths::get_app_data_dir().join("data");
+    let _ = std::fs::create_dir_all(&target_dir);
+    let target_path = target_dir.join("trading-journal.sqlite");
+
+    if target_path.exists() {
+        return target_path;
+    }
+
+    // Migrasi data mundur / kompatibilitas dari versi Electron sebelumnya (khusus Desktop)
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     if let Some(appdata) = dirs::data_dir() {
-        let candidate = appdata.join("nitirekso").join("data").join("trading-journal.sqlite");
-        if candidate.exists() {
-            return candidate;
-        }
-
-        // Cek folder alternatif dari versi Electron sebelumnya jika ada
         let old_candidates = [
-            appdata.join("Aplikasi Trading Journal Otomatis").join("data").join("trading-journal.sqlite"),
-            appdata.join("Nitirekso").join("data").join("trading-journal.sqlite"),
+            appdata
+                .join("Aplikasi Trading Journal Otomatis")
+                .join("data")
+                .join("trading-journal.sqlite"),
+            appdata
+                .join("Nitirekso")
+                .join("data")
+                .join("trading-journal.sqlite"),
         ];
-
-        let target_dir = appdata.join("nitirekso").join("data");
-        let _ = std::fs::create_dir_all(&target_dir);
-        let target_path = target_dir.join("trading-journal.sqlite");
 
         for old in &old_candidates {
             if old.exists() {
                 let _ = std::fs::copy(old, &target_path);
-                let _ = std::fs::copy(format!("{}-wal", old.display()), format!("{}-wal", target_path.display()));
-                let _ = std::fs::copy(format!("{}-shm", old.display()), format!("{}-shm", target_path.display()));
+                let _ = std::fs::copy(
+                    format!("{}-wal", old.display()),
+                    format!("{}-wal", target_path.display()),
+                );
+                let _ = std::fs::copy(
+                    format!("{}-shm", old.display()),
+                    format!("{}-shm", target_path.display()),
+                );
                 return target_path;
             }
         }
-
-        return target_path;
     }
 
-    PathBuf::from("trading-journal.sqlite")
+    target_path
 }
 
 pub fn open_db(path: &Path) -> Result<Connection, rusqlite::Error> {

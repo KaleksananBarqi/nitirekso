@@ -168,5 +168,5 @@ export interface MediaExportResult {
     blob: Blob
     filename: string
     savedFilePath?: string | null
-    extension: 'png' | 'mp4' | 'gif'
+    extension: 'png' | 'mp4' | 'gif' | 'webm'
 }

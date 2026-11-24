@@ -22,6 +22,8 @@ data/
 # Kredensial & konfigurasi lokal
 .env
 .env.*
+*.jks
+*.keystore
 
 # PENTING (gotcha dari vault — ADR .env Credential Loading for smc-prompt-cli):
 # negasi di bawah HARUS ditulis SETELAH glob ".env.*" di atas, kalau tidak

@@ -3,6 +3,29 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.12.0] - 2026-11-24
+
+### 🚀 Perubahan Arsitektur Utama
+- **Dukungan Android Resmi via Tauri v2 (`ADR-0004`, `src-tauri/gen/android/`, `android_bridge.rs`, `saf_storage.rs`)**:
+  - Target build resmi Android `arm64-v8a` (`.apk` tertandatangani) langsung dari monorepo yang sama dengan kesetaraan fitur penuh (*full feature parity*).
+  - Plugin Kotlin native `NitireksoAndroidPlugin` untuk **Storage Access Framework (SAF)** (`SafVaultStorage` bagi Syncthing **Sync Vault** & **Local Snapshot**), **Android Keystore** hardware-backed, **MediaStore**, **Android Share Sheet**, dan **MediaMuxer** native tanpa membundel FFmpeg.
+- **Neo-Quant Bento Shell, Unified Theme Engine & Arekan Localization (`ADR-0005`, `themeEngine.ts`, `i18n/index.ts`)**:
+  - Bahasa visual baru lintas Desktop & Android dengan pemisahan permukaan tonal (`--bg-shell`), hierarki **Bento** di Dashboard, **5 Tab Tonal** keyboard-accessible di Settings, kontrol `ToggleSwitch` modern, dan target sentuh mobile minimal `44px`.
+  - **Unified Theme Engine** dengan **34 Theme Preset bawaan** (**32 tema Jawa** selaras ekosistem `trawangan` + **2 tema bawaan `nitirekso`**: *Obsidian Amethyst* & *Kertas Editorial*), derivasi token otomatis terverifikasi **WCAG 2.1 AA (`>= 4.5:1`)** termasuk `--profit` dan `--loss`, memori preset gelap/terang terpisah untuk mode sistem, dan *override* Colorblind-Safe independen.
+  - **Arekan Localization Engine** 3 bahasa penuh dengan **Basa Jawa Ngoko Arekan (`jv`)** sebagai bahasa bawaan, disertai Bahasa Indonesia (`id`) dan English (`en`), persisten di SQLite & tersinkron via Sync Vault.
+
+### 🐛 Perbaikan Bug
+- **Sinkronisasi Profil, Logo & Wallpaper via Sync Vault (`commands/media.rs`, `native-adapter.ts`, `storageMigration.ts`)**:
+  - Memperbaiki kegagalan deserialisasi JSON `Uint8Array` pada `save_media_asset` dengan bermigrasi ke transmisi biner mentah (`InvokeBody::Raw`) + header URL-encoded, memperbaiki `uploadScreenshot`, serta menambahkan *auto-repair* saat startup agar avatar, logo exchange, dan wallpaper lama ikut terunggah dan tersinkron lewat Syncthing.
+- **Ekspor Gambar & Render Video Kartu Share (`media-export-service.ts`, `video-export.ts`)**:
+  - Mengarahkan seluruh format ekspor (**PNG, GIF, MP4/WebM**) ke `save_media_export` (dialog simpan native OS `rfd` di Desktop dan MediaStore di Android) menggantikan `<a download>` yang diabaikan WebView.
+  - Memperkuat pipeline render video lintas Desktop & Android dengan *adaptive WebCodecs* (penurunan resolusi `1080×1920` ke `720×1280` & profil H.264 bertahap + cek `AudioEncoder.isConfigSupported`), `MediaRecorder` anti-overlap, serta validasi header `ftyp` pasca remux/transcode.
+
+### 🛠️ Peningkatan & Optimasi Sistem
+- **Pipeline CI/CD 4 Platform (`.github/workflows/release.yml`)**: Build dan publikasi otomatis untuk **Windows** (`.exe`/`.msi`), **macOS Universal** (`.dmg`), **Linux** (`.AppImage`/`.deb`/`.rpm`), dan **Android** (`nitirekso_1.12.0_arm64-v8a.apk`) lengkap dengan `latest.json` dan `SHA256SUMS.txt`.
+
+---
+
 ## [1.11.0] - 2026-11-23
 
 ### 🚀 Perubahan Arsitektur Utama

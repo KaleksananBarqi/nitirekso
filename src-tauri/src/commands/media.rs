@@ -5,14 +5,54 @@ use crate::media::{
 };
 use crate::models::MutationResult;
 use crate::vault::VaultState;
+use tauri::ipc::{InvokeBody, Request};
 use tauri::State;
+
+fn extract_media_header(request: &Request<'_>, name: &str) -> Option<String> {
+    request
+        .headers()
+        .get(name)
+        .and_then(|h| h.to_str().ok())
+        .map(|s| {
+            urlencoding::decode(s)
+                .map(|cow| cow.into_owned())
+                .unwrap_or_else(|_| s.to_string())
+        })
+        .filter(|s| !s.trim().is_empty())
+}
 
 #[tauri::command]
 pub fn save_media_asset(
     db: State<'_, DbState>,
     vault: State<'_, VaultState>,
-    payload: MediaUploadPayload,
+    request: Request<'_>,
 ) -> MutationResult<MediaAssetInfo> {
+    let payload = match request.body() {
+        InvokeBody::Raw(bytes) => {
+            let kind = extract_media_header(&request, "x-media-kind")
+                .unwrap_or_else(|| "share_media".to_string());
+            let file_name = extract_media_header(&request, "x-file-name")
+                .unwrap_or_else(|| "media.png".to_string());
+            MediaUploadPayload {
+                kind,
+                file_name,
+                data: bytes.to_vec(),
+            }
+        }
+        InvokeBody::Json(val) => {
+            let target = val.get("payload").unwrap_or(val);
+            match serde_json::from_value::<MediaUploadPayload>(target.clone()) {
+                Ok(p) => p,
+                Err(e) => {
+                    return MutationResult::fail(format!(
+                        "Gagal mem-parse payload media: {}",
+                        e
+                    ));
+                }
+            }
+        }
+    };
+
     let conn = db.conn.lock().unwrap();
     match media_save(&conn, &db.db_path, &payload) {
         Ok(info) => {

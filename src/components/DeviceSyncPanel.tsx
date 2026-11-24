@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import type { DeviceSyncRunResult, DeviceSyncStatusPayload } from '@shared/ipc-contract'
 import { Badge, Button, Card, CardHeader, ErrorNote, Field } from './ui'
 import { formatDateTime } from '../lib/format'
+import { formatVaultLocationLabel, isAndroidApp, isContentUri } from '../lib/platform'
+import { hydrateShareSettingsFromBackend } from '../lib/shareSettings'
+import { hydrateCustomThemesFromSettings } from '../lib/customThemes'
 
 interface DeviceSyncPanelProps {
     onSynced: () => Promise<void> | void
@@ -86,6 +89,13 @@ export function DeviceSyncPanel({ onSynced }: DeviceSyncPanelProps): React.JSX.E
             setResult(res.data)
             setPassphrase('')
             await loadStatus()
+            try {
+                const freshSettings = await window.api.getSettings()
+                hydrateCustomThemesFromSettings(freshSettings)
+                await hydrateShareSettingsFromBackend(freshSettings)
+            } catch {
+                // Abaikan bila hidrasi pengaturan gagal sementara
+            }
             await onSynced()
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
@@ -107,6 +117,13 @@ export function DeviceSyncPanel({ onSynced }: DeviceSyncPanelProps): React.JSX.E
             setResult(res.data)
             await loadStatus()
             if (res.data.appliedOps > 0 || res.data.mediaSynced > 0 || res.data.credentialsSynced > 0) {
+                try {
+                    const freshSettings = await window.api.getSettings()
+                    hydrateCustomThemesFromSettings(freshSettings)
+                    await hydrateShareSettingsFromBackend(freshSettings)
+                } catch {
+                    // Abaikan bila hidrasi pengaturan gagal sementara
+                }
                 await onSynced()
             }
         } catch (err) {
@@ -188,8 +205,11 @@ export function DeviceSyncPanel({ onSynced }: DeviceSyncPanelProps): React.JSX.E
                             <Badge tone="profit">Passphrase Aktif</Badge>
                         </div>
 
-                        <div className="truncate rounded bg-muted/70 p-2 font-mono text-[11px] text-foreground">
-                            {status?.vaultPath}
+                        <div
+                            className="truncate rounded bg-muted/70 p-2 font-mono text-[11px] text-foreground"
+                            title={status?.vaultPath ?? undefined}
+                        >
+                            {formatVaultLocationLabel(status?.vaultPath)}
                         </div>
 
                         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
@@ -218,17 +238,19 @@ export function DeviceSyncPanel({ onSynced }: DeviceSyncPanelProps): React.JSX.E
                         </p>
 
                         <Field label="Folder Sync Vault" hint="Berisi subfolder ops/ dan media/ yang aman untuk Syncthing">
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
                                 <input
                                     type="text"
-                                    value={folderPath}
+                                    value={isContentUri(folderPath) ? formatVaultLocationLabel(folderPath) : folderPath}
+                                    readOnly={isContentUri(folderPath)}
                                     onChange={(e) => setFolderPath(e.target.value)}
-                                    placeholder="/home/user/Syncthing/nitirekso-vault"
-                                    className="h-9 flex-1 rounded-md border border-input bg-background px-3 font-mono text-xs focus:border-primary focus:outline-none"
+                                    placeholder={isAndroidApp() ? 'Ketuk Pilih Folder untuk memilih folder Syncthing' : '/home/user/Syncthing/nitirekso-vault'}
+                                    className="h-11 sm:h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 font-mono text-xs focus:border-primary focus:outline-none"
                                 />
                                 <Button
                                     size="sm"
                                     variant="outline"
+                                    className="min-h-11 sm:min-h-8"
                                     onClick={() => void handlePickFolder()}
                                     disabled={busy}
                                 >

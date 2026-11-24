@@ -14,8 +14,8 @@ use crate::updater::{
 };
 
 #[tauri::command]
-pub fn open_external_url(url: String) -> MutationResult<()> {
-    match open_url(&url) {
+pub fn open_external_url(app: tauri::AppHandle, url: String) -> MutationResult<()> {
+    match open_url(&app, &url) {
         Ok(_) => MutationResult::ok_unit(),
         Err(e) => MutationResult::fail(e),
     }

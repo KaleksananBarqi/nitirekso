@@ -153,6 +153,18 @@ export function selectMatchedAsset(
         return pickByExt('.appimage') ?? pickByExt('.deb') ?? pickByExt('.rpm')
     }
 
+    if (os === 'android') {
+        const apkCandidates = visibleAssets.filter((a) => a.name.toLowerCase().endsWith('.apk'))
+        return (
+            apkCandidates.find((a) => {
+                const lower = a.name.toLowerCase()
+                return lower.includes('arm64') || lower.includes('aarch64')
+            }) ??
+            apkCandidates[0] ??
+            null
+        )
+    }
+
     return null
 }
 
@@ -169,7 +181,14 @@ export function formatAssetSize(bytes: number | null | undefined): string {
 /** Menghasilkan label deskriptif lingkungan instalasi yang jujur untuk halaman About. */
 export function formatEnvironmentLabel(env: InstallEnvironment | null): string {
     if (!env) return 'Lingkungan sistem belum terdeteksi'
-    const osLabel = env.os === 'macos' ? 'macOS' : env.os === 'windows' ? 'Windows' : 'Linux'
+    const osLabel =
+        env.os === 'macos'
+            ? 'macOS'
+            : env.os === 'windows'
+                ? 'Windows'
+                : env.os === 'android'
+                    ? 'Android'
+                    : 'Linux'
     const kindMap: Record<InstallEnvironment['installKind'], string> = {
         flatpak: 'Flatpak (Store-Managed)',
         'app-image': 'AppImage',
@@ -178,6 +197,7 @@ export function formatEnvironmentLabel(env: InstallEnvironment | null): string {
         'windows-nsis': 'Installer NSIS',
         'windows-msi': 'Installer MSI',
         'mac-os': 'Paket macOS',
+        'android-apk': 'APK Android (GitHub Releases)',
         dev: 'Mode Pengembangan',
         unknown: 'Manual',
     }

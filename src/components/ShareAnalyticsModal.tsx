@@ -28,8 +28,11 @@ import {
 import {
     CardCanvasEngine,
     buildPortfolioSummaryCardSpec,
-    exportCardMedia
+    exportCardMedia,
+    copyImageBlobToClipboard,
+    shareMediaFile
 } from '../lib/share'
+import { isAndroidApp } from '../lib/platform'
 import { AnalyticsCard } from './share/AnalyticsCard'
 
 // ---------------------------------------------------------------------------
@@ -422,9 +425,7 @@ function ShareAnalyticsModalContent({
         try {
             canvas.toBlob(async (blob) => {
                 if (!blob) return
-                await navigator.clipboard.write([
-                    new ClipboardItem({ 'image/png': blob })
-                ])
+                await copyImageBlobToClipboard(blob, `nitirekso-analytics-${Date.now()}.png`)
                 setCopied(true)
                 setTimeout(() => setCopied(false), 2500)
             }, 'image/png')
@@ -864,10 +865,42 @@ function ShareAnalyticsModalContent({
                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                                 </svg>
                             ),
-                            label: copied ? 'Tersalin ke Clipboard!' : 'Copy Image',
-                            onClick: () => void handleCopy(),
+                            label: copied ? 'Tersalin!' : 'Copy Image',
+                            onClick: () => {
+                                void handleCopy()
+                            },
                             disabled: false
                         },
+                        ...(isAndroidApp()
+                            ? [
+                                  {
+                                      icon: (
+                                          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                              <circle cx="18" cy="5" r="3" />
+                                              <circle cx="6" cy="12" r="3" />
+                                              <circle cx="18" cy="19" r="3" />
+                                              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                                              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                                          </svg>
+                                      ),
+                                      label: 'Bagikan PNG',
+                                      onClick: () => {
+                                          void (async () => {
+                                              const spec = buildCurrentSpec()
+                                              const filename = `Analytics-${periodLabel.replace(/\s+/g, '-')}-${Date.now()}.png`
+                                              const res = await exportCardMedia({
+                                                  spec,
+                                                  format: 'png',
+                                                  filename,
+                                                  wallpaperMediaElement: isCustomBgActive ? customBgImgRef.current : null
+                                              })
+                                              await shareMediaFile(res.filename, 'Laporan Performa nitirekso', res.blob)
+                                          })()
+                                      },
+                                      disabled: false
+                                  }
+                              ]
+                            : []),
                         {
                             icon: (
                                 <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">

@@ -382,8 +382,8 @@ export function TradeEditor({
 
     return (
         <div className="flex h-full flex-col overflow-hidden">
-            <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-4">
-                <div>
+            <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-6 md:py-4">
+                <div className="min-w-0">
                     <h2 className="text-base font-semibold">
                         {detail ? `Edit Trade #${detail.trade.id}` : 'Trade Baru'}
                     </h2>
@@ -393,17 +393,17 @@ export function TradeEditor({
                             : 'Input manual untuk data historis atau trade di luar exchange.'}
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
-                    <Button variant="ghost" onClick={onCancel} disabled={saving}>
+                <div className="flex items-center gap-2 shrink-0">
+                    <Button variant="ghost" className="min-h-11 sm:min-h-9" onClick={onCancel} disabled={saving}>
                         Batal
                     </Button>
-                    <Button variant="primary" onClick={() => void handleSubmit()} disabled={saving}>
+                    <Button variant="primary" className="min-h-11 sm:min-h-9" onClick={() => void handleSubmit()} disabled={saving}>
                         {saving ? 'Menyimpan…' : 'Simpan'}
                     </Button>
                 </div>
             </header>
 
-            <div className="flex-1 overflow-y-auto px-6 py-4">
+            <div className="flex-1 overflow-y-auto px-4 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] md:px-6">
                 {error && (
                     <div className="mb-4">
                         <ErrorNote message={error} />
@@ -414,7 +414,7 @@ export function TradeEditor({
                     {/* --- Data dari exchange / posisi --- */}
                     <Card>
                         <CardHeader title="Data Posisi" description="Angka dari exchange atau hasil input manual" />
-                        <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
+                        <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 md:grid-cols-4">
                             <Field label="Exchange">
                                 <Select
                                     value={form.exchange}
@@ -538,7 +538,7 @@ export function TradeEditor({
                             title="Rencana Risiko"
                             description="Opsional. Tanpa stop loss, R-multiple bernilai kosong — bukan nol."
                         />
-                        <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
+                        <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 md:grid-cols-4">
                             <Field
                                 label="Stop Loss Direncanakan"
                                 hint={
@@ -628,7 +628,7 @@ export function TradeEditor({
                             description="Catatan subjektif. Tidak pernah ditimpa oleh sync exchange."
                         />
                         <div className="flex flex-col gap-3 p-4">
-                            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
                                 <Field label="Setup / Strategi" hint="Bebas, mis. breakout, pullback">
                                     <TextInput
                                         value={form.setupTag}

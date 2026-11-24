@@ -1,68 +1,96 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardHeader, Field, Button, Badge } from './ui'
 import {
-    loadAllColorSchemes,
-    addCustomColorScheme,
-    updateCustomColorScheme,
-    deleteCustomColorScheme,
-    getActiveCustomSchemeId,
-    setActiveCustomSchemeId,
-    type CustomColorScheme
-} from '../lib/customThemes'
+    DEFAULT_DARK_PRESET_ID,
+    addCustomThemePreset,
+    deleteCustomThemePreset,
+    getAllThemePresets,
+    getEffectiveThemePreset,
+    selectThemePreset,
+    updateCustomThemePreset,
+    type ThemePreset
+} from '../lib/themeEngine'
+import { useI18n } from '../lib/i18n'
+import { cn } from '../lib/utils'
+
+type ThemeFilter = 'all' | 'dark' | 'light' | 'custom'
 
 export function CustomColorSchemeCard(): React.JSX.Element {
-    const [schemes, setSchemes] = useState<CustomColorScheme[]>(loadAllColorSchemes)
-    const [activeId, setActiveId] = useState<string | null>(getActiveCustomSchemeId)
+    const { t } = useI18n()
+    const [presets, setPresets] = useState<ThemePreset[]>(getAllThemePresets)
+    const [activePreset, setActivePreset] = useState<ThemePreset>(getEffectiveThemePreset)
+    const [searchQuery, setSearchQuery] = useState('')
+    const [filter, setFilter] = useState<ThemeFilter>('all')
 
     useEffect(() => {
         const refresh = () => {
-            setSchemes(loadAllColorSchemes())
-            setActiveId(getActiveCustomSchemeId())
+            setPresets(getAllThemePresets())
+            setActivePreset(getEffectiveThemePreset())
         }
+        window.addEventListener('nitirekso:theme-updated', refresh)
         window.addEventListener('custom-themes:updated', refresh)
-        return () => window.removeEventListener('custom-themes:updated', refresh)
+        return () => {
+            window.removeEventListener('nitirekso:theme-updated', refresh)
+            window.removeEventListener('custom-themes:updated', refresh)
+        }
     }, [])
 
-    // Form state untuk skema baru atau edit
+    // Form state untuk tema kustom
     const [isCreating, setIsCreating] = useState(false)
     const [editingId, setEditingId] = useState<string | null>(null)
     const [name, setName] = useState('')
-    const [primary, setPrimary] = useState('#8b5cf6')
-    const [profit, setProfit] = useState('#22c55e')
-    const [loss, setLoss] = useState('#ef4444')
-    const [background, setBackground] = useState('#0b0f19')
-    const [cardBg, setCardBg] = useState('#131b2e')
-    const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null)
+    const [primary, setPrimary] = useState('#9333EA')
+    const [profit, setProfit] = useState('#10B981')
+    const [loss, setLoss] = useState('#F43F5E')
+    const [background, setBackground] = useState('#0C0B14')
+    const [cardBg, setCardBg] = useState('#151322')
     const [formError, setFormError] = useState<string | null>(null)
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
-    const handleSelectScheme = (id: string | null) => {
-        setActiveCustomSchemeId(id)
-        setActiveId(id)
-        setFeedbackMsg(id ? 'Skema warna berhasil diterapkan!' : 'Kembali ke tema bawaan.')
-        setTimeout(() => setFeedbackMsg(null), 3000)
+    const counts = useMemo(() => {
+        let dark = 0
+        let light = 0
+        let custom = 0
+        for (const p of presets) {
+            if (p.polarity === 'dark') dark++
+            else light++
+            if (!p.isBuiltin) custom++
+        }
+        return { all: presets.length, dark, light, custom }
+    }, [presets])
+
+    const filteredPresets = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase()
+        return presets.filter((p) => {
+            if (filter === 'dark' && p.polarity !== 'dark') return false
+            if (filter === 'light' && p.polarity !== 'light') return false
+            if (filter === 'custom' && p.isBuiltin) return false
+            if (!q) return true
+            return (
+                p.name.toLowerCase().includes(q) ||
+                p.description.toLowerCase().includes(q) ||
+                p.id.toLowerCase().includes(q)
+            )
+        })
+    }, [presets, filter, searchQuery])
+
+    const handleSelectPreset = (id: string) => {
+        selectThemePreset(id)
     }
 
     const handleDelete = (id: string) => {
-        deleteCustomColorScheme(id)
-        const updated = loadAllColorSchemes()
-        setSchemes(updated)
-        if (activeId === id) {
-            setActiveId(null)
-        }
+        deleteCustomThemePreset(id)
         setConfirmDeleteId(null)
-        setFeedbackMsg('Skema warna berhasil dihapus.')
-        setTimeout(() => setFeedbackMsg(null), 3000)
     }
 
-    const handleStartEdit = (scheme: CustomColorScheme) => {
-        setEditingId(scheme.id)
-        setName(scheme.name)
-        setPrimary(scheme.primary)
-        setProfit(scheme.profit)
-        setLoss(scheme.loss)
-        setBackground(scheme.background || '#0b0f19')
-        setCardBg(scheme.card || '#131b2e')
+    const handleStartEdit = (preset: ThemePreset) => {
+        setEditingId(preset.id)
+        setName(preset.name)
+        setPrimary(preset.primary)
+        setProfit(preset.profit)
+        setLoss(preset.loss)
+        setBackground(preset.background)
+        setCardBg(preset.card)
         setIsCreating(true)
         setFormError(null)
     }
@@ -77,13 +105,13 @@ export function CustomColorSchemeCard(): React.JSX.Element {
     const handleSaveScheme = (e: React.FormEvent) => {
         e.preventDefault()
         if (!name.trim()) {
-            setFormError('Harap masukkan nama untuk skema warna Anda.')
+            setFormError(t('themes.formNameError'))
             return
         }
         setFormError(null)
 
         if (editingId) {
-            updateCustomColorScheme(editingId, {
+            updateCustomThemePreset(editingId, {
                 name: name.trim(),
                 primary,
                 profit,
@@ -91,11 +119,8 @@ export function CustomColorSchemeCard(): React.JSX.Element {
                 background,
                 card: cardBg
             })
-            const updated = loadAllColorSchemes()
-            setSchemes(updated)
-            setFeedbackMsg(`Skema "${name.trim()}" berhasil diperbarui!`)
         } else {
-            const created = addCustomColorScheme({
+            const created = addCustomThemePreset({
                 name: name.trim(),
                 primary,
                 profit,
@@ -103,55 +128,56 @@ export function CustomColorSchemeCard(): React.JSX.Element {
                 background,
                 card: cardBg
             })
-            const updated = loadAllColorSchemes()
-            setSchemes(updated)
-            handleSelectScheme(created.id)
-            setFeedbackMsg(`Skema baru "${created.name}" berhasil dibuat & diterapkan!`)
+            selectThemePreset(created.id)
         }
 
         setName('')
         setEditingId(null)
         setIsCreating(false)
-        setTimeout(() => setFeedbackMsg(null), 3000)
     }
-
-    const currentScheme = schemes.find((s) => s.id === activeId) || null
 
     return (
         <Card>
-            <CardHeader
-                title="Skema Warna Kustom"
-                description="Kreasikan skema warna Anda sendiri dengan nama kustom, atur warna aksen, profit, loss, dan latar belakang."
-            />
+            <CardHeader title={t('themes.title')} description={t('themes.desc')} />
 
-            <div className="flex flex-col gap-5 p-4">
-                {/* Status Aktif & Feedback */}
-                <div className="flex items-center justify-between flex-wrap gap-2 p-3 rounded-xl bg-muted/30 border border-border/50">
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-foreground">Skema Aktif:</span>
-                        {currentScheme ? (
-                            <div className="flex items-center gap-1.5">
-                                <span className="text-xs font-bold text-primary">{currentScheme.name}</span>
-                                <div className="flex items-center gap-1 ml-1">
-                                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: currentScheme.primary }} title="Aksen" />
-                                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: currentScheme.profit }} title="Profit" />
-                                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: currentScheme.loss }} title="Loss" />
-                                </div>
-                            </div>
-                        ) : (
-                            <span className="text-xs text-muted-foreground italic">Tema Standar Aplikasi (Bawaan)</span>
-                        )}
+            <div className="flex flex-col gap-4 p-4">
+                {/* Bar Status Tema Aktif */}
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted/55 p-3.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-xs font-semibold text-muted-foreground">
+                            {t('themes.activeLabel')}:
+                        </span>
+                        <span className="text-xs font-bold text-foreground truncate">
+                            {activePreset.name}
+                        </span>
+                        <div className="flex items-center gap-1">
+                            <span
+                                className="h-3 w-3 rounded-full ring-1 ring-border"
+                                style={{ background: activePreset.background }}
+                            />
+                            <span
+                                className="h-3 w-3 rounded-full ring-1 ring-border"
+                                style={{ background: activePreset.primary }}
+                            />
+                            <span
+                                className="h-3 w-3 rounded-full ring-1 ring-border"
+                                style={{ background: activePreset.profit }}
+                            />
+                            <span
+                                className="h-3 w-3 rounded-full ring-1 ring-border"
+                                style={{ background: activePreset.loss }}
+                            />
+                        </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {currentScheme && (
+                        {activePreset.id !== DEFAULT_DARK_PRESET_ID && (
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleSelectScheme(null)}
-                                className="text-xs text-muted-foreground hover:text-foreground"
+                                onClick={() => handleSelectPreset(DEFAULT_DARK_PRESET_ID)}
                             >
-                                Reset ke Standar
+                                {t('themes.resetDefault')}
                             </Button>
                         )}
                         <Button
@@ -166,270 +192,257 @@ export function CustomColorSchemeCard(): React.JSX.Element {
                                     setIsCreating(true)
                                 }
                             }}
-                            className="text-xs font-semibold"
                         >
-                            {isCreating ? 'Tutup Form' : '+ Buat Skema Baru'}
+                            {isCreating ? t('themes.closeForm') : t('themes.createNew')}
                         </Button>
                     </div>
                 </div>
 
-                {feedbackMsg && (
-                    <div className="px-3 py-1.5 rounded-lg bg-profit/15 text-profit border border-profit/30 text-xs font-medium animate-fadeIn">
-                        ✓ {feedbackMsg}
-                    </div>
-                )}
-
-                {/* Form Buat / Edit Skema */}
+                {/* Form Buat / Edit Tema Kustom */}
                 {isCreating && (
-                    <form onSubmit={handleSaveScheme} className="p-4 rounded-xl bg-card border border-primary/40 shadow-sm flex flex-col gap-4">
+                    <form
+                        onSubmit={handleSaveScheme}
+                        className="rounded-xl bg-muted/45 p-4 ring-1 ring-primary/40 flex flex-col gap-4"
+                    >
                         <div className="flex items-center justify-between">
-                            <p className="text-xs font-bold uppercase tracking-wider text-primary">
-                                {editingId ? '✏️ Edit Skema Warna Kustom' : '🎨 Konfigurasi Skema Warna Baru'}
+                            <p className="text-xs font-bold uppercase tracking-wide text-primary">
+                                {editingId ? t('themes.edit') : t('themes.createNew')}
                             </p>
-                            {editingId && (
-                                <span className="text-[10px] text-muted-foreground">Mode Edit Aktif</span>
-                            )}
                         </div>
 
                         {formError && (
-                            <div className="px-3 py-1.5 rounded-lg bg-destructive/15 text-destructive border border-destructive/30 text-xs font-medium">
-                                ⚠ {formError}
+                            <div className="rounded-lg bg-destructive/15 px-3 py-2 text-xs font-medium text-destructive">
+                                {formError}
                             </div>
                         )}
 
-                        <Field label="Nama Skema Warna" hint="Contoh: Tokyo Night, Binance Gold, Cyber Scalp">
+                        <Field label={t('themes.formNameLabel')}>
                             <input
                                 type="text"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
-                                placeholder="Nama skema warna Anda..."
-                                className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus:border-primary focus:outline-none"
+                                placeholder={t('themes.formNamePlaceholder')}
+                                className="mt-1 h-10 sm:h-9 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm focus:border-primary focus:outline-none"
                                 autoFocus
                             />
                         </Field>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                            {/* Primary */}
-                            <div className="flex flex-col gap-1 p-2.5 rounded-lg border border-border/60 bg-muted/20">
-                                <label className="text-[11px] font-semibold text-foreground">Warna Utama (Primary / Aksen)</label>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <input
-                                        type="color"
-                                        value={primary}
-                                        onChange={(e) => setPrimary(e.target.value)}
-                                        className="w-8 h-8 rounded border border-border cursor-pointer bg-transparent"
-                                    />
-                                    <input
-                                        type="text"
-                                        value={primary}
-                                        onChange={(e) => setPrimary(e.target.value)}
-                                        className="h-7 w-24 text-xs font-mono px-2 rounded bg-background border border-border focus:border-primary focus:outline-none"
-                                    />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                            {[
+                                { label: t('themes.colorPrimary'), val: primary, set: setPrimary },
+                                { label: t('themes.colorProfit'), val: profit, set: setProfit },
+                                { label: t('themes.colorLoss'), val: loss, set: setLoss },
+                                { label: t('themes.colorBg'), val: background, set: setBackground },
+                                { label: t('themes.colorCard'), val: cardBg, set: setCardBg }
+                            ].map((item) => (
+                                <div
+                                    key={item.label}
+                                    className="flex flex-col gap-1.5 rounded-lg bg-card p-2.5"
+                                >
+                                    <label className="text-[11px] font-semibold text-foreground">
+                                        {item.label}
+                                    </label>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="color"
+                                            value={item.val}
+                                            onChange={(e) => item.set(e.target.value)}
+                                            className="h-8 w-8 rounded border border-border cursor-pointer bg-transparent"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={item.val}
+                                            onChange={(e) => item.set(e.target.value)}
+                                            className="h-8 w-24 rounded-md border border-input bg-background px-2 font-mono text-xs focus:border-primary focus:outline-none"
+                                        />
+                                    </div>
                                 </div>
-                            </div>
-
-                            {/* Profit */}
-                            <div className="flex flex-col gap-1 p-2.5 rounded-lg border border-border/60 bg-muted/20">
-                                <label className="text-[11px] font-semibold text-profit">Warna Indikator Profit</label>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <input
-                                        type="color"
-                                        value={profit}
-                                        onChange={(e) => setProfit(e.target.value)}
-                                        className="w-8 h-8 rounded border border-border cursor-pointer bg-transparent"
-                                    />
-                                    <input
-                                        type="text"
-                                        value={profit}
-                                        onChange={(e) => setProfit(e.target.value)}
-                                        className="h-7 w-24 text-xs font-mono px-2 rounded bg-background border border-border focus:border-primary focus:outline-none"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Loss */}
-                            <div className="flex flex-col gap-1 p-2.5 rounded-lg border border-border/60 bg-muted/20">
-                                <label className="text-[11px] font-semibold text-loss">Warna Indikator Loss</label>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <input
-                                        type="color"
-                                        value={loss}
-                                        onChange={(e) => setLoss(e.target.value)}
-                                        className="w-8 h-8 rounded border border-border cursor-pointer bg-transparent"
-                                    />
-                                    <input
-                                        type="text"
-                                        value={loss}
-                                        onChange={(e) => setLoss(e.target.value)}
-                                        className="h-7 w-24 text-xs font-mono px-2 rounded bg-background border border-border focus:border-primary focus:outline-none"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Background */}
-                            <div className="flex flex-col gap-1 p-2.5 rounded-lg border border-border/60 bg-muted/20">
-                                <label className="text-[11px] font-semibold text-foreground">Warna Latar (Background)</label>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <input
-                                        type="color"
-                                        value={background}
-                                        onChange={(e) => setBackground(e.target.value)}
-                                        className="w-8 h-8 rounded border border-border cursor-pointer bg-transparent"
-                                    />
-                                    <input
-                                        type="text"
-                                        value={background}
-                                        onChange={(e) => setBackground(e.target.value)}
-                                        className="h-7 w-24 text-xs font-mono px-2 rounded bg-background border border-border focus:border-primary focus:outline-none"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Card Background */}
-                            <div className="flex flex-col gap-1 p-2.5 rounded-lg border border-border/60 bg-muted/20">
-                                <label className="text-[11px] font-semibold text-foreground">Warna Kartu / Panel (Card)</label>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <input
-                                        type="color"
-                                        value={cardBg}
-                                        onChange={(e) => setCardBg(e.target.value)}
-                                        className="w-8 h-8 rounded border border-border cursor-pointer bg-transparent"
-                                    />
-                                    <input
-                                        type="text"
-                                        value={cardBg}
-                                        onChange={(e) => setCardBg(e.target.value)}
-                                        className="h-7 w-24 text-xs font-mono px-2 rounded bg-background border border-border focus:border-primary focus:outline-none"
-                                    />
-                                </div>
-                            </div>
+                            ))}
                         </div>
 
-                        {/* Live mini preview */}
                         <div
-                            className="p-3 rounded-lg flex items-center justify-between border transition-all"
+                            className="rounded-lg p-3 flex items-center justify-between ring-1"
                             style={{ background: cardBg, borderColor: primary }}
                         >
                             <span className="text-xs font-bold" style={{ color: primary }}>
-                                Preview Kartu: {name || 'Nama Skema'}
+                                {name || t('themes.formPreview')}
                             </span>
-                            <div className="flex items-center gap-4 text-xs font-semibold">
-                                <span style={{ color: profit }}>+14.50% (Win)</span>
-                                <span style={{ color: loss }}>-4.20% (Loss)</span>
+                            <div className="flex items-center gap-4 text-xs font-semibold tabular">
+                                <span style={{ color: profit }}>+14.50%</span>
+                                <span style={{ color: loss }}>-4.20%</span>
                             </div>
                         </div>
 
                         <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/40">
                             <Button variant="ghost" size="sm" type="button" onClick={handleCancelForm}>
-                                Batal
+                                {t('themes.cancel')}
                             </Button>
                             <Button variant="primary" size="sm" type="submit">
-                                {editingId ? 'Simpan Perubahan' : 'Simpan & Terapkan Skema'}
+                                {editingId ? t('themes.saveEdit') : t('themes.saveNew')}
                             </Button>
                         </div>
                     </form>
                 )}
 
-                {/* Galeri Skema Warna */}
-                <div>
-                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">
-                        Koleksi Skema Warna ({schemes.length}):
+                {/* Bilah Pencarian & Filter Polaritas */}
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                    <input
+                        type="search"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder={t('themes.searchPlaceholder')}
+                        className="h-10 sm:h-9 w-full sm:max-w-xs rounded-lg border border-input bg-background px-3 text-xs focus:border-primary focus:outline-none"
+                    />
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        {(
+                            [
+                                { id: 'all', label: `${t('themes.filterAll')} (${counts.all})` },
+                                { id: 'dark', label: `${t('themes.filterDark')} (${counts.dark})` },
+                                { id: 'light', label: `${t('themes.filterLight')} (${counts.light})` },
+                                ...(counts.custom > 0
+                                    ? [{ id: 'custom' as const, label: `${t('themes.filterCustom')} (${counts.custom})` }]
+                                    : [])
+                            ] as const
+                        ).map((chip) => {
+                            const active = filter === chip.id
+                            return (
+                                <button
+                                    key={chip.id}
+                                    type="button"
+                                    onClick={() => setFilter(chip.id)}
+                                    className={cn(
+                                        'min-h-11 sm:min-h-9 rounded-lg px-3 text-xs font-semibold transition-colors',
+                                        active
+                                            ? 'bg-primary text-primary-foreground'
+                                            : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'
+                                    )}
+                                >
+                                    {chip.label}
+                                </button>
+                            )
+                        })}
+                    </div>
+                </div>
+
+                {/* Grid Galeri Preset Tema */}
+                {filteredPresets.length === 0 ? (
+                    <p className="py-6 text-center text-xs text-muted-foreground">
+                        {t('themes.noMatch')}
                     </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                        {schemes.map((s) => {
-                            const isSelected = activeId === s.id
-                            const isConfirmingDelete = confirmDeleteId === s.id
+                ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        {filteredPresets.map((preset) => {
+                            const isSelected = activePreset.id === preset.id
+                            const isConfirmingDelete = confirmDeleteId === preset.id
 
                             return (
                                 <div
-                                    key={s.id}
-                                    onClick={() => handleSelectScheme(s.id)}
-                                    className={`relative p-3 rounded-xl border flex flex-col justify-between gap-3 cursor-pointer transition-all ${
+                                    key={preset.id}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => handleSelectPreset(preset.id)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault()
+                                            handleSelectPreset(preset.id)
+                                        }
+                                    }}
+                                    className={cn(
+                                        'relative flex flex-col justify-between gap-2.5 rounded-xl p-3 cursor-pointer transition-all',
                                         isSelected
-                                            ? 'border-primary ring-2 ring-primary/40 bg-card shadow-sm'
-                                            : 'border-border/70 bg-card/40 hover:border-border hover:bg-card/70'
-                                    }`}
+                                            ? 'bg-accent ring-2 ring-primary'
+                                            : 'bg-muted/45 hover:bg-muted/80'
+                                    )}
                                 >
                                     <div className="flex items-start justify-between gap-2">
-                                        <div className="flex flex-col min-w-0">
-                                            <span className="text-xs font-bold text-foreground truncate">{s.name}</span>
-                                            <span className="text-[10px] text-muted-foreground">
-                                                {s.isBuiltin ? 'Preset Bawaan' : 'Kustom Anda'}
+                                        <div className="min-w-0">
+                                            <span className="block text-xs font-bold text-foreground truncate">
+                                                {preset.name}
+                                            </span>
+                                            <span className="block text-[10px] text-muted-foreground truncate">
+                                                {preset.polarity === 'dark'
+                                                    ? t('appearance.modeDark')
+                                                    : t('appearance.modeLight')}
+                                                {' · '}
+                                                {preset.isBuiltin
+                                                    ? t('themes.builtinTag')
+                                                    : t('themes.customTag')}
                                             </span>
                                         </div>
                                         {isSelected ? (
-                                            <Badge tone="profit">Aktif</Badge>
+                                            <Badge tone="profit">{t('themes.activeBadge')}</Badge>
                                         ) : (
-                                            <span className="text-[10px] font-medium text-muted-foreground hover:text-foreground">
-                                                Pilih
+                                            <span className="text-[10px] font-semibold text-muted-foreground">
+                                                {t('themes.select')}
                                             </span>
                                         )}
                                     </div>
 
-                                    {/* Palette Swatches */}
-                                    <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-black/20 border border-white/5">
-                                        <div
-                                            className="w-5 h-5 rounded-md shadow-xs"
-                                            style={{ background: s.primary }}
-                                            title={`Primary: ${s.primary}`}
+                                    {/* Mini Swatch Bar */}
+                                    <div
+                                        className="flex items-center gap-1.5 rounded-lg p-1.5 ring-1 ring-border/50"
+                                        style={{ background: preset.background }}
+                                    >
+                                        <span
+                                            className="h-5 w-5 rounded-md ring-1 ring-black/15"
+                                            style={{ background: preset.card }}
+                                            title={`Card: ${preset.card}`}
                                         />
-                                        <div
-                                            className="w-5 h-5 rounded-md shadow-xs"
-                                            style={{ background: s.profit }}
-                                            title={`Profit: ${s.profit}`}
+                                        <span
+                                            className="h-5 w-5 rounded-md ring-1 ring-black/15"
+                                            style={{ background: preset.primary }}
+                                            title={`Primary: ${preset.primary}`}
                                         />
-                                        <div
-                                            className="w-5 h-5 rounded-md shadow-xs"
-                                            style={{ background: s.loss }}
-                                            title={`Loss: ${s.loss}`}
+                                        <span
+                                            className="h-5 w-5 rounded-md ring-1 ring-black/15"
+                                            style={{ background: preset.profit }}
+                                            title={`Profit: ${preset.profit}`}
                                         />
-                                        {s.background && (
-                                            <div
-                                                className="w-5 h-5 rounded-md shadow-xs border border-white/10"
-                                                style={{ background: s.background }}
-                                                title={`Background: ${s.background}`}
-                                            />
-                                        )}
-                                        {s.card && (
-                                            <div
-                                                className="w-5 h-5 rounded-md shadow-xs border border-white/10"
-                                                style={{ background: s.card }}
-                                                title={`Card: ${s.card}`}
-                                            />
-                                        )}
+                                        <span
+                                            className="h-5 w-5 rounded-md ring-1 ring-black/15"
+                                            style={{ background: preset.loss }}
+                                            title={`Loss: ${preset.loss}`}
+                                        />
+                                        <span
+                                            className="ml-auto text-[10px] font-mono font-semibold pr-1"
+                                            style={{ color: preset.foreground }}
+                                        >
+                                            Aa
+                                        </span>
                                     </div>
 
-                                    {/* Aksi Edit & Hapus jika kustom */}
-                                    {!s.isBuiltin && (
-                                        <div className="flex items-center justify-between pt-1 border-t border-border/40 mt-1">
+                                    {!preset.isBuiltin && (
+                                        <div className="flex items-center justify-between pt-1.5 border-t border-border/35">
                                             <button
                                                 type="button"
                                                 onClick={(e) => {
                                                     e.stopPropagation()
-                                                    handleStartEdit(s)
+                                                    handleStartEdit(preset)
                                                 }}
-                                                className="text-[11px] font-medium text-primary hover:underline flex items-center gap-1"
-                                                title="Edit skema warna ini"
+                                                className="text-[11px] font-semibold text-primary hover:underline"
                                             >
-                                                <span>✏️</span>
-                                                <span>Edit</span>
+                                                {t('themes.edit')}
                                             </button>
 
                                             {isConfirmingDelete ? (
-                                                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                                <div
+                                                    className="flex items-center gap-2"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleDelete(s.id)}
-                                                        className="px-2 py-0.5 rounded bg-destructive text-destructive-foreground text-[10px] font-bold shadow-xs hover:bg-destructive/90"
+                                                        onClick={() => handleDelete(preset.id)}
+                                                        className="rounded bg-destructive px-2 py-0.5 text-[10px] font-bold text-destructive-foreground"
                                                     >
-                                                        Yakin Hapus?
+                                                        {t('themes.confirmDelete')}
                                                     </button>
                                                     <button
                                                         type="button"
                                                         onClick={() => setConfirmDeleteId(null)}
-                                                        className="text-[10px] text-muted-foreground hover:text-foreground"
+                                                        className="text-[10px] text-muted-foreground"
                                                     >
-                                                        Batal
+                                                        {t('themes.cancel')}
                                                     </button>
                                                 </div>
                                             ) : (
@@ -437,11 +450,11 @@ export function CustomColorSchemeCard(): React.JSX.Element {
                                                     type="button"
                                                     onClick={(e) => {
                                                         e.stopPropagation()
-                                                        setConfirmDeleteId(s.id)
+                                                        setConfirmDeleteId(preset.id)
                                                     }}
-                                                    className="text-[10px] text-muted-foreground hover:text-destructive transition-colors"
+                                                    className="text-[11px] text-muted-foreground hover:text-destructive"
                                                 >
-                                                    Hapus
+                                                    {t('themes.delete')}
                                                 </button>
                                             )}
                                         </div>
@@ -450,7 +463,7 @@ export function CustomColorSchemeCard(): React.JSX.Element {
                             )
                         })}
                     </div>
-                </div>
+                )}
             </div>
         </Card>
     )

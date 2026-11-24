@@ -17,6 +17,10 @@ use crate::vault::crypto::{
 };
 use crate::vault::hlc::{HlcGenerator, format_hlc, is_hlc_newer};
 use crate::vault::oplog::{ChecklistOpItem, SyncEntityOp, SyncOp};
+#[cfg(target_os = "android")]
+use crate::vault::saf_storage::SafVaultStorage;
+#[cfg(target_os = "android")]
+use crate::vault::storage::is_content_uri;
 use crate::vault::storage::{FsVaultStorage, VaultStorage};
 use crate::vault::watcher::WatcherHandle;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -24,8 +28,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use tauri::AppHandle;
 
 const META_DEVICE_ID: &str = "device_id";
 const META_SYNC_VAULT_PATH: &str = "sync_vault_path";
@@ -81,6 +86,7 @@ pub struct VaultRuntime {
 pub struct VaultState {
     pub runtime: Mutex<VaultRuntime>,
     pub watcher: Mutex<Option<WatcherHandle>>,
+    pub app_handle: Mutex<Option<AppHandle>>,
 }
 
 fn now_millis() -> i64 {
@@ -180,7 +186,12 @@ impl VaultState {
                 last_error,
             }),
             watcher: Mutex::new(None),
+            app_handle: Mutex::new(None),
         }
+    }
+
+    pub fn set_app_handle(&self, app: AppHandle) {
+        *self.app_handle.lock().unwrap() = Some(app);
     }
 
     pub fn get_status(&self) -> DeviceSyncStatusPayload {
@@ -200,13 +211,21 @@ impl VaultState {
         }
     }
 
-    pub fn active_storage(&self) -> Option<FsVaultStorage> {
+    pub fn active_storage(&self) -> Option<Arc<dyn VaultStorage>> {
         let rt = self.runtime.lock().unwrap();
-        if rt.master_key.is_some() {
-            rt.vault_path.clone().map(FsVaultStorage::new)
-        } else {
-            None
+        if rt.master_key.is_none() {
+            return None;
         }
+        let vp = rt.vault_path.as_ref()?;
+        #[cfg(target_os = "android")]
+        {
+            let vp_str = vp.to_string_lossy();
+            if is_content_uri(&vp_str) {
+                let app = self.app_handle.lock().unwrap().clone()?;
+                return Some(Arc::new(SafVaultStorage::new(app, vp_str.to_string())));
+            }
+        }
+        Some(Arc::new(FsVaultStorage::new(vp.clone())))
     }
 
     fn next_hlc(&self, conn: &Connection) -> String {
@@ -338,7 +357,7 @@ impl VaultState {
         let Some(storage) = self.active_storage() else {
             return Ok(());
         };
-        self.emit_trade_snapshot_to_storage(conn, &storage, trade_id, mark_fields_updated)
+        self.emit_trade_snapshot_to_storage(conn, storage.as_ref(), trade_id, mark_fields_updated)
     }
 
     /// Memancarkan HANYA kolom teknis `trades` (digunakan pasca Exchange Sync agar tidak pernah menimpa `trade_journal` atau `planned_risk`).
@@ -358,7 +377,7 @@ impl VaultState {
         if let Some(op) = self.build_trade_upsert_op(conn, trade_id, &device_id, &hlc, now, true)? {
             ops.push(op);
         }
-        self.write_ops(conn, &storage, &ops)
+        self.write_ops(conn, storage.as_ref(), &ops)
     }
 
     fn build_trade_upsert_op(
@@ -754,7 +773,7 @@ impl VaultState {
         let Some(storage) = self.active_storage() else {
             return Ok(());
         };
-        self.emit_trade_snapshot_to_storage(conn, &storage, trade_id, true)
+        self.emit_trade_snapshot_to_storage(conn, storage.as_ref(), trade_id, true)
     }
 
     /// Memperbarui HLC per-field hanya untuk kolom trade/journal/risk yang nilainya benar-benar berubah,
@@ -1011,7 +1030,7 @@ impl VaultState {
         };
         self.emit_trade_snapshot_to_storage_with_opts(
             conn,
-            &storage,
+            storage.as_ref(),
             trade_id,
             false,
             checklist_changed,
@@ -1051,7 +1070,7 @@ impl VaultState {
                 deleted_at: None,
             },
         };
-        self.write_ops(conn, &storage, &[op])
+        self.write_ops(conn, storage.as_ref(), &[op])
     }
 
     pub fn emit_balances_if_connected(
@@ -1089,7 +1108,7 @@ impl VaultState {
                 },
             });
         }
-        self.write_ops(conn, &storage, &ops)
+        self.write_ops(conn, storage.as_ref(), &ops)
     }
 
     pub fn emit_sync_state_if_connected(
@@ -1125,7 +1144,7 @@ impl VaultState {
                 last_error: state.last_error,
             },
         };
-        self.write_ops(conn, &storage, &[op])
+        self.write_ops(conn, storage.as_ref(), &[op])
     }
 
     pub fn emit_media_upsert(
@@ -1137,7 +1156,7 @@ impl VaultState {
         let Some(storage) = self.active_storage() else {
             return Ok(());
         };
-        self.emit_media_to_storage(conn, &storage, sha256, bytes_opt)
+        self.emit_media_to_storage(conn, storage.as_ref(), sha256, bytes_opt)
     }
 
     fn emit_media_to_storage(
@@ -1196,7 +1215,7 @@ impl VaultState {
         let Some(storage) = self.active_storage() else {
             return Ok(());
         };
-        self.emit_credential_to_storage(conn, &storage, &mk, slot, plaintext_bytes, key_hint, None)
+        self.emit_credential_to_storage(conn, storage.as_ref(), &mk, slot, plaintext_bytes, key_hint, None)
     }
 
     fn emit_credential_to_storage(
@@ -1593,7 +1612,7 @@ impl VaultState {
                 error: None,
             });
         };
-        self.pull_from_storage(conn, db_path, &storage)
+        self.pull_from_storage(conn, db_path, storage.as_ref())
     }
 
     /// Membaca dan menggabungkan op baru dari seluruh perangkat lain di Sync Vault.
@@ -1678,6 +1697,10 @@ impl VaultState {
             .map_err(|e| format!("Gagal menyimpan cursor device sync: {}", e))?;
         }
 
+        // Rekonsiliasi berkas media yang metadatanya sudah tercatat namun file fisiknya
+        // baru selesai diunduh Syncthing di folder `media/` Sync Vault.
+        media_synced += self.reconcile_missing_local_media(conn, db_path, storage)?;
+
         let now = now_millis();
         let _ = set_meta(conn, META_LAST_SYNC_AT, &now.to_string());
         if applied_ops > 0 || media_synced > 0 || credentials_synced > 0 {
@@ -1701,6 +1724,39 @@ impl VaultState {
             duration_ms: start.elapsed().as_millis() as i64,
             error: None,
         })
+    }
+
+    /// Menarik ulang berkas media (avatar, wallpaper, screenshot, logo) yang metadatanya
+    /// sudah ada di `media_assets` tetapi berkas fisiknya belum tersedia secara lokal
+    /// (misalnya karena file oplog selesai disinkronkan Syncthing lebih dulu dari folder `media/`).
+    fn reconcile_missing_local_media(
+        &self,
+        conn: &Connection,
+        db_path: &Path,
+        storage: &dyn VaultStorage,
+    ) -> Result<usize, String> {
+        let mut stmt = conn
+            .prepare("SELECT sha256, ext FROM media_assets WHERE deleted_at IS NULL")
+            .map_err(|e| format!("Gagal memeriksa daftar media_assets lokal: {}", e))?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| format!("Gagal membaca baris media_assets lokal: {}", e))?;
+
+        let mut recovered = 0usize;
+        for row in rows.flatten() {
+            let (sha256, ext) = row;
+            if matches!(read_media_bytes_for_sync(db_path, &sha256, &ext), Ok(Some(_))) {
+                continue;
+            }
+            let fname = media_file_name(&sha256, &ext);
+            if let Ok(Some(bytes)) = storage.read_media(&fname) {
+                if crate::media::compute_sha256_hex(&bytes) == sha256 {
+                    write_synced_media_bytes(db_path, &sha256, &ext, &bytes)?;
+                    recovered += 1;
+                }
+            }
+        }
+        Ok(recovered)
     }
 
     fn apply_remote_op(
@@ -3118,6 +3174,87 @@ mod tests {
         restore_backup_from_path(&mut conn_hp, &path_hp, Some(&snap_dir)).unwrap();
         assert_eq!(get_meta(&conn_hp, META_DEVICE_ID).unwrap(), original_hp_dev);
         assert!(get_meta(&conn_hp, META_SYNC_VAULT_PATH).is_some());
+
+        let _ = fs::remove_dir_all(&temp_root);
+    }
+
+    #[test]
+    fn test_reconcile_missing_local_media_recovers_delayed_vault_media() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "nitirekso-vault-delayed-media-test-{}",
+            rand::random::<u32>()
+        ));
+        let vault_dir = temp_root.join("vault");
+        let pc_dir = temp_root.join("pc");
+        let hp_dir = temp_root.join("hp");
+        let path_pc = pc_dir.join("pc.sqlite");
+        let path_hp = hp_dir.join("hp.sqlite");
+        fs::create_dir_all(&vault_dir).unwrap();
+        fs::create_dir_all(&pc_dir).unwrap();
+        fs::create_dir_all(&hp_dir).unwrap();
+
+        let mut conn_pc = Connection::open(&path_pc).unwrap();
+        let mut conn_hp = Connection::open(&path_hp).unwrap();
+        run_migrations(&mut conn_pc).unwrap();
+        run_migrations(&mut conn_hp).unwrap();
+
+        let storage = FsVaultStorage::new(vault_dir.clone());
+        let vault_pc = VaultState::from_db(&conn_pc, &path_pc);
+        let vault_hp = VaultState::from_db(&conn_hp, &path_hp);
+        vault_pc
+            .connect_with_storage(&mut conn_pc, &path_pc, &storage, vault_dir.to_str().unwrap(), "test-pass")
+            .unwrap();
+        vault_hp
+            .connect_with_storage(&mut conn_hp, &path_hp, &storage, vault_dir.to_str().unwrap(), "test-pass")
+            .unwrap();
+
+        // Buat aset PNG valid di PC lalu hapus file fisiknya di vault sementara untuk simulasi
+        // kondisi Syncthing: oplog datang duluan sebelum folder `media/` selesai disinkronkan.
+        let png_bytes = vec![
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00,
+            0x00, 0x90, 0x77, 0x53, 0xDE,
+        ];
+        let media_info = crate::media::save_media_asset(
+            &conn_pc,
+            &path_pc,
+            &crate::media::MediaUploadPayload {
+                kind: "share_media".to_string(),
+                file_name: "wallpaper.png".to_string(),
+                data: png_bytes.clone(),
+            },
+        )
+        .unwrap();
+        vault_pc
+            .emit_media_upsert(&conn_pc, &media_info.sha256, Some(&png_bytes))
+            .unwrap();
+
+        let fname = media_file_name(&media_info.sha256, &media_info.ext);
+        let vault_media_file = vault_dir.join("media").join(&fname);
+        let backup_bytes = fs::read(&vault_media_file).unwrap();
+        fs::remove_file(&vault_media_file).unwrap();
+
+        // Sync pertama di HP: oplog MediaAssetUpsert diterapkan, tapi file fisik belum ada di vault
+        let res1 = vault_hp.run_device_sync_now(&mut conn_hp, &path_hp).unwrap();
+        assert_eq!(res1.media_synced, 0);
+        assert!(
+            read_media_bytes_for_sync(&path_hp, &media_info.sha256, &media_info.ext)
+                .unwrap()
+                .is_none()
+        );
+
+        // Syncthing kemudian menyelesaikan transfer berkas ke folder `media/` vault
+        fs::write(&vault_media_file, &backup_bytes).unwrap();
+
+        // Sync kedua di HP: rekonsiliasi media otomatis menarik berkas fisik yang tertunda
+        let res2 = vault_hp.run_device_sync_now(&mut conn_hp, &path_hp).unwrap();
+        assert_eq!(res2.media_synced, 1);
+        assert_eq!(
+            read_media_bytes_for_sync(&path_hp, &media_info.sha256, &media_info.ext)
+                .unwrap()
+                .unwrap(),
+            png_bytes
+        );
 
         let _ = fs::remove_dir_all(&temp_root);
     }

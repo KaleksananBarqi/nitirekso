@@ -226,6 +226,12 @@ export interface MediaClient {
     remuxVideoMp4(data: Uint8Array, audioData?: Uint8Array): Promise<AppResult<Uint8Array>>
     /** Menampilkan dialog penyimpanan berkas native untuk menyimpan file video ke disk pengguna. */
     saveVideoFile(defaultName: string, data: Uint8Array): Promise<AppResult<string | null>>
+    /** Menyimpan media ekspor (PNG, GIF, MP4) ke Galeri Android atau dialog native Desktop. */
+    saveMediaExport(fileName: string, mimeType: string, data: Uint8Array): Promise<AppResult<string | null>>
+    /** Membagikan berkas media lewat Android Share Sheet atau fallback penyimpanan lokal. */
+    shareMediaExport(fileName: string, mimeType: string, title: string, data: Uint8Array): Promise<AppResult<void>>
+    /** Menyalin gambar PNG/JPEG ke clipboard sistem Android lewat FileProvider URI. */
+    copyMediaImage(fileName: string, mimeType: string, data: Uint8Array): Promise<AppResult<void>>
 }
 
 /**

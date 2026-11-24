@@ -230,6 +230,19 @@ export class UpdateService {
             return this.state
         }
 
+        // Jalur Android APK: arahkan ke tautan unduhan APK GitHub Releases via browser/installer sistem
+        if (env?.os === 'android' || env?.installKind === 'android-apk') {
+            const targetUrl = this.state.matchedAsset?.downloadUrl || this.state.releaseUrl
+            const res = await this.client.system.openExternalUrl(targetUrl)
+            if (!res.ok) {
+                this.setState({
+                    status: 'error',
+                    errorMessage: res.error.message,
+                })
+            }
+            return this.state
+        }
+
         if (env?.isDev || env?.installKind === 'dev') {
             this.setState({
                 status: 'error',

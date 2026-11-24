@@ -17,10 +17,7 @@ pub struct LogEntry {
 static LOG_MUTEX: Mutex<()> = Mutex::new(());
 
 pub fn get_log_dir() -> PathBuf {
-    let base = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("nitirekso")
-        .join("logs");
+    let base = crate::app_paths::get_app_data_dir().join("logs");
 
     if !base.exists() {
         let _ = fs::create_dir_all(&base);
@@ -148,8 +145,28 @@ pub fn clear_logs() -> Result<(), String> {
     Ok(())
 }
 
-pub fn open_log_folder() -> Result<(), String> {
-    let dir = get_log_dir();
-    opener::open(&dir).map_err(|e| format!("Gagal membuka folder log: {}", e))?;
-    Ok(())
+pub fn open_log_folder(app: &tauri::AppHandle) -> Result<(), String> {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        let dir = get_log_dir();
+        app.opener()
+            .open_path(dir.to_string_lossy().to_string(), None::<&str>)
+            .map_err(|e| format!("Gagal membuka folder log: {}", e))?;
+        Ok(())
+    }
+
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let log_file = get_log_file_path();
+        if !log_file.exists() {
+            let _ = fs::write(&log_file, b"");
+        }
+        crate::android_bridge::share_file(
+            app,
+            &log_file,
+            "text/plain",
+            "Bagikan Log Aplikasi nitirekso",
+        )
+    }
 }

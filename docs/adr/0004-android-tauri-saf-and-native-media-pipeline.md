@@ -1,0 +1,9 @@
+# 0004 — Arsitektur Android via Tauri v2, Plugin SAF, dan Pipeline Media Native
+
+Status: accepted
+
+Untuk menghadirkan `nitirekso` di Android dengan kesetaraan fitur penuh (*full feature parity*) tanpa menduplikasi mesin **Sync Vault**, **Local Cache**, **Exchange Sync**, maupun UI React, kami memutuskan membangun target Android langsung di monorepo yang sama menggunakan **Tauri v2 Android** (minimum Android 10 / API 29, rilis `arm64-v8a`, distribusi awal APK tertandatangani via GitHub Releases dengan keystore permanen).
+
+Untuk akses folder bersama (Syncthing **Sync Vault** dan **Local Snapshot**), kami memilih membangun plugin Kotlin Tauri berbasis **Storage Access Framework (SAF / `ACTION_OPEN_DOCUMENT_TREE`)** dengan *persisted URI permission* yang mengimplementasikan trait `VaultStorage` (`SafVaultStorage`), serta menolak penggunaan `MANAGE_EXTERNAL_STORAGE` meskipun distribusi awal berupa sideload APK agar aplikasi tetap patuh Scoped Storage dan tidak menutup jalan menuju Google Play Store atau F-Droid di masa depan. **Device Sync** di Android dipicu secara *foreground lifecycle* (`startup`, `onResume` ter-throttle, pasca-mutasi lokal, dan manual) tanpa background `WorkManager` agar hemat baterai dan tidak terganggu pembatasan OEM.
+
+Untuk menjaga ukuran APK tetap ramping dan mematuhi kebijakan *offline-only* (ADR-0003), pipeline video Share Card di Android tidak membundel biner `ffmpeg` melainkan memakai `WebCodecs` + `mp4-muxer` dan **Android native `MediaMuxer`**, sedangkan ekspor video/gambar/CSV/JSON memakai **MediaStore + Android Share Sheet** menggantikan dialog desktop `rfd`. Kredensial lokal dan `.device-secret` dipindahkan dari `dirs::data_dir()` / `env::var("USER")` ke `app.path().app_data_dir()` yang dibungkus **Android Keystore (hardware-backed)** dengan `android:allowBackup="false"`, `reqwest` dialihkan ke `rustls-tls`, dan `opener` diganti ke `tauri-plugin-opener`.

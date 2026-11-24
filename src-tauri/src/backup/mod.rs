@@ -228,15 +228,17 @@ fn copy_dir_files(src: &Path, dst: &Path) -> (usize, usize) {
     (files, bytes)
 }
 
-/// Eksekusi Local Snapshot asinkron ke folder lokal pilihan pengguna
-pub async fn execute_backup(ctx: BackupContext) -> Result<BackupRunResult, String> {
+/// Eksekusi Local Snapshot asinkron ke direktori tujuan spesifik di filesystem lokal.
+pub async fn execute_backup_to_dir(
+    ctx: &BackupContext,
+    dest_dir: &Path,
+) -> Result<BackupRunResult, String> {
     let start = Instant::now();
     let snapshot_bytes = ctx.snapshot_json.as_bytes();
-    let dest_dir = Path::new(&ctx.local_folder);
 
     if !dest_dir.exists() {
         fs::create_dir_all(dest_dir)
-            .map_err(|e| format!("Gagal membuat direktori {}: {}", ctx.local_folder, e))?;
+            .map_err(|e| format!("Gagal membuat direktori {}: {}", dest_dir.display(), e))?;
     }
 
     let mut files_written = 0;
@@ -294,6 +296,12 @@ pub async fn execute_backup(ctx: BackupContext) -> Result<BackupRunResult, Strin
         duration_ms: start.elapsed().as_millis() as i64,
         error: None,
     })
+}
+
+/// Eksekusi Local Snapshot asinkron ke folder lokal pilihan pengguna
+pub async fn execute_backup(ctx: BackupContext) -> Result<BackupRunResult, String> {
+    let dest_dir = Path::new(&ctx.local_folder);
+    execute_backup_to_dir(&ctx, dest_dir).await
 }
 
 /// Pulihkan database dan aset media dari folder Local Snapshot atau file cadangan (.db / .sqlite / .json)

@@ -96,16 +96,52 @@ Nama **nitirekso** berakar dari kearifan bahasa Jawa:
 - **Mode Sensor Privasi PnL (Hide P&L)**: Tombol 1-klik untuk menyamarkan nominal PnL menjadi "••••" demi keamanan saat berbagi ke media sosial atau live streaming.
 - **Kustomisasi Tema Visual Bebas**: Color picker interaktif untuk skema warna aplikasi dan kartu PnL.
 
-### 5. Ekspor & Pemulihan Cadangan Mandiri (Backup & Restore)
-- **Restore Backup Folder Lokal (v1.8.1)**:
+### 5. Sinkronisasi Lintas Perangkat (Sync Vault via Syncthing) & Local Snapshot
+- **Device Sync Offline-First (Desktop ↔ Android)**:
+  - **nitirekso** tidak memakai server cloud. Sinkronisasi antar perangkat bekerja melalui folder bersama **Sync Vault** berisi log perubahan terenkripsi (*append-only oplog*) yang disinkronkan *peer-to-peer* oleh **Syncthing**.
+  - Mendukung sinkronisasi dua arah untuk riwayat trade, jurnal, checklist SOP, screenshot, dan kredensial exchange terenkripsi (**Vault Passphrase** Argon2id + AES-256-GCM).
+- **Restore Local Snapshot**:
   - Pemulihan fisik database SQLite 1-klik dari folder cadangan lokal menggunakan *SQLite Online Backup API* (`rusqlite::backup::Backup`).
   - Menjalankan migrasi skema otomatis pasca-restore agar cadangan lawas langsung kompatibel dengan versi terbaru.
-  - Pemulihan seluruh koleksi screenshot lokal secara utuh.
-  - Fallback otomatis ke snapshot JSON jika file database fisik tidak ditemukan.
-- **Ekspor Jurnal Fleksibel**: Format **CSV** (UTF-8 BOM siap Excel), **JSON**, dan cetak dokumen **PDF** beresolusi tinggi.
-- **Backup Google Drive Dual-Mode**:
-  - *Mode 1 (Folder Lokal)*: 1-Klik sinkron ke folder Google Drive desktop tanpa ribet setup API.
-  - *Mode 2 (OAuth PKCE Direct)*: Sinkronisasi cadangan langsung ke cloud via OAuth aman.
+  - Pemulihan seluruh koleksi screenshot lokal secara utuh, dengan fallback otomatis ke snapshot JSON jika file database fisik tidak ditemukan.
+- **Ekspor Jurnal Fleksibel**: Format **CSV** (UTF-8 BOM siap Excel), **JSON**, dan cetak dokumen **HTML/PDF**.
+
+---
+
+## 🔄 Panduan Sinkronisasi Desktop & Android via Syncthing
+
+**nitirekso** menyimpan cache SQLite secara lokal di tiap perangkat (*Local Cache*), lalu menyatukan perubahan lintas perangkat lewat satu folder **Sync Vault** yang disinkronkan oleh **Syncthing** (gratis, open-source, tanpa server cloud).
+
+### Langkah 1: Pasang Syncthing di Kedua Perangkat
+- **Desktop (Windows / macOS / Linux):** Unduh dari [syncthing.net](https://syncthing.net/downloads/) (untuk Windows, **SyncTrayzor** atau installer resmi Syncthing sangat praktis; di Linux cukup lewat package manager distro Anda).
+- **Android (Android 10+):** Pasang **Syncthing-Fork** (disarankan, terawat aktif di [F-Droid](https://f-droid.org/packages/com.github.catfriend1.syncthingandroid/) atau GitHub Releases `Catfriend1/syncthing-android`).
+
+### Langkah 2: Buat Folder Sync Vault di Desktop
+1. Buat satu folder kosong di komputer Anda, misalnya `~/Syncthing/nitirekso-vault`.
+2. Buka **nitirekso Desktop → Pengaturan → Sinkronisasi Perangkat (Device Sync)**.
+3. Pilih folder `nitirekso-vault` tersebut sebagai **Sync Vault**.
+4. *(Opsional tapi disarankan)* Atur **Vault Passphrase** jika Anda ingin kredensial Read-Only API Exchange ikut tersinkronisasi aman ke Android.
+5. Klik **Sinkronkan Sekarang** agar `nitirekso` menulis file `vault.json` dan oplog awal ke dalam folder.
+
+### Langkah 3: Hubungkan Folder di Syncthing (Desktop ↔ Android)
+1. Buka antarmuka Syncthing di Desktop (`http://127.0.0.1:8384`) dan **Syncthing-Fork** di Android.
+2. Pada menu **Perangkat (Devices)**, tambahkan perangkat satu sama lain dengan memindai **QR Code Device ID**.
+3. Di Syncthing Desktop, tambahkan folder `nitirekso-vault` (Folder Type: **Send & Receive**) lalu bagikan (*Share*) ke perangkat Android Anda.
+4. Di **Syncthing-Fork** Android, terima undangan folder tersebut dan simpan ke folder yang mudah diakses, misalnya `/storage/emulated/0/Documents/nitirekso-vault`.
+5. Tunggu hingga status folder di kedua perangkat menjadi **Up to Date** (pastikan berkas `vault.json` sudah muncul di folder Android).
+
+### Langkah 4: Sambungkan Sync Vault di nitirekso Android
+1. Buka **nitirekso Android → Pengaturan → Sinkronisasi Perangkat (Device Sync)**.
+2. Ketuk **Pilih Folder**, lalu pilih folder `Documents/nitirekso-vault` melalui pemilih folder sistem Android (SAF) dan klik **Gunakan folder ini**.
+3. Jika Anda mengaktifkan sinkronisasi kredensial di Desktop, masukkan **Vault Passphrase** yang sama persis.
+4. Ketuk **Sinkronkan Sekarang**. Data trade, jurnal, checklist, dan screenshot dari Desktop akan langsung bergabung ke **Local Cache** Android.
+
+### 💡 Saran Praktis Menggunakan Syncthing
+- **Gunakan Syncthing-Fork di Android:** Aplikasi Syncthing Android original sudah tidak lagi dipelihara; **Syncthing-Fork** jauh lebih stabil di Android 10–15 dan mendukung Scoped Storage.
+- **Matikan Optimasi Baterai untuk Syncthing-Fork:** Agar sinkronisasi berjalan lancar tanpa dihentikan sistem, atur baterai Syncthing-Fork ke *Unrestricted* / *Tidak dibatasi* (atau aktifkan opsi *"Run only on Wi-Fi / while charging"* di dalam pengaturan Syncthing-Fork bila ingin ekstra hemat baterai).
+- **Aktifkan File Versioning di Syncthing Desktop:** Nyalakan *Simple File Versioning* (misalnya simpan 5 versi terakhir) di Syncthing Desktop sebagai pengaman tambahan terhadap penghapusan tidak sengaja.
+- **Jangan Sinkronkan File Database SQLite Secara Langsung:** Selalu arahkan Syncthing ke folder **Sync Vault** (`nitirekso-vault`), **bukan** ke folder data internal aplikasi (`%APPDATA%/nitirekso` atau `~/.local/share/nitirekso`). `nitirekso` memakai format oplog per-perangkat sehingga bebas konflik file SQLite.
+- **Pemicu Sinkronisasi di Android:** Di Android, **nitirekso** otomatis memicu **Device Sync** saat aplikasi dibuka, saat kembali ke layar depan (*resume*), setelah Anda menyimpan perubahan, atau kapan pun Anda menekan tombol **Sinkronkan**.
 
 ---
 
@@ -212,7 +248,7 @@ Spreadsheet manual menuntut trader mengetik ulang harga entry, exit, komisi, dan
 Dalam trading kripto futures, profit bisa saja terjadi akibat melanggar rencana trading (*bad win* / faktor hoki), sementara kerugian wajar bisa terjadi meskipun SOP telah dipatuhi (*good loss*). nitirekso melatih Anda menilai kepatuhan terhadap proses eksekusi, bukan sekadar nominal dolar, demi menjaga psikologi trading yang tahan banting.
 
 ### 6. Di mana saya bisa mengunduh installer nitirekso?
-Anda dapat mengunduh paket resmi versi terbaru untuk **Windows** (`.exe`), **macOS** (`.dmg`, `.app`), maupun **Linux** (`.AppImage`, `.deb`) langsung dari halaman [GitHub Releases](https://github.com/KaleksananBarqi/nitirekso/releases) atau mengunjungi [Landing Page Resmi](https://kaleksananbarqi.github.io/nitirekso/).
+Anda dapat mengunduh paket resmi versi terbaru untuk **Windows** (`.exe`, `.msi`), **macOS** (`.dmg`), **Linux** (`.AppImage`, `.deb`), maupun **Android** (`.apk` `arm64-v8a`) langsung dari halaman [GitHub Releases](https://github.com/KaleksananBarqi/nitirekso/releases) atau mengunjungi [Landing Page Resmi](https://kaleksananbarqi.github.io/nitirekso/). Pengguna Android juga dapat melacak pembaruan otomatis menggunakan **Obtainium**.
 
 ---
 

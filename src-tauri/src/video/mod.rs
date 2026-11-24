@@ -207,6 +207,74 @@ pub fn remux_mp4_with_faststart(
     Ok(result)
 }
 
+/// Remuxing MP4 lintas platform: pada Desktop memakai FFmpeg (bila tersedia),
+/// sedangkan pada Android memakai `MediaMuxer` bawaan OS tanpa membundel biner FFmpeg.
+pub fn remux_mp4_with_faststart_for_app(
+    app: Option<&tauri::AppHandle>,
+    input_data: &[u8],
+    audio_data: Option<&[u8]>,
+) -> Result<Vec<u8>, String> {
+    #[cfg(target_os = "android")]
+    {
+        if let Some(app_handle) = app {
+            let temp_dir = crate::app_paths::get_app_cache_dir().join("video-mux");
+            let _ = fs::create_dir_all(&temp_dir);
+
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let rand_id = rand::random::<u32>();
+
+            let in_path = temp_dir.join(format!("raw-{}-{}.mp4", now, rand_id));
+            let audio_path = temp_dir.join(format!("raw-audio-{}-{}.mp4", now, rand_id));
+            let out_path = temp_dir.join(format!("muxed-{}-{}.mp4", now, rand_id));
+
+            let mut guard = TempFileGuard::new();
+            guard.track(in_path.clone());
+            guard.track(audio_path.clone());
+            guard.track(out_path.clone());
+
+            fs::write(&in_path, input_data)
+                .map_err(|e| format!("Gagal menulis berkas video sementara: {}", e))?;
+
+            let has_audio = if let Some(a_data) = audio_data {
+                if !a_data.is_empty() {
+                    fs::write(&audio_path, a_data).is_ok()
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            let audio_arg = if has_audio {
+                Some(audio_path.as_path())
+            } else {
+                None
+            };
+
+            if crate::android_bridge::mux_audio_video_mp4(app_handle, &in_path, audio_arg, &out_path)
+                .is_ok()
+                && out_path.exists()
+            {
+                if let Ok(bytes) = fs::read(&out_path) {
+                    if !bytes.is_empty() {
+                        return Ok(bytes);
+                    }
+                }
+            }
+        }
+        return Ok(input_data.to_vec());
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        remux_mp4_with_faststart(input_data, audio_data)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

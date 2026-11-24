@@ -45,6 +45,8 @@ export function About(): React.JSX.Element {
         updater.status === 'installing'
     const isLinuxPackage =
         updater.environment?.installKind === 'rpm' || updater.environment?.installKind === 'deb'
+    const isAndroidApk =
+        updater.environment?.os === 'android' || updater.environment?.installKind === 'android-apk'
 
     return (
         <div className="flex h-full flex-col overflow-hidden">
@@ -53,7 +55,7 @@ export function About(): React.JSX.Element {
                 description="Informasi aplikasi, pembaruan hybrid dalam aplikasi, repositori, dan jaminan privasi lokal"
             />
 
-            <div className="flex-1 overflow-y-auto px-6 py-6 max-w-4xl space-y-6">
+            <div className="flex-1 overflow-y-auto px-4 py-5 md:px-6 md:py-6 max-w-4xl space-y-6">
                 {/* Banner Identitas Produk */}
                 <section className="rounded-xl border border-border bg-card p-6">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
@@ -182,6 +184,16 @@ export function About(): React.JSX.Element {
                                             {matchedSizeLabel
                                                 ? `Unduh Pembaruan (${matchedSizeLabel})`
                                                 : 'Unduh Pembaruan'}
+                                        </Button>
+                                    ) : isAndroidApk ? (
+                                        <Button
+                                            size="sm"
+                                            variant="primary"
+                                            onClick={() => void updateService.downloadUpdate()}
+                                        >
+                                            {updater.matchedAsset
+                                                ? `Unduh APK${matchedSizeLabel ? ` (${matchedSizeLabel})` : ''}`
+                                                : 'Unduh APK di GitHub'}
                                         </Button>
                                     ) : (
                                         <Button
@@ -347,6 +359,12 @@ export function About(): React.JSX.Element {
                                     Buka GitHub Releases
                                 </Button>
                             </div>
+                        </div>
+                    )}
+
+                    {isAndroidApk && (
+                        <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground leading-relaxed">
+                            <strong className="text-foreground">Tips Android (Obtainium):</strong> Anda dapat menambahkan URL repositori <code className="font-mono text-foreground">https://github.com/KaleksananBarqi/nitirekso</code> ke aplikasi <strong>Obtainium</strong> untuk memantau dan memasang rilis APK baru secara otomatis.
                         </div>
                     )}
 

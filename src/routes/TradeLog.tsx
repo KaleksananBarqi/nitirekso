@@ -178,7 +178,7 @@ export function TradeLog({
                 </div>
             )}
 
-            <div className="flex-1 overflow-auto px-6 py-4">
+            <div className="flex-1 overflow-auto px-4 py-4 md:px-6">
                 {loading ? (
                     <p className="text-sm text-muted-foreground">Memuat…</p>
                 ) : sorted.length === 0 ? (
@@ -192,7 +192,109 @@ export function TradeLog({
                         }
                     />
                 ) : (
-                    <table className={tableClass}>
+                    <>
+                        {/* Tampilan Card List ramah sentuhan untuk layar Mobile (< 768px) */}
+                        <div className="flex flex-col gap-2.5 md:hidden">
+                            {sorted.map((detail) => {
+                                const { trade, journal, rMultiple } = detail
+                                return (
+                                    <article
+                                        key={trade.id}
+                                        className="rounded-lg border border-border bg-card p-3.5"
+                                    >
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className="text-sm font-semibold text-foreground">
+                                                        {trade.symbol}
+                                                    </span>
+                                                    <Badge tone={trade.direction === 'long' ? 'profit' : 'loss'}>
+                                                        {trade.direction === 'long' ? 'Long' : 'Short'}
+                                                    </Badge>
+                                                    {journal?.executionGrade && (
+                                                        <Badge
+                                                            tone={
+                                                                journal.executionGrade === 'A'
+                                                                    ? 'profit'
+                                                                    : journal.executionGrade === 'D'
+                                                                        ? 'loss'
+                                                                        : 'muted'
+                                                            }
+                                                        >
+                                                            Grade {journal.executionGrade}
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                <p className="mt-1 tabular text-[11px] text-muted-foreground">
+                                                    {formatDateTime(trade.exitTime)} · {formatDuration(trade.entryTime, trade.exitTime)}
+                                                    {journal?.setupTag ? ` · ${journal.setupTag}` : ''}
+                                                </p>
+                                            </div>
+                                            <div className="shrink-0 text-right">
+                                                <div className={cn('tabular text-sm font-semibold', pnlColorClass(trade.realizedPnl))}>
+                                                    <PnlValue
+                                                        value={formatPnl(trade.realizedPnl)}
+                                                        hide={hidePnl}
+                                                        className={pnlColorClass(trade.realizedPnl)}
+                                                    />
+                                                </div>
+                                                <div className={cn('tabular text-[11px]', rColorClass(rMultiple))}>
+                                                    <PnlValue
+                                                        value={formatR(rMultiple)}
+                                                        hide={hidePnl}
+                                                        className={rColorClass(rMultiple)}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {detail.tags.length > 0 && (
+                                            <div className="mt-2 flex flex-wrap gap-1">
+                                                {detail.tags.slice(0, 4).map((tag) => (
+                                                    <span
+                                                        key={tag.id}
+                                                        className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                                                    >
+                                                        #{tag.name}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <div className="mt-3 flex items-center justify-end gap-2 border-t border-border/60 pt-2.5">
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="min-h-11 px-3 text-xs text-primary hover:bg-primary/10"
+                                                onClick={() => setSharePnlDetail(detail)}
+                                            >
+                                                Pamer
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="min-h-11 px-3 text-xs"
+                                                onClick={() => onEdit(detail)}
+                                            >
+                                                Edit
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="min-h-11 px-3 text-xs text-loss hover:bg-loss/10"
+                                                onClick={() => onDelete(detail)}
+                                            >
+                                                Hapus
+                                            </Button>
+                                        </div>
+                                    </article>
+                                )
+                            })}
+                        </div>
+
+                        {/* Tampilan Tabel Data-Dense untuk Tablet & Desktop (>= 768px) */}
+                        <div className="hidden md:block">
+                            <table className={tableClass}>
                         <thead className={tableHeadClass()}>
                             <tr>
                                 {COLUMNS.map((column) => (
@@ -309,7 +411,7 @@ export function TradeLog({
                                                     className="h-7 px-2 text-[11px] text-primary hover:bg-primary/10"
                                                     onClick={() => setSharePnlDetail(detail)}
                                                 >
-                                                    ✨ Pamer
+                                                    Pamer
                                                 </Button>
                                                 <Button size="sm" variant="ghost" onClick={() => onEdit(detail)}>
                                                     Edit
@@ -323,13 +425,15 @@ export function TradeLog({
                                 )
                             })}
                         </tbody>
-                    </table>
+                            </table>
+                        </div>
+                    </>
                 )}
             </div>
 
             {/* Ringkasan bawah: memberi konteks cepat tanpa harus membuka Analytics. */}
             {sorted.length > 0 && (
-                <footer className="shrink-0 border-t border-border bg-card px-6 py-2">
+                <footer className="shrink-0 border-t border-border bg-card px-4 py-2 md:px-6">
                     <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-[11px] text-muted-foreground">
                         <span>
                             Total P&L:{' '}

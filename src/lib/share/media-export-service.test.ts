@@ -203,19 +203,25 @@ describe('MediaExportService - saveMediaFile & Unduhan', () => {
         expect(mockCreateObjectURL).toHaveBeenCalled()
     })
 
-    it('langsung menggunakan unduhan browser untuk format non-mp4 (PNG / GIF)', async () => {
-        const mockSave = vi.fn()
+    it('memanggil native saveMediaExport untuk PNG/GIF di Tauri bila tersedia, dan fallback browser jika tidak', async () => {
+        const mockSaveExport = vi.fn().mockResolvedValue({ ok: true, data: '/saved/card.png' })
         ;(globalThis as any).window = {
             api: {
-                saveVideoFile: mockSave
+                saveMediaExport: mockSaveExport
             }
         }
 
         const blob = new Blob(['dummy-png-data'], { type: 'image/png' })
         const savedPath = await saveMediaFile('card.png', blob)
 
-        expect(mockSave).not.toHaveBeenCalled()
-        expect(savedPath).toBeNull()
+        expect(mockSaveExport).toHaveBeenCalledTimes(1)
+        expect(mockSaveExport).toHaveBeenCalledWith('card.png', 'image/png', expect.any(Uint8Array))
+        expect(savedPath).toBe('/saved/card.png')
+
+        // Jika saveMediaExport tidak tersedia, fallback ke unduhan browser
+        ;(globalThis as any).window = { api: {} }
+        const fallbackPath = await saveMediaFile('card.png', blob)
+        expect(fallbackPath).toBeNull()
         expect(mockCreateObjectURL).toHaveBeenCalled()
     })
 })

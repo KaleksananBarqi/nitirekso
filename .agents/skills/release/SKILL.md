@@ -1,6 +1,6 @@
 ---
 name: release
-description: "Lakukan rilis versi baru aplikasi Nitirekso secara otomatis dalam satu prompt: version bump multi-ekosistem (Node, Rust, Tauri, Mock IPC), changelog rapi, verifikasi multi-test Vitest & Cargo, git tag & push, GitHub release, CI/CD multi-platform (Windows, macOS, Linux), dan dev-log Obsidian."
+description: "Lakukan rilis versi baru aplikasi Nitirekso secara otomatis dalam satu prompt: version bump multi-ekosistem (Node, Rust, Tauri, Mock IPC), changelog rapi, verifikasi multi-test Vitest, Cargo & Android check, git tag & push, GitHub release, CI/CD multi-platform (Windows, macOS, Linux, Android), dan dev-log Obsidian."
 disable-model-invocation: false
 ---
 
@@ -38,7 +38,7 @@ Tambahkan entri rilis baru di paling atas daftar versi pada `CHANGELOG.md`:
   - `### 🚀 Fitur Baru` (fitur baru bagi pengguna)
   - `### 🐛 Perbaikan Bug`
   - `### 🛠️ Peningkatan & Optimasi Sistem`
-- Cantumkan sorotan multi-platform Windows, macOS, dan Linux.
+- Cantumkan sorotan multi-platform Windows, macOS, Linux, dan Android (`arm64-v8a` APK).
 
 ### 4. Quality Gate & Verifikasi Mutlak
 Seluruh tes dan build wajib dijalankan berurutan dan harus 100% lulus:
@@ -47,6 +47,10 @@ npm run typecheck
 npm test
 cargo test --manifest-path src-tauri/Cargo.toml
 npm run build
+```
+Jika target Rust Android (`aarch64-linux-android`) terpasang di lingkungan lokal, jalankan juga verifikasi kompilasi silang Android:
+```bash
+cargo check --manifest-path src-tauri/Cargo.toml --target aarch64-linux-android
 ```
 > [!IMPORTANT]
 > Jangan pernah membuat commit/tag rilis jika salah satu perintah di atas gagal. Selesaikan error terlebih dahulu.
@@ -72,11 +76,11 @@ npm run build
    ```bash
    gh release create vX.Y.Z --title "nitirekso vX.Y.Z - <Judul Rilis>" --notes-file /tmp/release_notes_vX.Y.Z.md
    ```
-3. Periksa status workflow multi-platform (`build` Windows/macOS/Linux dan job `publish`) di GitHub Actions:
+3. Periksa status workflow multi-platform (`build` Windows/macOS/Linux, `build-android` APK `arm64-v8a`, dan job `publish`) di GitHub Actions:
    ```bash
    gh run list --limit 2
    ```
-4. Setelah workflow selesai sukses, verifikasi bahwa seluruh aset termasuk `latest.json` dan `SHA256SUMS.txt` telah terbit di GitHub Release:
+4. Setelah workflow selesai sukses, verifikasi bahwa seluruh aset termasuk `nitirekso_X.Y.Z_arm64-v8a.apk`, `latest.json`, dan `SHA256SUMS.txt` telah terbit di GitHub Release:
    ```bash
    gh release view vX.Y.Z --json assets --jq '.assets[].name'
    ```

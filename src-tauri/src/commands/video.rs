@@ -1,12 +1,16 @@
 use tauri::ipc::{InvokeBody, Request, Response};
 use crate::models::MutationResult;
-use crate::video::{parse_binary_envelope, remux_mp4_with_faststart};
+use crate::video::{parse_binary_envelope, remux_mp4_with_faststart_for_app};
 
 /// Menguraikan nama berkas target dari header request IPC atau fallback jika tidak tersedia.
 pub fn extract_file_name_from_headers(request: &Request<'_>) -> String {
+    extract_header_str(request, "x-file-name").unwrap_or_else(|| "export.mp4".to_string())
+}
+
+fn extract_header_str(request: &Request<'_>, name: &str) -> Option<String> {
     request
         .headers()
-        .get("x-file-name")
+        .get(name)
         .and_then(|h| h.to_str().ok())
         .map(|s| {
             urlencoding::decode(s)
@@ -14,7 +18,6 @@ pub fn extract_file_name_from_headers(request: &Request<'_>) -> String {
                 .unwrap_or_else(|_| s.to_string())
         })
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "export.mp4".to_string())
 }
 
 /// Handler IPC Tauri untuk remuxing berkas video MP4 secara native tanpa serialisasi JSON.
@@ -26,11 +29,11 @@ pub fn extract_file_name_from_headers(request: &Request<'_>) -> String {
 ///
 /// Mengembalikan `Response` biner mentah yang diterima sebagai `ArrayBuffer` di sisi frontend.
 #[tauri::command]
-pub fn remux_video_mp4(request: Request<'_>) -> Result<Response, String> {
+pub fn remux_video_mp4(app: tauri::AppHandle, request: Request<'_>) -> Result<Response, String> {
     match request.body() {
         InvokeBody::Raw(bytes) => {
             let (video_data, audio_data) = parse_binary_envelope(bytes.as_slice())?;
-            let remuxed = remux_mp4_with_faststart(video_data, audio_data)?;
+            let remuxed = remux_mp4_with_faststart_for_app(Some(&app), video_data, audio_data)?;
             Ok(Response::new(remuxed))
         }
         InvokeBody::Json(val) => {
@@ -44,17 +47,17 @@ pub fn remux_video_mp4(request: Request<'_>) -> Result<Response, String> {
                 .get("audioData")
                 .and_then(|v| serde_json::from_value(v.clone()).ok());
 
-            let remuxed = remux_mp4_with_faststart(&data, audio_data.as_deref())?;
+            let remuxed =
+                remux_mp4_with_faststart_for_app(Some(&app), &data, audio_data.as_deref())?;
             Ok(Response::new(remuxed))
         }
     }
 }
 
-/// Handler IPC Tauri untuk menyimpan berkas video ke disk menggunakan native file dialog.
-/// Mendukung payload biner mentah melalui `InvokeBody::Raw` tanpa konversi `number[]` JSON.
-/// Nama berkas bawaan dikirimkan melalui header `x-file-name` (URL-encoded).
+/// Handler IPC Tauri untuk menyimpan berkas video ke disk menggunakan native file dialog (Desktop)
+/// atau MediaStore Android (`Movies/nitirekso`).
 #[tauri::command]
-pub fn save_video_file(request: Request<'_>) -> MutationResult<Option<String>> {
+pub fn save_video_file(app: tauri::AppHandle, request: Request<'_>) -> MutationResult<Option<String>> {
     let mut default_name = extract_file_name_from_headers(&request);
 
     match request.body() {
@@ -62,7 +65,7 @@ pub fn save_video_file(request: Request<'_>) -> MutationResult<Option<String>> {
             if bytes.is_empty() {
                 return MutationResult::fail("Data berkas video kosong atau tidak valid".to_string());
             }
-            save_video_to_disk(&default_name, bytes.as_slice())
+            save_media_bytes_for_platform(Some(&app), &default_name, "video/mp4", bytes.as_slice())
         }
         InvokeBody::Json(val) => {
             // Jalur kompatibilitas mundur untuk pemanggil payload JSON lama
@@ -81,8 +84,88 @@ pub fn save_video_file(request: Request<'_>) -> MutationResult<Option<String>> {
             if bytes.is_empty() {
                 return MutationResult::fail("Data berkas video kosong atau tidak valid".to_string());
             }
-            save_video_to_disk(&default_name, bytes.as_slice())
+            save_media_bytes_for_platform(Some(&app), &default_name, "video/mp4", bytes.as_slice())
         }
+    }
+}
+
+/// Handler IPC Tauri untuk menyimpan media ekspor apa pun (PNG, GIF, MP4) ke Galeri/Downloads Android
+/// atau dialog native Desktop.
+#[tauri::command]
+pub fn save_media_export(app: tauri::AppHandle, request: Request<'_>) -> MutationResult<Option<String>> {
+    let file_name = extract_file_name_from_headers(&request);
+    let mime = extract_header_str(&request, "x-mime-type")
+        .unwrap_or_else(|| infer_mime_from_filename(&file_name).to_string());
+
+    match request.body() {
+        InvokeBody::Raw(bytes) => {
+            if bytes.is_empty() {
+                return MutationResult::fail("Data berkas media kosong".to_string());
+            }
+            save_media_bytes_for_platform(Some(&app), &file_name, &mime, bytes.as_slice())
+        }
+        InvokeBody::Json(_) => MutationResult::fail("Payload biner mentah diperlukan.".to_string()),
+    }
+}
+
+/// Handler IPC Tauri untuk membagikan berkas media lewat Android Share Sheet (`Intent.ACTION_SEND`).
+#[tauri::command]
+pub fn share_media_export(app: tauri::AppHandle, request: Request<'_>) -> MutationResult<()> {
+    let file_name = extract_file_name_from_headers(&request);
+    let mime = extract_header_str(&request, "x-mime-type")
+        .unwrap_or_else(|| infer_mime_from_filename(&file_name).to_string());
+    let title = extract_header_str(&request, "x-title")
+        .unwrap_or_else(|| "Bagikan dari nitirekso".to_string());
+
+    let InvokeBody::Raw(bytes) = request.body() else {
+        return MutationResult::fail("Payload biner mentah diperlukan.".to_string());
+    };
+    if bytes.is_empty() {
+        return MutationResult::fail("Data berkas media kosong".to_string());
+    }
+
+    #[cfg(target_os = "android")]
+    {
+        let share_dir = crate::app_paths::get_app_cache_dir().join("shared");
+        let _ = std::fs::create_dir_all(&share_dir);
+        let safe_name = std::path::Path::new(&file_name)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("share-export.bin");
+        let target = share_dir.join(safe_name);
+        if let Err(e) = std::fs::write(&target, bytes.as_slice()) {
+            return MutationResult::fail(format!("Gagal menyiapkan berkas untuk dibagikan: {}", e));
+        }
+        match crate::android_bridge::share_file(&app, &target, &mime, &title) {
+            Ok(_) => MutationResult::ok_unit(),
+            Err(e) => MutationResult::fail(e),
+        }
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, mime, title);
+        match save_media_bytes_for_platform(None, &file_name, "application/octet-stream", bytes.as_slice()) {
+            r if r.ok => MutationResult::ok_unit(),
+            r => MutationResult::fail(r.error.unwrap_or_else(|| "Gagal menyimpan berkas.".to_string())),
+        }
+    }
+}
+
+fn infer_mime_from_filename(name: &str) -> &'static str {
+    let lower = name.to_lowercase();
+    if lower.ends_with(".png") {
+        "image/png"
+    } else if lower.ends_with(".gif") {
+        "image/gif"
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        "image/jpeg"
+    } else if lower.ends_with(".webp") {
+        "image/webp"
+    } else if lower.ends_with(".mp4") {
+        "video/mp4"
+    } else {
+        "application/octet-stream"
     }
 }
 
@@ -101,25 +184,146 @@ pub fn write_video_to_path(target_path: &std::path::Path, data: &[u8]) -> Mutati
     }
 }
 
-/// Membuka prompt dialog native pemilih lokasi berkas dan menuliskan byte video secara deterministik.
-/// Jika `destination_or_name` berupa absolute path (misalnya pada pengujian otomatis),
-/// berkas langsung ditulis ke path tersebut tanpa membuka modal UI dialog.
-pub fn save_video_to_disk(destination_or_name: &str, data: &[u8]) -> MutationResult<Option<String>> {
+fn save_media_bytes_for_platform(
+    app: Option<&tauri::AppHandle>,
+    destination_or_name: &str,
+    mime: &str,
+    data: &[u8],
+) -> MutationResult<Option<String>> {
     let dest_path = std::path::Path::new(destination_or_name);
     if dest_path.is_absolute() {
         return write_video_to_path(dest_path, data);
     }
 
-    let dialog = rfd::FileDialog::new()
-        .set_title("Simpan Video Hasil Ekspor (MP4)")
-        .set_file_name(destination_or_name)
-        .add_filter("Video MP4 (*.mp4)", &["mp4"]);
+    #[cfg(target_os = "android")]
+    {
+        let Some(app_handle) = app else {
+            return MutationResult::fail("AppHandle tidak tersedia untuk MediaStore.".to_string());
+        };
+        let temp_dir = crate::app_paths::get_app_cache_dir().join("media-export");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let safe_name = dest_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("nitirekso-export.bin");
+        let temp_path = temp_dir.join(format!("{}-{}", rand::random::<u32>(), safe_name));
+        if let Err(e) = std::fs::write(&temp_path, data) {
+            return MutationResult::fail(format!("Gagal menulis berkas sementara: {}", e));
+        }
 
-    if let Some(target_path) = dialog.save_file() {
-        write_video_to_path(&target_path, data)
-    } else {
-        log::info!("[video] Dialog pemilihan folder video dibatalkan pengguna");
-        MutationResult::success(None)
+        let collection = if mime.starts_with("video/") {
+            "videos"
+        } else if mime.starts_with("image/") {
+            "images"
+        } else {
+            "downloads"
+        };
+
+        let res = crate::android_bridge::save_to_media_store(
+            app_handle,
+            &temp_path,
+            safe_name,
+            mime,
+            collection,
+        );
+        let _ = std::fs::remove_file(&temp_path);
+        match res {
+            Ok(location) => MutationResult::success(Some(location)),
+            Err(e) => MutationResult::fail(e),
+        }
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let _ = app;
+        let ext = dest_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("mp4");
+        let title = if mime.starts_with("image/") {
+            "Simpan Gambar Share Card"
+        } else {
+            "Simpan Video Hasil Ekspor (MP4)"
+        };
+        let dialog = rfd::FileDialog::new()
+            .set_title(title)
+            .set_file_name(destination_or_name)
+            .add_filter(&format!("Berkas (*.{})", ext), &[ext]);
+
+        if let Some(target_path) = dialog.save_file() {
+            write_video_to_path(&target_path, data)
+        } else {
+            log::info!("[video] Dialog pemilihan lokasi ekspor dibatalkan pengguna");
+            MutationResult::success(None)
+        }
+    }
+
+    #[cfg(target_os = "ios")]
+    {
+        let _ = (app, mime);
+        MutationResult::fail("Ekspor media belum didukung di iOS.".to_string())
+    }
+}
+
+/// Membuka prompt dialog native pemilih lokasi berkas dan menuliskan byte video secara deterministik.
+/// Jika `destination_or_name` berupa absolute path (misalnya pada pengujian otomatis),
+/// berkas langsung ditulis ke path tersebut tanpa membuka modal UI dialog.
+pub fn save_video_to_disk(destination_or_name: &str, data: &[u8]) -> MutationResult<Option<String>> {
+    save_media_bytes_for_platform(None, destination_or_name, "video/mp4", data)
+}
+
+/// Menyalin gambar PNG/JPEG ke Clipboard sistem Android lewat FileProvider URI.
+#[tauri::command]
+pub fn copy_media_image(
+    app: tauri::AppHandle,
+    request: tauri::ipc::Request<'_>,
+) -> MutationResult<()> {
+    let raw_name = request
+        .headers()
+        .get("x-file-name")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("nitirekso-card.png");
+    let file_name = urlencoding::decode(raw_name)
+        .map(|cow| cow.into_owned())
+        .unwrap_or_else(|_| raw_name.to_string());
+    let mime = request
+        .headers()
+        .get("x-mime-type")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("image/png")
+        .to_string();
+
+    let data: &[u8] = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => bytes.as_slice(),
+        _ => {
+            return MutationResult::fail(
+                "Payload gambar harus dikirim sebagai binary Uint8Array".to_string(),
+            );
+        }
+    };
+
+    #[cfg(target_os = "android")]
+    {
+        let temp_dir = crate::app_paths::get_app_cache_dir().join("shared");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let safe_name = std::path::Path::new(&file_name)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("nitirekso-card.png");
+        let temp_path = temp_dir.join(safe_name);
+        if let Err(e) = std::fs::write(&temp_path, data) {
+            return MutationResult::fail(format!("Gagal menulis berkas gambar sementara: {}", e));
+        }
+        match crate::android_bridge::copy_image_to_clipboard(&app, &temp_path, &mime) {
+            Ok(()) => MutationResult::success(()),
+            Err(e) => MutationResult::fail(e),
+        }
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, file_name, mime, data);
+        MutationResult::fail("Gunakan Clipboard Web API pada platform desktop.".to_string())
     }
 }
 

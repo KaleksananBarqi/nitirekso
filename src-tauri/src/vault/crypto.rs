@@ -106,6 +106,7 @@ pub fn decrypt_bytes_b64(key: &[u8; 32], payload_b64: &str) -> Result<Vec<u8>, S
 
 /// Memuat atau membuat secret acak 32-byte di berkas lokal terpisah dari SQLite (`.device-secret`)
 /// sehingga salinan file `.sqlite` saja tidak cukup untuk membuka `vault_master_key_enc`.
+/// Pada Android, secret disimpan terbungkus oleh Android Keystore (hardware-backed AES-GCM).
 pub fn load_or_create_device_secret(db_path: &Path) -> [u8; 32] {
     if db_path.as_os_str().is_empty() || db_path == Path::new(":memory:") {
         let mut fallback = [0u8; 32];
@@ -115,6 +116,46 @@ pub fn load_or_create_device_secret(db_path: &Path) -> [u8; 32] {
 
     let dir = db_path.parent().unwrap_or(Path::new("."));
     let _ = std::fs::create_dir_all(dir);
+
+    #[cfg(target_os = "android")]
+    {
+        let ks_path = dir.join(".device-secret.ks");
+        if let Some(app) = crate::android_bridge::global_app_handle() {
+            if let Ok(wrapped_b64) = std::fs::read_to_string(&ks_path) {
+                if let Ok(unwrapped) = crate::android_bridge::unwrap_secret(app, wrapped_b64.trim()) {
+                    if unwrapped.len() == 32 {
+                        let mut out = [0u8; 32];
+                        out.copy_from_slice(&unwrapped);
+                        return out;
+                    }
+                }
+            }
+
+            // Jika sebelumnya ada .device-secret mentah, bungkus dengan Android Keystore lalu hapus file mentah
+            let legacy_secret_path = dir.join(".device-secret");
+            let mut secret = [0u8; 32];
+            let mut loaded_legacy = false;
+            if let Ok(raw) = std::fs::read(&legacy_secret_path) {
+                if raw.len() == 32 {
+                    secret.copy_from_slice(&raw);
+                    loaded_legacy = true;
+                }
+            }
+            if !loaded_legacy {
+                rand::thread_rng().fill(&mut secret);
+            }
+
+            if let Ok(wrapped_b64) = crate::android_bridge::wrap_secret(app, &secret) {
+                if std::fs::write(&ks_path, wrapped_b64.as_bytes()).is_ok() {
+                    if loaded_legacy {
+                        let _ = std::fs::remove_file(&legacy_secret_path);
+                    }
+                    return secret;
+                }
+            }
+        }
+    }
+
     let secret_path = dir.join(".device-secret");
 
     if let Ok(raw) = std::fs::read(&secret_path) {
@@ -140,6 +181,12 @@ pub fn load_or_create_device_secret(db_path: &Path) -> [u8; 32] {
     }
 
     secret
+}
+
+/// Mengambil atau membuat device secret menggunakan lokasi database aplikasi aktif.
+pub fn load_or_create_app_device_secret() -> [u8; 32] {
+    let db_path = crate::db::get_db_path();
+    load_or_create_device_secret(&db_path)
 }
 
 /// Kunci pembungkus lokal per perangkat agar Vault Passphrase cukup dimasukkan satu kali di perangkat ini.

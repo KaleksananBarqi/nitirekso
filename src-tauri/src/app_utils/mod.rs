@@ -28,13 +28,16 @@ pub struct BtcKlinePoint {
     pub close: f64,
 }
 
-pub fn open_external_url(url: &str) -> Result<(), String> {
+pub fn open_external_url(app: &tauri::AppHandle, url: &str) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
     let trimmed = url.trim();
     if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
         return Err("Protokol URL tidak diizinkan. Hanya http dan https yang diperbolehkan.".to_string());
     }
 
-    opener::open(trimmed).map_err(|e| format!("Gagal membuka URL di browser: {}", e))
+    app.opener()
+        .open_url(trimmed, None::<&str>)
+        .map_err(|e| format!("Gagal membuka URL di browser: {}", e))
 }
 
 fn parse_semver_part(s: &str) -> i64 {

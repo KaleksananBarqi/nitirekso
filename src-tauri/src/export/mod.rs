@@ -237,6 +237,7 @@ pub fn to_html_report(trades: &[TradeDetail]) -> String {
 }
 
 pub fn export_journal_to_file(
+    app: &tauri::AppHandle,
     conn: &Connection,
     format: &str,
     filter: Option<&TradeFilter>,
@@ -246,50 +247,99 @@ pub fn export_journal_to_file(
     let trades = list_trades(conn, effective_filter)
         .map_err(|e| format!("Gagal mengambil data trade: {}", e))?;
 
-    let default_name = format!("trading-journal-{}.{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(), match format {
-        "csv" => "csv",
-        "json" => "json",
-        "pdf" => "html", // File HTML dapat langsung dicetak ke PDF di browser apa pun
-        _ => "txt",
-    });
+    let default_name = format!(
+        "trading-journal-{}.{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        match format {
+            "csv" => "csv",
+            "json" => "json",
+            "pdf" => "html", // File HTML dapat langsung dicetak ke PDF di browser apa pun
+            _ => "txt",
+        }
+    );
 
-    let mut dialog = rfd::FileDialog::new()
-        .set_title(&format!("Simpan Ekspor Journal ({})", format.to_uppercase()))
-        .set_file_name(&default_name);
-
-    dialog = match format {
-        "csv" => dialog.add_filter("CSV (UTF-8)", &["csv"]),
-        "json" => dialog.add_filter("JSON Document", &["json"]),
-        "pdf" => dialog.add_filter("HTML / PDF Report", &["html", "pdf"]),
-        _ => dialog,
+    let (bytes, _mime): (Vec<u8>, &str) = match format {
+        "csv" => (to_csv(&trades).into_bytes(), "text/csv"),
+        "json" => (to_json(&trades)?.into_bytes(), "application/json"),
+        "pdf" | "html" => (to_html_report(&trades).into_bytes(), "text/html"),
+        other => return Err(format!("Format ekspor '{}' tidak didukung.", other)),
     };
 
-    let target_path = dialog
-        .save_file()
-        .ok_or_else(|| "Ekspor dibatalkan oleh pengguna.".to_string())?;
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let _ = app;
+        let mut dialog = rfd::FileDialog::new()
+            .set_title(&format!("Simpan Ekspor Journal ({})", format.to_uppercase()))
+            .set_file_name(&default_name);
 
-    match format {
-        "csv" => {
-            let csv_content = to_csv(&trades);
-            fs::write(&target_path, csv_content.as_bytes())
-                .map_err(|e| format!("Gagal menulis file CSV: {}", e))?;
-        }
-        "json" => {
-            let json_content = to_json(&trades)?;
-            fs::write(&target_path, json_content.as_bytes())
-                .map_err(|e| format!("Gagal menulis file JSON: {}", e))?;
-        }
-        "pdf" | "html" => {
-            let html_content = to_html_report(&trades);
-            fs::write(&target_path, html_content.as_bytes())
-                .map_err(|e| format!("Gagal menulis file report: {}", e))?;
-        }
-        other => return Err(format!("Format ekspor '{}' tidak didukung.", other)),
+        dialog = match format {
+            "csv" => dialog.add_filter("CSV (UTF-8)", &["csv"]),
+            "json" => dialog.add_filter("JSON Document", &["json"]),
+            "pdf" => dialog.add_filter("HTML / PDF Report", &["html", "pdf"]),
+            _ => dialog,
+        };
+
+        let target_path = dialog
+            .save_file()
+            .ok_or_else(|| "Ekspor dibatalkan oleh pengguna.".to_string())?;
+
+        fs::write(&target_path, &bytes)
+            .map_err(|e| format!("Gagal menulis file ekspor: {}", e))?;
+
+        let path_str = target_path.to_string_lossy().to_string();
+        log::info!("[export] Ekspor ({}) berhasil ke: {}", format, path_str);
+        Ok(path_str)
     }
 
-    let path_str = target_path.to_string_lossy().to_string();
-    log::info!("[export] Ekspor ({}) berhasil ke: {}", format, path_str);
-    Ok(path_str)
+    #[cfg(target_os = "android")]
+    {
+        let staging_dir = crate::app_paths::get_app_cache_dir().join("exports");
+        let _ = fs::create_dir_all(&staging_dir);
+        let temp_file = staging_dir.join(&default_name);
+        fs::write(&temp_file, &bytes)
+            .map_err(|e| format!("Gagal menulis file ekspor sementara: {}", e))?;
+
+        let saved_res = crate::android_bridge::save_to_media_store(
+            app,
+            &temp_file,
+            &default_name,
+            _mime,
+            "downloads",
+        );
+        if format == "pdf" {
+            let html_str = String::from_utf8_lossy(&bytes);
+            if let Err(e) = crate::android_bridge::print_html_document(
+                app,
+                &html_str,
+                &default_name,
+            ) {
+                log::warn!("[export] Dialog Print/PDF Android gagal ({}), fallback ke Share Sheet", e);
+                let _ = crate::android_bridge::share_file(
+                    app,
+                    &temp_file,
+                    _mime,
+                    "Ekspor Jurnal (PDF/HTML)",
+                );
+            }
+        } else {
+            let _ = crate::android_bridge::share_file(
+                app,
+                &temp_file,
+                _mime,
+                &format!("Ekspor Jurnal ({})", format.to_uppercase()),
+            );
+        }
+        saved_res
+    }
+
+    #[cfg(target_os = "ios")]
+    {
+        let _ = (app, bytes, _mime);
+        Err("Ekspor file belum didukung di iOS.".to_string())
+    }
 }
 
 #[cfg(test)]

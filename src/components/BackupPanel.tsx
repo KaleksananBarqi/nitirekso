@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { BackupStatusPayload, BackupRunResult, BackupRestoreResult } from '@shared/ipc-contract'
 import { Badge, Button, Card, CardHeader, ErrorNote } from './ui'
 import { formatDateTime } from '../lib/format'
+import { formatVaultLocationLabel } from '../lib/platform'
 
 /**
  * Panel Local Snapshot — pencadangan dan pemulihan point-in-time ke folder lokal perangkat.
@@ -179,8 +180,11 @@ export function BackupPanel({ onSyncComplete }: BackupPanelProps): React.JSX.Ele
                         Berbeda dari <strong>Sync Vault</strong> (yang menyinkronkan perubahan harian), Local Snapshot membekukan kondisi penuh database saat ini untuk arsip darurat di disk atau flashdisk Anda.
                     </p>
                     {localFolder ? (
-                        <div className="mt-2.5 truncate rounded bg-muted/60 p-2 font-mono text-[11px] text-foreground">
-                            {localFolder}
+                        <div
+                            className="mt-2.5 truncate rounded bg-muted/60 p-2 font-mono text-[11px] text-foreground"
+                            title={localFolder}
+                        >
+                            {formatVaultLocationLabel(localFolder)}
                         </div>
                     ) : (
                         <p className="mt-2 text-[11px] font-medium text-amber-500">

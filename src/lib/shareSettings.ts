@@ -572,9 +572,22 @@ async function uploadMediaUrlFieldToBackend(field: MediaUrlField, dataUrl: strin
         if (res.ok && res.data) {
             memoryMediaShaMap[field] = res.data.sha256
             persistSettingsPatch({ shareSettings: buildSerializableShareSettingsPayload() })
+            notifyShareUpdated()
+        } else {
+            logSharePnlError(
+                SharePnlErrorCode.STORAGE_PERSIST_FAILED,
+                `Gagal mengunggah ${field} ke media_assets: ${res.error ?? 'unknown'}`,
+                res,
+                'WARN'
+            )
         }
-    } catch {
-        // Non-fatal
+    } catch (err) {
+        logSharePnlError(
+            SharePnlErrorCode.STORAGE_PERSIST_FAILED,
+            `Gagal memproses upload ${field} ke media_assets`,
+            err,
+            'WARN'
+        )
     }
 }
 
