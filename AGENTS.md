@@ -14,6 +14,17 @@ Dokumen ini mengarahkan alur kerja agen untuk proyek desktop trading journal **n
 - **Kejujuran klaim & data:** periksa fakta teknis langsung terhadap [package.json](package.json), [CHANGELOG.md](CHANGELOG.md), dan [src-tauri/tauri.conf.json](src-tauri/tauri.conf.json) sebelum menuliskan nomor versi, tipe installer, metrik, atau daftar fitur di UI publik.
 - **Kebijakan aset offline desktop (`src/`):** aplikasi desktop dilarang memuat font atau skrip CDN eksternal; font di `src/styles/globals.css` wajib memakai system stack. Pembatasan CDN eksternal ini tidak berlaku untuk halaman web publik di `docs/`.
 
+## Guardrail Teknis Tauri v2, UI, Tema & Bahasa (ADR-0005)
+
+- **Transmisi Biner IPC (`src-tauri/` ↔ `src/lib/ipc/`):**
+  - Dilarang mengirim `Uint8Array` di dalam objek JSON pada `invoke(cmd, { payload })` (terserialisasi menjadi objek `{"0": ...}` dan ditolak Serde `Vec<u8>`). Gunakan helper `invokeRawMedia` + header URL-encoded untuk media besar, atau `Array.from(bytes)` untuk payload kecil.
+  - Di sisi Rust, seluruh command penerima biner (`save_media_asset`, `save_media_export`, `save_video_file`, `share_media_export`, `copy_media_image`, `remux_video_mp4`) wajib memakai helper `extract_raw_or_json_array_bytes` agar menerima baik `InvokeBody::Raw` maupun `InvokeBody::Json(Value::Array)` (dikirim Tauri v2 WebKitGTK Linux & WebView saat postMessage IPC).
+- **Ekspor Media & Render Video:**
+  - Dilarang mengandalkan `<a download>` di Tauri WebView; seluruh ekspor PNG, GIF, dan MP4/WebM wajib melalui `save_media_export` (`rfd` dialog native di Desktop, `MediaStore` di Android).
+  - Saat encoding WebCodecs ke `mp4-muxer`, selalu sertakan `duration` positif pada `new VideoFrame(canvas, { timestamp, duration })` dan fallback `muxer.addVideoChunkRaw` bila `chunk.duration` bernilai `null`.
+- **Bahasa Visual & Aksesibilitas App (`src/`):** terapkan **Neo-Quant Bento Shell** (`--bg-shell` tanpa *box-in-box* border `1px` seragam, `ToggleSwitch` modern, target sentuh mobile minimal `44px` / `min-h-11`, dan navigasi keyboard `ArrowLeft`/`ArrowRight`/`Home`/`End` pada setiap `role="tablist"`).
+- **Tema & Lokalisasi (`src/`):** seluruh warna tema dikelola lewat **Unified Theme Engine** ([themeEngine.ts](src/lib/themeEngine.ts)) dengan kontras **WCAG 2.1 AA (`>= 4.5:1`)** termasuk `--profit` dan `--loss`. Seluruh teks UI wajib lewat **Arekan Localization** (`useI18n()` / `t()` dengan default `jv`, plus `id` & `en`), tanpa hardcoded copy dan tanpa karakter em dash (`U+2014`).
+
 ## Perintah Verifikasi Utama
 
 - Periksa skrip build, typecheck, dan pengujian unit di [package.json](package.json) (`npm run typecheck`, `npm test`, `npm run build`).
