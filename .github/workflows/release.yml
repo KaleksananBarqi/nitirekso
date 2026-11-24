@@ -193,9 +193,13 @@ jobs:
               }
             }
             walk(apkRoot);
-            const chosen = found.find((p) => !p.includes("unsigned")) || found[0];
+            const chosen = found.find((p) => !p.includes("unsigned"));
             if (!chosen) {
-              throw new Error("APK release tidak ditemukan di " + apkRoot);
+              throw new Error(
+                "APK release tertandatangani tidak ditemukan (hanya ada APK unsigned). " +
+                "Pastikan GitHub Secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, " +
+                "ANDROID_KEY_ALIAS, dan ANDROID_KEY_PASSWORD sudah terpasang."
+              );
             }
             const targetName = `nitirekso_${pkg.version}_arm64-v8a.apk`;
             fs.copyFileSync(chosen, path.join(outDir, targetName));

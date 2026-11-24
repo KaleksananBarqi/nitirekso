@@ -3,6 +3,18 @@
 Semua perubahan penting pada proyek **Aplikasi Trading Journal Otomatis** dicatat di file ini.
 Format mengikuti panduan [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/lang/id/).
 
+## [1.12.1] - 2026-11-25
+
+### 🐛 Perbaikan Bug
+- **Upload Background/Avatar (`SHARE_PNL_ERR_004`) & Simpan Media Native (`SHARE_PNL_ERR_012`) (`commands/media.rs`, `commands/video.rs`)**:
+  - Memperbaiki kegagalan parsing biner pada WebKitGTK Linux dan WebView Tauri v2 saat `Uint8Array` dikirim sebagai `InvokeBody::Json(Value::Array)` (bukan `InvokeBody::Raw`) melalui helper terpadu `extract_raw_or_json_array_bytes` pada `save_media_asset`, `save_media_export`, `save_video_file`, `share_media_export`, `copy_media_image`, dan `remux_video_mp4`.
+- **Render Video WebCodecs `addVideoChunkRaw` (`video-export.ts`)**:
+  - Menyertakan `duration` positif pada `new VideoFrame(...)` dan fallback `muxer.addVideoChunkRaw(..., frameDurationUs, meta)` bila encoder mengembalikan `chunk.duration === null`.
+- **Signing APK Android Release (`.github/workflows/release.yml`)**:
+  - Menolak publikasi APK *unsigned* secara tegas dan menggunakan `sdkmanager` bawaan runner Ubuntu + 4 GitHub Secrets keystore agar `nitirekso_1.12.1_arm64-v8a.apk` terbit tertandatangani penuh dan langsung dapat diinstal di perangkat Android.
+
+---
+
 ## [1.12.0] - 2026-11-24
 
 ### 🚀 Perubahan Arsitektur Utama

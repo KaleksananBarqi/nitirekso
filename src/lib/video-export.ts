@@ -350,9 +350,22 @@ async function exportViaWebCodecs(
     muxerOptions.video.height = targetH
     const muxer = new Muxer(muxerOptions)
 
+    const frameDurationUs = Math.max(1, Math.round(1_000_000 / fps))
+
     let encoderError: Error | null = null
     const encoder = new VideoEncoder({
-        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        output: (chunk, meta) => {
+            // Beberapa WebView/encoder menghasilkan chunk.duration === null yang ditolak mp4-muxer;
+            // pastikan selalu ada duration positif menggunakan addVideoChunkRaw bila perlu.
+            const rawDur = chunk.duration
+            if (typeof rawDur === 'number' && Number.isFinite(rawDur) && rawDur >= 0) {
+                muxer.addVideoChunk(chunk, meta)
+            } else {
+                const buf = new Uint8Array(chunk.byteLength)
+                chunk.copyTo(buf)
+                muxer.addVideoChunkRaw(buf, chunk.type, chunk.timestamp, frameDurationUs, meta)
+            }
+        },
         error: (e) => {
             console.error('VideoEncoder error:', e)
             encoderError = e
@@ -429,8 +442,11 @@ async function exportViaWebCodecs(
             }
         }
 
-        // Konversi kanvas ke VideoFrame dengan timestamp integer presisi
-        const frame = new VideoFrame(frameCanvas, { timestamp: timestampMicroseconds })
+        // Konversi kanvas ke VideoFrame dengan timestamp & duration integer presisi
+        const frame = new VideoFrame(frameCanvas, {
+            timestamp: timestampMicroseconds,
+            duration: frameDurationUs
+        })
         
         // Encode (keyframe setiap interval 2 detik agar seeking MP4 mulus)
         const isKeyFrame = i % (fps * 2) === 0

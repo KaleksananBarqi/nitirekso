@@ -20,8 +20,32 @@ fn extract_header_str(request: &Request<'_>, name: &str) -> Option<String> {
         .filter(|s| !s.trim().is_empty())
 }
 
+/// Mengekstrak byte mentah dari `InvokeBody::Raw` maupun `InvokeBody::Json(Value::Array)`.
+/// Di Tauri v2 (khususnya WebKitGTK Linux & beberapa WebView saat memakai postMessage IPC),
+/// `invoke(cmd, uint8Array, { headers })` dapat tiba sebagai `InvokeBody::Json(Array([255, 216, ...]))`
+/// alih-alih `InvokeBody::Raw`. Helper ini menangani keduanya secara transparan.
+pub fn extract_raw_or_json_array_bytes(body: &InvokeBody) -> Result<Vec<u8>, String> {
+    match body {
+        InvokeBody::Raw(bytes) => Ok(bytes.to_vec()),
+        InvokeBody::Json(serde_json::Value::Array(arr)) => {
+            let mut out = Vec::with_capacity(arr.len());
+            for (idx, item) in arr.iter().enumerate() {
+                let n = item
+                    .as_u64()
+                    .ok_or_else(|| format!("Byte tidak valid pada indeks {}", idx))?;
+                if n > 255 {
+                    return Err(format!("Nilai byte di luar rentang 0..255 pada indeks {}", idx));
+                }
+                out.push(n as u8);
+            }
+            Ok(out)
+        }
+        InvokeBody::Json(_) => Err("Payload biner mentah diperlukan.".to_string()),
+    }
+}
+
 /// Handler IPC Tauri untuk remuxing berkas video MP4 secara native tanpa serialisasi JSON.
-/// Menerima payload biner mentah melalui `tauri::ipc::Request` (InvokeBody::Raw).
+/// Menerima payload biner mentah melalui `tauri::ipc::Request` (InvokeBody::Raw atau JSON byte array).
 /// Format payload biner terkompresi (envelope):
 /// - 4 byte pertama: `u32` big-endian menandakan panjang trek audio (`audio_len`).
 /// - `audio_len` byte berikutnya: data trek audio AAC opsional.
@@ -36,8 +60,14 @@ pub fn remux_video_mp4(app: tauri::AppHandle, request: Request<'_>) -> Result<Re
             let remuxed = remux_mp4_with_faststart_for_app(Some(&app), video_data, audio_data)?;
             Ok(Response::new(remuxed))
         }
+        InvokeBody::Json(serde_json::Value::Array(_)) => {
+            let bytes = extract_raw_or_json_array_bytes(request.body())?;
+            let (video_data, audio_data) = parse_binary_envelope(&bytes)?;
+            let remuxed = remux_mp4_with_faststart_for_app(Some(&app), video_data, audio_data)?;
+            Ok(Response::new(remuxed))
+        }
         InvokeBody::Json(val) => {
-            // Jalur kompatibilitas mundur jika dipanggil via payload JSON lama
+            // Jalur kompatibilitas mundur jika dipanggil via payload JSON objek lama
             let data: Vec<u8> = serde_json::from_value(
                 val.get("data").cloned().unwrap_or(serde_json::Value::Null),
             )
@@ -67,8 +97,18 @@ pub fn save_video_file(app: tauri::AppHandle, request: Request<'_>) -> MutationR
             }
             save_media_bytes_for_platform(Some(&app), &default_name, "video/mp4", bytes.as_slice())
         }
+        InvokeBody::Json(serde_json::Value::Array(_)) => {
+            let bytes = match extract_raw_or_json_array_bytes(request.body()) {
+                Ok(b) => b,
+                Err(e) => return MutationResult::fail(e),
+            };
+            if bytes.is_empty() {
+                return MutationResult::fail("Data berkas video kosong atau tidak valid".to_string());
+            }
+            save_media_bytes_for_platform(Some(&app), &default_name, "video/mp4", &bytes)
+        }
         InvokeBody::Json(val) => {
-            // Jalur kompatibilitas mundur untuk pemanggil payload JSON lama
+            // Jalur kompatibilitas mundur untuk pemanggil payload JSON objek lama
             if let Some(name) = val.get("defaultName").and_then(|v| v.as_str()) {
                 if !name.trim().is_empty() {
                     default_name = name.to_string();
@@ -89,7 +129,7 @@ pub fn save_video_file(app: tauri::AppHandle, request: Request<'_>) -> MutationR
     }
 }
 
-/// Handler IPC Tauri untuk menyimpan media ekspor apa pun (PNG, GIF, MP4) ke Galeri/Downloads Android
+/// Handler IPC Tauri untuk menyimpan media ekspor apa pun (PNG, GIF, MP4, WebM) ke Galeri/Downloads Android
 /// atau dialog native Desktop.
 #[tauri::command]
 pub fn save_media_export(app: tauri::AppHandle, request: Request<'_>) -> MutationResult<Option<String>> {
@@ -97,15 +137,14 @@ pub fn save_media_export(app: tauri::AppHandle, request: Request<'_>) -> Mutatio
     let mime = extract_header_str(&request, "x-mime-type")
         .unwrap_or_else(|| infer_mime_from_filename(&file_name).to_string());
 
-    match request.body() {
-        InvokeBody::Raw(bytes) => {
-            if bytes.is_empty() {
-                return MutationResult::fail("Data berkas media kosong".to_string());
-            }
-            save_media_bytes_for_platform(Some(&app), &file_name, &mime, bytes.as_slice())
-        }
-        InvokeBody::Json(_) => MutationResult::fail("Payload biner mentah diperlukan.".to_string()),
+    let bytes = match extract_raw_or_json_array_bytes(request.body()) {
+        Ok(b) => b,
+        Err(e) => return MutationResult::fail(e),
+    };
+    if bytes.is_empty() {
+        return MutationResult::fail("Data berkas media kosong".to_string());
     }
+    save_media_bytes_for_platform(Some(&app), &file_name, &mime, &bytes)
 }
 
 /// Handler IPC Tauri untuk membagikan berkas media lewat Android Share Sheet (`Intent.ACTION_SEND`).
@@ -117,8 +156,9 @@ pub fn share_media_export(app: tauri::AppHandle, request: Request<'_>) -> Mutati
     let title = extract_header_str(&request, "x-title")
         .unwrap_or_else(|| "Bagikan dari nitirekso".to_string());
 
-    let InvokeBody::Raw(bytes) = request.body() else {
-        return MutationResult::fail("Payload biner mentah diperlukan.".to_string());
+    let bytes = match extract_raw_or_json_array_bytes(request.body()) {
+        Ok(b) => b,
+        Err(e) => return MutationResult::fail(e),
     };
     if bytes.is_empty() {
         return MutationResult::fail("Data berkas media kosong".to_string());
@@ -293,9 +333,9 @@ pub fn copy_media_image(
         .unwrap_or("image/png")
         .to_string();
 
-    let data: &[u8] = match request.body() {
-        tauri::ipc::InvokeBody::Raw(bytes) => bytes.as_slice(),
-        _ => {
+    let data = match extract_raw_or_json_array_bytes(request.body()) {
+        Ok(b) => b,
+        Err(_) => {
             return MutationResult::fail(
                 "Payload gambar harus dikirim sebagai binary Uint8Array".to_string(),
             );
@@ -311,7 +351,7 @@ pub fn copy_media_image(
             .and_then(|n| n.to_str())
             .unwrap_or("nitirekso-card.png");
         let temp_path = temp_dir.join(safe_name);
-        if let Err(e) = std::fs::write(&temp_path, data) {
+        if let Err(e) = std::fs::write(&temp_path, &data) {
             return MutationResult::fail(format!("Gagal menulis berkas gambar sementara: {}", e));
         }
         match crate::android_bridge::copy_image_to_clipboard(&app, &temp_path, &mime) {
@@ -330,6 +370,25 @@ pub fn copy_media_image(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_extract_raw_or_json_array_bytes_handles_webkitgtk_json_byte_array() {
+        // Regresi bug WebKitGTK Linux: Uint8Array dikirim sebagai InvokeBody::Json(Array([255, 216, ...]))
+        let jpeg_array = InvokeBody::Json(serde_json::json!([255, 216, 255, 224]));
+        assert_eq!(
+            extract_raw_or_json_array_bytes(&jpeg_array).unwrap(),
+            vec![0xFF, 0xD8, 0xFF, 0xE0]
+        );
+
+        let raw_png = InvokeBody::Raw(vec![0x89, 0x50, 0x4E, 0x47]);
+        assert_eq!(
+            extract_raw_or_json_array_bytes(&raw_png).unwrap(),
+            vec![0x89, 0x50, 0x4E, 0x47]
+        );
+
+        let invalid_obj = InvokeBody::Json(serde_json::json!({"not": "bytes"}));
+        assert!(extract_raw_or_json_array_bytes(&invalid_obj).is_err());
+    }
 
     #[test]
     fn test_file_name_url_decode() {
